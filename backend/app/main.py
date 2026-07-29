@@ -31,7 +31,9 @@ from .models import (
     Membership,
     Message,
     PushSubscription,
+    ScheduledTask,
     Settings,
+    TaskCompletion,
     User,
 )
 from .schemas import (
@@ -42,6 +44,8 @@ from .schemas import (
     GroupJoin,
     HabitPhotoRequest,
     JointActivityCreate,
+    TaskCompleteRequest,
+    TaskCreate,
     LoginRequest,
     MessageCreate,
     MoodRequest,
@@ -79,19 +83,33 @@ REMINDER_HOURS = {
 
 
 def _run_daily_reminders() -> None:
-    """Manda um push de lembrete para todo usuário inscrito (best-effort)."""
+    """Manda um push de lembrete para todo usuário inscrito (best-effort).
+
+    Se o usuário tiver tarefas agendadas pendentes hoje, o texto menciona isso.
+    """
     if not pushmod.push_enabled():
         return
     db = SessionLocal()
     try:
+        today = date.today()
         user_ids = {row.user_id for row in db.query(PushSubscription).all()}
         for uid in user_ids:
-            pushmod.send_to_user(
-                db, uid,
-                "Questly 🎯",
-                "Bora fechar o dia? Seus desafios de hoje te esperam. 💪",
-                "/",
+            pending = 0
+            for m in db.query(Membership).filter(Membership.user_id == uid).all():
+                for t in tasks_due(db, m.group_id, today):
+                    done = (
+                        db.query(TaskCompletion)
+                        .filter(TaskCompletion.task_id == t.id, TaskCompletion.membership_id == m.id, TaskCompletion.date == today)
+                        .first()
+                    )
+                    if not done:
+                        pending += 1
+            body = (
+                f"Você tem {pending} tarefa(s) agendada(s) pra hoje. Bora?"
+                if pending
+                else "Bora fechar o dia? Seus desafios de hoje te esperam."
             )
+            pushmod.send_to_user(db, uid, "Questly", body, "/")
     finally:
         db.close()
 
@@ -279,9 +297,36 @@ def notify_group_others(db: Session, group_id: int, actor_user_id: int, title: s
         pushmod.send_to_user(db, uid, title, body, url)
 
 
-def post_activity(db: Session, group_id: int, membership: Membership, kind: str, emoji: str, text: str) -> None:
-    """Registra um evento no feed do grupo (separado do chat)."""
-    db.add(Activity(group_id=group_id, membership_id=membership.id, kind=kind, emoji=emoji, text=text))
+def upsert_activity(db: Session, gid: int, membership: Membership, kind: str, emoji: str, text: str,
+                    ref: str | None = None, image: str | None = None, day: date | None = None) -> None:
+    """Registra/atualiza um evento no feed. Com `ref`, faz upsert por dia
+    (evita duplicar ao remarcar o mesmo item) e sobe o evento pro topo."""
+    day = day or date.today()
+    existing = None
+    if ref:
+        existing = (
+            db.query(Activity)
+            .filter(Activity.group_id == gid, Activity.membership_id == membership.id,
+                    Activity.ref == ref, Activity.day == day)
+            .first()
+        )
+    if existing:
+        existing.emoji = emoji
+        existing.text = text
+        existing.image = image
+        existing.created_at = datetime.utcnow()
+    else:
+        db.add(Activity(group_id=gid, membership_id=membership.id, kind=kind, emoji=emoji,
+                        text=text, image=image, ref=ref, day=day))
+    db.commit()
+
+
+def remove_activity(db: Session, gid: int, membership: Membership, ref: str, day: date | None = None) -> None:
+    day = day or date.today()
+    db.query(Activity).filter(
+        Activity.group_id == gid, Activity.membership_id == membership.id,
+        Activity.ref == ref, Activity.day == day,
+    ).delete()
     db.commit()
 
 
@@ -293,6 +338,7 @@ def serialize_activity(a: Activity, members_by_id: dict) -> dict:
         "kind": a.kind,
         "emoji": a.emoji,
         "text": a.text,
+        "image": a.image,
         "author": u.name if u else "?",
         "avatar": u.avatar if u else "❓",
         "photo": u.photo if u else None,
@@ -368,7 +414,7 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)):
         email=email,
         password_hash=hash_password(payload.password),
         name=payload.name.strip(),
-        avatar=payload.avatar or "🎮",
+        avatar=payload.avatar or "",
     )
     db.add(user)
     db.commit()
@@ -520,6 +566,13 @@ def _day_result(db: Session, settings: Settings, membership: Membership, entry: 
     return {"day": day_cd, "stats": scoring.player_stats(settings, days, today)}
 
 
+def _habit_info(settings: Settings, key: str) -> dict:
+    for h in (settings.fixed_habits or DEFAULT_HABITS):
+        if h.get("key") == key:
+            return h
+    return {"key": key, "label": key, "emoji": "✅"}
+
+
 @app.post("/api/groups/{gid}/day/toggle")
 def toggle(gid: int, req: ToggleRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     membership = get_membership(db, user, gid)
@@ -529,16 +582,27 @@ def toggle(gid: int, req: ToggleRequest, user: User = Depends(get_current_user),
         raise HTTPException(400, "habit_key é obrigatório.")
     entry = get_or_create_entry(db, membership, d)
     current = list(entry.habits_done or [])
+    h = _habit_info(s, req.habit_key)
+    ref = f"habit:{req.habit_key}"
     if req.habit_key in current:
         current.remove(req.habit_key)
-        # Ao desmarcar, remove a foto-prova associada.
+        # Ao desmarcar, remove a foto-prova associada e o item do feed.
         proofs = dict(entry.habit_proofs or {})
         if proofs.pop(req.habit_key, None) is not None:
             entry.habit_proofs = proofs
-    else:
-        current.append(req.habit_key)
+        entry.habits_done = current
+        result = _day_result(db, s, membership, entry, d)
+        remove_activity(db, gid, membership, ref, day=d)
+        return result
+    current.append(req.habit_key)
     entry.habits_done = current
-    return _day_result(db, s, membership, entry, d)
+    result = _day_result(db, s, membership, entry, d)
+    # Hábito concluído → vai pro feed (com foto, se houver).
+    img = (entry.habit_proofs or {}).get(req.habit_key)
+    upsert_activity(db, gid, membership, "habit", h.get("emoji", "✅"),
+                    f"{membership.user.name} cumpriu: {h.get('label', req.habit_key)}",
+                    ref=ref, image=img, day=d)
+    return result
 
 
 @app.post("/api/groups/{gid}/day/habit-photo")
@@ -558,7 +622,14 @@ def set_habit_photo(gid: int, req: HabitPhotoRequest, user: User = Depends(get_c
     else:
         proofs.pop(req.habit_key, None)
     entry.habit_proofs = proofs
-    return _day_result(db, s, membership, entry, d)
+    result = _day_result(db, s, membership, entry, d)
+    # Mantém o item do feed em sincronia com a foto (se o hábito está feito).
+    if req.habit_key in (entry.habits_done or []):
+        h = _habit_info(s, req.habit_key)
+        upsert_activity(db, gid, membership, "habit", h.get("emoji", "✅"),
+                        f"{membership.user.name} cumpriu: {h.get('label', req.habit_key)}",
+                        ref=f"habit:{req.habit_key}", image=req.image, day=d)
+    return result
 
 
 @app.post("/api/groups/{gid}/day/mood")
@@ -600,13 +671,16 @@ def set_challenge(gid: int, req: ChallengeProofRequest, user: User = Depends(get
     entry.challenge_together = together
     result = _day_result(db, s, membership, entry, d)
 
-    # Recém-concluído hoje → registra no feed + avisa o parceiro (push).
-    if req.image and not was_done and d == date.today():
-        emoji = CATEGORY_EMOJI.get(req.category, "🎯")
+    ref = f"challenge:{req.category}"
+    emoji = CATEGORY_EMOJI.get(req.category, "🎯")
+    if req.image:
         extra = " (juntos 💞)" if req.together else ""
         text = f"{membership.user.name} fechou o desafio de {req.category}!{extra}"
-        post_activity(db, gid, membership, "challenge", emoji, text)
-        notify_group_others(db, gid, membership.user_id, membership.group.name, f"{emoji} {text}", "/")
+        upsert_activity(db, gid, membership, "challenge", emoji, text, ref=ref, image=req.image, day=d)
+        if not was_done and d == date.today():
+            notify_group_others(db, gid, membership.user_id, membership.group.name, f"{emoji} {text}", "/")
+    else:
+        remove_activity(db, gid, membership, ref, day=d)
     return result
 
 
@@ -638,6 +712,7 @@ def serialize_joint(a: JointActivity, members_by_id: dict) -> dict:
         "date": a.date.isoformat(),
         "label": a.label,
         "emoji": a.emoji,
+        "icon": a.icon,
         "points": a.points,
         "image": a.image,
         "created_by": a.created_by,
@@ -674,6 +749,7 @@ def create_joint(gid: int, payload: JointActivityCreate, user: User = Depends(ge
         date=d,
         label=payload.label.strip(),
         emoji=(payload.emoji or "💞").strip() or "💞",
+        icon=payload.icon,
         points=JOINT_ACTIVITY_POINTS,
         image=payload.image,
         created_by=membership.id,
@@ -683,7 +759,7 @@ def create_joint(gid: int, payload: JointActivityCreate, user: User = Depends(ge
     db.refresh(a)
     if d == date.today():
         text = f"{membership.user.name} registrou em dupla: {a.label} (+{a.points} pra vocês!)"
-        post_activity(db, gid, membership, "joint", a.emoji, text)
+        upsert_activity(db, gid, membership, "joint", a.emoji, text, ref=f"joint:{a.id}", image=a.image, day=d)
         notify_group_others(db, gid, membership.user_id, membership.group.name, f"💞 {text}", "/")
     return serialize_joint(a, {membership.id: membership})
 
@@ -805,6 +881,123 @@ def end_goal(gid: int, goal_id: int, user: User = Depends(get_current_user), db:
     if goal is None or goal.group_id != gid:
         raise HTTPException(404, "Meta não encontrada.")
     goal.active = False
+    db.commit()
+    return {"ok": True}
+
+
+# --- rotas: grupo (tarefas agendadas) --------------------------------------
+def _task_due(task: ScheduledTask, d: date) -> bool:
+    if task.kind == "once":
+        return task.date == d
+    # weekly: weekdays em convenção JS (0=Dom..6=Sáb)
+    return ((d.weekday() + 1) % 7) in (task.weekdays or [])
+
+
+def serialize_task(db: Session, task: ScheduledTask, members: list[Membership], me: Membership, d: date) -> dict:
+    done_rows = db.query(TaskCompletion).filter(TaskCompletion.task_id == task.id, TaskCompletion.date == d).all()
+    done_by = {r.membership_id for r in done_rows}
+    my_image = next((r.image for r in done_rows if r.membership_id == me.id), None)
+    return {
+        "id": task.id,
+        "title": task.title,
+        "emoji": task.emoji,
+        "icon": task.icon,
+        "kind": task.kind,
+        "date": task.date.isoformat() if task.date else None,
+        "weekdays": task.weekdays or [],
+        "checked_today": me.id in done_by,
+        "image": my_image,
+        "members_done": [{"name": m.user.name, "done": m.id in done_by} for m in members],
+    }
+
+
+def tasks_due(db: Session, gid: int, d: date) -> list[ScheduledTask]:
+    rows = (
+        db.query(ScheduledTask)
+        .filter(ScheduledTask.group_id == gid, ScheduledTask.active == True)  # noqa: E712
+        .order_by(ScheduledTask.id)
+        .all()
+    )
+    return [t for t in rows if _task_due(t, d)]
+
+
+@app.get("/api/groups/{gid}/tasks")
+def list_tasks(gid: int, day: str | None = None, all: bool = False, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    me = get_membership(db, user, gid)
+    members = group_members(db, gid)
+    d = parse_date(day)
+    if all:
+        rows = (
+            db.query(ScheduledTask)
+            .filter(ScheduledTask.group_id == gid, ScheduledTask.active == True)  # noqa: E712
+            .order_by(ScheduledTask.id)
+            .all()
+        )
+    else:
+        rows = tasks_due(db, gid, d)
+    return {"date": d.isoformat(), "tasks": [serialize_task(db, t, members, me, d) for t in rows]}
+
+
+@app.post("/api/groups/{gid}/tasks")
+def create_task(gid: int, payload: TaskCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    me = get_membership(db, user, gid)
+    if payload.kind == "once" and not payload.date:
+        raise HTTPException(400, "Data obrigatória para tarefa única.")
+    if payload.kind == "weekly" and not payload.weekdays:
+        raise HTTPException(400, "Selecione ao menos um dia da semana.")
+    task = ScheduledTask(
+        group_id=gid,
+        title=payload.title.strip(),
+        emoji=(payload.emoji or "🗓️").strip() or "🗓️",
+        icon=payload.icon,
+        kind=payload.kind,
+        date=parse_date(payload.date) if (payload.kind == "once" and payload.date) else None,
+        weekdays=sorted(set(payload.weekdays)) if payload.kind == "weekly" else [],
+        created_by=me.id,
+    )
+    db.add(task)
+    db.commit()
+    db.refresh(task)
+    return serialize_task(db, task, group_members(db, gid), me, date.today())
+
+
+@app.post("/api/groups/{gid}/tasks/{task_id}/complete")
+def complete_task(gid: int, task_id: int, req: TaskCompleteRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    validate_image(req.image)
+    me = get_membership(db, user, gid)
+    task = db.get(ScheduledTask, task_id)
+    if task is None or task.group_id != gid:
+        raise HTTPException(404, "Tarefa não encontrada.")
+    d = parse_date(req.date)
+    existing = (
+        db.query(TaskCompletion)
+        .filter(TaskCompletion.task_id == task_id, TaskCompletion.membership_id == me.id, TaskCompletion.date == d)
+        .first()
+    )
+    ref = f"task:{task_id}"
+    # Toggle: se já concluída e não veio foto nova, desfaz; senão marca/atualiza.
+    if existing and not req.image:
+        db.delete(existing)
+        db.commit()
+        remove_activity(db, gid, me, ref, day=d)
+        return serialize_task(db, task, group_members(db, gid), me, d)
+    if existing:
+        existing.image = req.image
+    else:
+        db.add(TaskCompletion(task_id=task_id, membership_id=me.id, date=d, image=req.image))
+    db.commit()
+    upsert_activity(db, gid, me, "task", task.emoji, f"{me.user.name} concluiu a tarefa: {task.title}",
+                    ref=ref, image=req.image, day=d)
+    return serialize_task(db, task, group_members(db, gid), me, d)
+
+
+@app.delete("/api/groups/{gid}/tasks/{task_id}")
+def delete_task(gid: int, task_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    get_membership(db, user, gid)
+    task = db.get(ScheduledTask, task_id)
+    if task is None or task.group_id != gid:
+        raise HTTPException(404, "Tarefa não encontrada.")
+    task.active = False
     db.commit()
     return {"ok": True}
 
@@ -953,6 +1146,18 @@ def gallery(gid: int, weeks_limit: int = 8, user: User = Depends(get_current_use
                     "label": cat,
                     "image": img,
                 })
+            for key, img in (e.habit_proofs or {}).items():
+                if not img:
+                    continue
+                h = _habit_info(get_group_settings(db, gid), key)
+                weeks.setdefault(monday_of(e.date), []).append({
+                    "date": e.date.isoformat(),
+                    "author": m.user.name,
+                    "kind": "habit",
+                    "emoji": h.get("emoji", "✅"),
+                    "label": h.get("label", key),
+                    "image": img,
+                })
     for a in db.query(JointActivity).filter(JointActivity.group_id == gid).all():
         if a.image:
             mem = members_by_id.get(a.created_by)
@@ -964,6 +1169,24 @@ def gallery(gid: int, weeks_limit: int = 8, user: User = Depends(get_current_use
                 "label": a.label,
                 "image": a.image,
             })
+
+    # Fotos das tarefas concluídas.
+    task_rows = (
+        db.query(TaskCompletion, ScheduledTask)
+        .join(ScheduledTask, TaskCompletion.task_id == ScheduledTask.id)
+        .filter(ScheduledTask.group_id == gid, TaskCompletion.image.isnot(None))
+        .all()
+    )
+    for comp, task in task_rows:
+        mem = members_by_id.get(comp.membership_id)
+        weeks.setdefault(monday_of(comp.date), []).append({
+            "date": comp.date.isoformat(),
+            "author": mem.user.name if mem else "?",
+            "kind": "task",
+            "emoji": task.emoji,
+            "label": task.title,
+            "image": comp.image,
+        })
 
     result = []
     for mon in sorted(weeks.keys(), reverse=True)[:weeks_limit]:
@@ -1069,6 +1292,7 @@ def state(gid: int, user: User = Depends(get_current_user), db: Session = Depend
         },
         "activities": [serialize_activity(a, members_by_id) for a in recent_activities],
         "goals": [serialize_goal(db, g, members, membership, today) for g in active_goals(db, gid)],
+        "tasks": [serialize_task(db, t, members, membership, today) for t in tasks_due(db, gid, today)],
     }
 
 

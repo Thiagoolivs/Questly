@@ -154,9 +154,12 @@ class Activity(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     group_id: Mapped[int] = mapped_column(ForeignKey("groups.id"), index=True)
     membership_id: Mapped[int] = mapped_column(ForeignKey("memberships.id"))
-    kind: Mapped[str] = mapped_column(String(20))  # challenge | joint
+    kind: Mapped[str] = mapped_column(String(20))  # challenge | joint | habit | task
     emoji: Mapped[str] = mapped_column(String(8), default="🎯")
     text: Mapped[str] = mapped_column(Text, default="")
+    image: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # foto opcional
+    ref: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)  # p/ upsert/dedupe
+    day: Mapped[Optional[date]] = mapped_column(Date, nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
 
 
@@ -190,6 +193,37 @@ class GoalCheckin(Base):
     date: Mapped[date] = mapped_column(Date, index=True)
 
 
+class ScheduledTask(Base):
+    """Tarefa agendada para uma data específica ou recorrente (dias da semana)."""
+
+    __tablename__ = "scheduled_tasks"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    group_id: Mapped[int] = mapped_column(ForeignKey("groups.id"), index=True)
+    title: Mapped[str] = mapped_column(String(120))
+    emoji: Mapped[str] = mapped_column(String(8), default="🗓️")
+    icon: Mapped[Optional[str]] = mapped_column(String(24), nullable=True)
+    kind: Mapped[str] = mapped_column(String(10), default="once")  # once | weekly
+    date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)  # para 'once'
+    weekdays: Mapped[list] = mapped_column(JSON, default=list)  # para 'weekly' (0=Dom..6=Sáb)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_by: Mapped[int] = mapped_column(ForeignKey("memberships.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class TaskCompletion(Base):
+    """Conclusão de uma tarefa agendada por um membro num dia."""
+
+    __tablename__ = "task_completions"
+    __table_args__ = (UniqueConstraint("task_id", "membership_id", "date", name="uq_task_member_date"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    task_id: Mapped[int] = mapped_column(ForeignKey("scheduled_tasks.id"), index=True)
+    membership_id: Mapped[int] = mapped_column(ForeignKey("memberships.id"), index=True)
+    date: Mapped[date] = mapped_column(Date, index=True)
+    image: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # foto-prova opcional
+
+
 class PushSubscription(Base):
     """Inscrição de Web Push de um usuário (um por dispositivo/navegador)."""
 
@@ -213,6 +247,7 @@ class JointActivity(Base):
     date: Mapped[date] = mapped_column(Date, index=True)
     label: Mapped[str] = mapped_column(String(120))
     emoji: Mapped[str] = mapped_column(String(8), default="💞")
+    icon: Mapped[Optional[str]] = mapped_column(String(24), nullable=True)
     points: Mapped[int] = mapped_column(Integer, default=20)
     image: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # comprovação opcional
     created_by: Mapped[int] = mapped_column(ForeignKey("memberships.id"))

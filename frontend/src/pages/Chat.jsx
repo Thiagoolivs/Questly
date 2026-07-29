@@ -93,7 +93,7 @@ export default function Chat() {
           const mine = m.player_id === myId
           return (
             <div key={m.id} className={'chat-msg ' + (mine ? 'me' : 'them')}>
-              {!mine && <div className="chat-av"><Avatar photo={m.photo} avatar={m.avatar} size={30} /></div>}
+              {!mine && <div className="chat-av"><Avatar photo={m.photo} avatar={m.avatar} name={m.name} size={30} /></div>}
               <div className="chat-bubble">
                 {!mine && <div className="chat-author">{m.name}</div>}
                 {m.image && <img className="chat-img" src={m.image} alt="anexo" />}

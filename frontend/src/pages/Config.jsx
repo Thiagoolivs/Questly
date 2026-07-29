@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useApp } from '../store.jsx'
 import { api } from '../api.js'
+import Icon from '../components/Icon.jsx'
+import IconPicker from '../components/IconPicker.jsx'
 
 const WEEKDAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 const DURATIONS = [30, 60, 75, 90]
@@ -18,7 +20,7 @@ export default function Config() {
   const [s, setS] = useState(null)
   const [menu, setMenu] = useState([])
   const [selected, setSelected] = useState(new Set())
-  const [newHabit, setNewHabit] = useState({ emoji: '✅', label: '' })
+  const [newHabit, setNewHabit] = useState({ emoji: '✅', icon: null, label: '' })
   const [saved, setSaved] = useState(false)
   const [err, setErr] = useState(null)
 
@@ -57,10 +59,10 @@ export default function Config() {
     let key = slug(label) || 'habito'
     const keys = new Set(menu.map((h) => h.key))
     while (keys.has(key)) key += '_' + Math.floor(Math.random() * 1000)
-    const h = { key, label, emoji: (newHabit.emoji || '✅').trim() || '✅', category: 'Personalizado' }
+    const h = { key, label, emoji: (newHabit.emoji || '✅').trim() || '✅', icon: newHabit.icon || null, category: 'Personalizado' }
     setMenu([...menu, h])
     setSelected(new Set([...selected, key]))
-    setNewHabit({ emoji: '✅', label: '' })
+    setNewHabit({ emoji: '✅', icon: null, label: '' })
   }
 
   async function save() {
@@ -156,20 +158,18 @@ export default function Config() {
               className={'habit ' + (selected.has(h.key) ? 'done' : '')}
               onClick={() => toggleHabit(h.key)}
             >
-              <span className="habit-emoji">{h.emoji}</span>
+              <span className="habit-emoji">{h.icon ? <Icon name={h.icon} size={18} /> : h.emoji}</span>
               <span className="habit-label">{h.label}</span>
-              <span className={'check ' + (selected.has(h.key) ? 'on' : '')}>{selected.has(h.key) ? '✓' : ''}</span>
+              <span className={'check ' + (selected.has(h.key) ? 'on' : '')}>{selected.has(h.key) ? <Icon name="check" size={14} /> : ''}</span>
             </button>
           ))}
         </div>
 
         <div className="add-habit">
-          <input
-            className="add-habit-emoji"
-            value={newHabit.emoji}
-            maxLength={2}
-            onChange={(e) => setNewHabit({ ...newHabit, emoji: e.target.value })}
-            aria-label="emoji"
+          <IconPicker
+            emoji={newHabit.emoji}
+            icon={newHabit.icon}
+            onPick={({ emoji, icon }) => setNewHabit({ ...newHabit, emoji: emoji || '✅', icon })}
           />
           <input
             className="add-habit-label"

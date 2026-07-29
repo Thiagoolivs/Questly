@@ -126,6 +126,18 @@ const icons = {
   faceSad: <><circle cx="12" cy="12" r="9" /><circle cx="9" cy="10.5" r="0.7" fill="currentColor" stroke="none" /><circle cx="15" cy="10.5" r="0.7" fill="currentColor" stroke="none" /><path d="M8.5 16a4 3 0 0 1 7 0" /></>,
   faceAngry: <><circle cx="12" cy="12" r="9" /><path d="M8 9.2 10 10M16 9.2 14 10" /><circle cx="9" cy="11" r="0.7" fill="currentColor" stroke="none" /><circle cx="15" cy="11" r="0.7" fill="currentColor" stroke="none" /><path d="M8.5 16a4 3 0 0 1 7 0" /></>,
   faceTired: <><circle cx="12" cy="12" r="9" /><path d="M7.8 9.8 10 10.6M16.2 9.8 14 10.6" /><path d="M8.5 15.5a4 3 0 0 1 7 0" /></>,
+  // Extras p/ o seletor de ícones
+  droplet: <path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z" />,
+  book: <><path d="M5 4h11a2 2 0 0 1 2 2v13H7a2 2 0 0 0-2 2z" /><path d="M18 19H7" /></>,
+  coffee: <><path d="M4 8h13v5a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4z" /><path d="M17 9h2a2 2 0 0 1 0 4h-2" /><path d="M7 3v2M11 3v2M15 3v2" /></>,
+  music: <><circle cx="6.5" cy="18" r="2" /><circle cx="17" cy="16" r="2" /><path d="M8.5 18V6l10.5-2v10" /></>,
+  pencil: <><path d="M4 20h4L19 9l-4-4L4 16z" /><path d="M14 6l4 4" /></>,
+  sun: <><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></>,
+  briefcase: <><rect x="3" y="7" width="18" height="13" rx="2" /><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><path d="M3 12h18" /></>,
+  utensils: <><path d="M5 3v7a2 2 0 0 0 4 0V3M7 10v11" /><path d="M17 3c-1.5 0-2.5 2-2.5 5s1 3.5 2 4v9" /></>,
+  bed: <><path d="M3 8v11M3 13h16a2 2 0 0 1 2 2v4M3 19h18" /><path d="M7 13v-2a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2v2" /></>,
+  water: <path d="M4 6h16M6 6c0 6 2 12 6 12s6-6 6-12" />,
+  run: <><circle cx="15" cy="5" r="2" /><path d="M4 20l3-5 3 1 1-4-4-2 3-3 3 3 3 1" /></>,
 }
 
 // Ícone por área (as 5 categorias do desafio).
@@ -140,6 +152,24 @@ const CATEGORY_ICON = {
 export function categoryIconName(cat) {
   return CATEGORY_ICON[cat] || 'activity'
 }
+
+// Humor/emoções → ícone de rosto (SVG).
+const MOOD_ICON = {
+  otimo: 'faceGrin', feliz: 'faceSmile', grato: 'heart', calmo: 'leaf',
+  motivado: 'flame', produtivo: 'zap', neutro: 'faceNeutral', cansado: 'moon',
+  ansioso: 'faceWorried', estressado: 'faceAngry', triste: 'faceSad', dificil: 'faceTired',
+}
+export function moodIconName(key) {
+  return MOOD_ICON[key] || 'faceNeutral'
+}
+
+// Conjunto de ícones oferecidos no seletor (itens personalizáveis).
+export const PICKER_ICONS = [
+  'target', 'flame', 'star', 'heart', 'dumbbell', 'run', 'bulb', 'book',
+  'droplet', 'water', 'utensils', 'coffee', 'bed', 'moon', 'sun', 'leaf',
+  'sparkle', 'zap', 'music', 'pencil', 'briefcase', 'users', 'calendar', 'bell',
+  'check', 'trophy', 'activity', 'message',
+]
 
 export default function Icon({ name, size = 18, strokeWidth = 1.7, className = '' }) {
   const el = icons[name]

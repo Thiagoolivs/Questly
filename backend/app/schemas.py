@@ -9,7 +9,7 @@ class RegisterRequest(BaseModel):
     email: str = Field(..., max_length=255)
     password: str = Field(..., min_length=6, max_length=128)
     name: str = Field(..., min_length=1, max_length=60)
-    avatar: str = Field("🎮", max_length=8)
+    avatar: str = Field("", max_length=8)
 
 
 class LoginRequest(BaseModel):
@@ -69,6 +69,7 @@ class JointActivityCreate(BaseModel):
     date: str
     label: str = Field(..., min_length=1, max_length=120)
     emoji: str = Field("💞", max_length=8)
+    icon: Optional[str] = Field(None, max_length=24)
     image: Optional[str] = None  # comprovação opcional
 
 
@@ -81,6 +82,20 @@ class GoalCreate(BaseModel):
 
 class GoalCheckinRequest(BaseModel):
     date: str
+
+
+class TaskCreate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=120)
+    emoji: str = Field("🗓️", max_length=8)
+    icon: Optional[str] = Field(None, max_length=24)
+    kind: Literal["once", "weekly"] = "once"
+    date: Optional[str] = None          # para 'once' (YYYY-MM-DD)
+    weekdays: list[int] = Field(default_factory=list)  # para 'weekly' (0=Dom..6=Sáb)
+
+
+class TaskCompleteRequest(BaseModel):
+    date: str
+    image: Optional[str] = None  # foto-prova opcional
 
 
 class PushKeys(BaseModel):
@@ -102,6 +117,7 @@ class HabitDef(BaseModel):
     key: str
     label: str
     emoji: str = "✅"
+    icon: Optional[str] = None
     category: str = "Geral"
 
 

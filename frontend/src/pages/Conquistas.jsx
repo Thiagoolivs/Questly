@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useApp } from '../store.jsx'
 import { api } from '../api.js'
 import PlayerSwitch from '../components/PlayerSwitch.jsx'
+import Icon from '../components/Icon.jsx'
 
 export default function Conquistas() {
   const { groupId, viewId } = useApp()
@@ -30,7 +31,7 @@ export default function Conquistas() {
       <div className="badge-grid">
         {list.map((a) => (
           <div key={a.key} className={'badge ' + (a.unlocked ? 'unlocked' : 'locked')}>
-            <div className="badge-emoji">{a.unlocked ? a.emoji : '🔒'}</div>
+            <div className="badge-emoji"><Icon name={a.unlocked ? 'trophy' : 'lock'} size={26} /></div>
             <div className="badge-name">{a.name}</div>
             <div className="muted xsmall badge-desc">{a.desc}</div>
             <div className="bar thin">
