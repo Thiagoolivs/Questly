@@ -43,7 +43,8 @@ class ToggleRequest(BaseModel):
 
 class MoodRequest(BaseModel):
     date: str
-    mood: Optional[str] = None  # None limpa o humor do dia
+    moods: list[str] = Field(default_factory=list)  # emoções selecionadas
+    note: Optional[str] = Field(None, max_length=280)  # texto livre opcional
 
 
 class ChallengeProofRequest(BaseModel):

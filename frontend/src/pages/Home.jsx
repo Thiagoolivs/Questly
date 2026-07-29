@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useApp } from '../store.jsx'
 import { api } from '../api.js'
 import { pickImage, fileToCompressedDataURL } from '../utils/image.js'
@@ -20,6 +20,11 @@ export default function Home() {
   const [zoom, setZoom] = useState(null)
   const [jointForm, setJointForm] = useState({ emoji: '💞', label: '' })
   const [jointPhoto, setJointPhoto] = useState(null)
+  const [moodNote, setMoodNote] = useState('')
+
+  useEffect(() => {
+    setMoodNote(me?.today?.mood_note || '')
+  }, [me?.today?.mood_note])
 
   if (loading) return <div className="screen center muted">Carregando…</div>
   if (error)
@@ -60,8 +65,12 @@ export default function Home() {
 
   const toggleHabit = (habit_key) =>
     run(() => api.toggle(groupId, { date: state.date, type: 'habit', habit_key }))
-  const setMood = (key) =>
-    run(() => api.setMood(groupId, { date: state.date, mood: today.mood === key ? null : key }))
+  const toggleMood = (key) => {
+    const cur = today.moods || []
+    const next = cur.includes(key) ? cur.filter((k) => k !== key) : [...cur, key]
+    return run(() => api.setMood(groupId, { date: state.date, moods: next, note: moodNote }))
+  }
+  const saveMoodNote = () => run(() => api.setMood(groupId, { date: state.date, moods: today.moods || [], note: moodNote }))
   const rerollChallenge = (category) => run(() => api.reroll(groupId, { date: state.date, category }))
   const removeChallenge = (category) =>
     run(() => api.setChallenge(groupId, { date: state.date, category, image: null }))
@@ -173,22 +182,32 @@ export default function Home() {
         </section>
       )}
 
-      {/* Humor */}
+      {/* Humor / emoções */}
       <section className="card">
-        <div className="card-title">Como você está hoje?</div>
-        <div className="mood-row">
+        <div className="card-title">Como você está hoje? <span className="muted small">(pode marcar várias)</span></div>
+        <div className="mood-grid">
           {state.moods.map((m) => (
             <button
               key={m.key}
-              className={'mood ' + (today.mood === m.key ? 'active' : '')}
+              className={'mood ' + ((today.moods || []).includes(m.key) ? 'active' : '')}
               disabled={busy}
-              onClick={() => setMood(m.key)}
+              onClick={() => toggleMood(m.key)}
             >
               <span className="mood-emoji">{m.emoji}</span>
               <span className="mood-label">{m.label}</span>
             </button>
           ))}
         </div>
+        <input
+          className="mood-note"
+          placeholder="Quer escrever algo sobre o dia? (opcional)"
+          value={moodNote}
+          maxLength={280}
+          disabled={busy}
+          onChange={(e) => setMoodNote(e.target.value)}
+          onBlur={saveMoodNote}
+          onKeyDown={(e) => e.key === 'Enter' && e.target.blur()}
+        />
       </section>
 
       {/* Progresso de hoje */}

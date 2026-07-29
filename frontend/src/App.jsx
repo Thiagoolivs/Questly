@@ -4,6 +4,7 @@ import BottomNav from './components/BottomNav.jsx'
 import Auth from './pages/Auth.jsx'
 import Grupos from './pages/Grupos.jsx'
 import Home from './pages/Home.jsx'
+import Feed from './pages/Feed.jsx'
 import Chat from './pages/Chat.jsx'
 import Perfil from './pages/Perfil.jsx'
 import Historico from './pages/Historico.jsx'
@@ -34,6 +35,7 @@ function Shell() {
         <main className="content">
           <Routes>
             <Route path="/" element={<Home />} />
+            <Route path="/feed" element={<Feed />} />
             <Route path="/chat" element={<Chat />} />
             <Route path="/perfil" element={<Perfil />} />
             <Route path="/historico" element={<Historico />} />

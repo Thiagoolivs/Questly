@@ -171,7 +171,9 @@ def compute_day(settings, entry, d: date) -> dict:
         "areas_done": areas_done,
         "rerolls_used": rerolls_used,
         "rerolls_left": max(0, MAX_REROLLS - rerolls_used),
-        "mood": entry.mood if entry else None,
+        "moods": (entry.moods or []) if entry else [],
+        "mood_note": (entry.mood_note if entry else None),
+        "mood": (entry.moods[0] if entry and entry.moods else None),  # compat
         "completed": all_areas,   # conta para a sequência (fechou as áreas)
         "perfect": perfect,        # áreas + hábitos (ganhou o bônus perfeito)
     }
