@@ -82,4 +82,5 @@ export const api = {
   challengesToday: (g, day) => req(`/api/groups/${g}/challenges/today${qs(day)}`),
   messages: (g, afterId = 0) => req(`/api/groups/${g}/messages${afterId ? `?after_id=${afterId}` : ''}`),
   sendMessage: (g, b) => req(`/api/groups/${g}/messages`, { method: 'POST', body: b }),
+  activities: (g) => req(`/api/groups/${g}/activities`),
 }

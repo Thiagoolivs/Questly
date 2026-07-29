@@ -505,3 +505,10 @@ input[type='range'] { width: 100%; accent-color: var(--accent); height: 24px; }
 .joint-label { font-weight: 600; }
 .joint-suggestions { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
 .joint-suggestions .chip { font-size: 0.78rem; }
+
+/* Feed de atividades ------------------------------------------------------ */
+.feed { display: flex; flex-direction: column; gap: 8px; }
+.feed-item { display: flex; align-items: center; gap: 10px; }
+.feed-emoji { font-size: 18px; width: 24px; text-align: center; flex-shrink: 0; }
+.feed-text { flex: 1; font-size: 0.9rem; }
+.feed-time { flex-shrink: 0; }
