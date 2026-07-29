@@ -8,6 +8,7 @@ import Feed from './pages/Feed.jsx'
 import Chat from './pages/Chat.jsx'
 import Perfil from './pages/Perfil.jsx'
 import Historico from './pages/Historico.jsx'
+import Mural from './pages/Mural.jsx'
 import Conquistas from './pages/Conquistas.jsx'
 import Config from './pages/Config.jsx'
 
@@ -39,6 +40,7 @@ function Shell() {
             <Route path="/chat" element={<Chat />} />
             <Route path="/perfil" element={<Perfil />} />
             <Route path="/historico" element={<Historico />} />
+            <Route path="/mural" element={<Mural />} />
             <Route path="/conquistas" element={<Conquistas />} />
             <Route path="/config" element={<Config />} />
             <Route path="*" element={<Navigate to="/" replace />} />

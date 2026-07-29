@@ -2,7 +2,7 @@
 import asyncio
 import os
 import re
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException
@@ -748,6 +748,114 @@ def achievements(gid: int, mid: int, user: User = Depends(get_current_user), db:
     stats = scoring.player_stats(s, days, today)
     casal = casal_perfect_days(s, group_members(db, gid), today)
     return {"achievements": scoring.achievements_for(days, stats, casal)}
+
+
+_MONTHS_PT = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"]
+
+
+def _week_label(mon: date) -> str:
+    end = mon + timedelta(days=6)
+    if mon.month == end.month:
+        return f"{mon.day}–{end.day} {_MONTHS_PT[mon.month - 1]}"
+    return f"{mon.day} {_MONTHS_PT[mon.month - 1]} – {end.day} {_MONTHS_PT[end.month - 1]}"
+
+
+@app.get("/api/groups/{gid}/radar")
+def radar(gid: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Desafios concluídos por área e por membro (para o gráfico de radar)."""
+    get_membership(db, user, gid)
+    s = get_group_settings(db, gid)
+    cats = scoring.active_categories(s)
+    today = date.today()
+    members = group_members(db, gid)
+    out = []
+    for m in members:
+        days = scoring.build_days(s, {e.date: e for e in m.days}, today)
+        counts = {c: 0 for c in cats}
+        for cd in days:
+            for c in cd["done_cats"]:
+                if c in counts:
+                    counts[c] += 1
+        out.append({
+            "id": m.id,
+            "name": m.user.name,
+            "avatar": m.user.avatar,
+            "values": [counts[c] for c in cats],
+        })
+    return {"categories": cats, "emojis": [CATEGORY_EMOJI[c] for c in cats], "members": out}
+
+
+@app.get("/api/groups/{gid}/gallery")
+def gallery(gid: int, weeks_limit: int = 8, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Mural de fotos das provas + atividades em dupla, com retrospectiva semanal."""
+    get_membership(db, user, gid)
+    s = get_group_settings(db, gid)
+    today = date.today()
+    members = group_members(db, gid)
+    members_by_id = {m.id: m for m in members}
+    joint = joint_points_map(db, gid)
+
+    member_cd = {m.id: {cd["date"]: cd for cd in build_member_days(s, m, joint, today)} for m in members}
+
+    def monday_of(d: date) -> date:
+        return d - timedelta(days=d.weekday())
+
+    weeks: dict[date, list] = {}
+    for m in members:
+        for e in m.days:
+            for cat, img in (e.challenge_proofs or {}).items():
+                if not img:
+                    continue
+                weeks.setdefault(monday_of(e.date), []).append({
+                    "date": e.date.isoformat(),
+                    "author": m.user.name,
+                    "kind": "challenge",
+                    "emoji": CATEGORY_EMOJI.get(cat, "🎯"),
+                    "label": cat,
+                    "image": img,
+                })
+    for a in db.query(JointActivity).filter(JointActivity.group_id == gid).all():
+        if a.image:
+            mem = members_by_id.get(a.created_by)
+            weeks.setdefault(monday_of(a.date), []).append({
+                "date": a.date.isoformat(),
+                "author": mem.user.name if mem else "?",
+                "kind": "joint",
+                "emoji": a.emoji,
+                "label": a.label,
+                "image": a.image,
+            })
+
+    result = []
+    for mon in sorted(weeks.keys(), reverse=True)[:weeks_limit]:
+        wk_dates = {(mon + timedelta(days=i)).isoformat() for i in range(7)}
+        retro_members = []
+        for m in members:
+            cdmap = member_cd[m.id]
+            retro_members.append({
+                "name": m.user.name,
+                "points": sum(cdmap[d]["points"] for d in wk_dates if d in cdmap),
+                "perfect_days": sum(1 for d in wk_dates if d in cdmap and cdmap[d]["perfect"]),
+                "challenges": sum(cdmap[d]["areas_done"] for d in wk_dates if d in cdmap),
+            })
+        jcount = (
+            db.query(JointActivity)
+            .filter(JointActivity.group_id == gid, JointActivity.date >= mon, JointActivity.date <= mon + timedelta(days=6))
+            .count()
+        )
+        photos = sorted(weeks[mon], key=lambda p: p["date"], reverse=True)
+        result.append({
+            "week_start": mon.isoformat(),
+            "label": _week_label(mon),
+            "retro": {
+                "members": retro_members,
+                "joint_count": jcount,
+                "group_points": sum(r["points"] for r in retro_members),
+                "photo_count": len(photos),
+            },
+            "photos": photos[:48],
+        })
+    return {"weeks": result}
 
 
 @app.get("/api/groups/{gid}/ranking")
