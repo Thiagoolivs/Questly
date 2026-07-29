@@ -26,6 +26,7 @@ from .data import (
 )
 
 HABIT_POINTS = 10
+HABIT_PROOF_POINTS = 12  # hábito marcado + foto-prova
 BALANCE_BONUS = 20
 PERFECT_BONUS = 10
 TOGETHER_BONUS = 10  # bônus por concluir um desafio em dupla ("juntos")
@@ -104,7 +105,9 @@ def compute_day(settings, entry, d: date) -> dict:
     done_raw = entry.habits_done if entry else []
     habits_done = [k for k in done_raw if k in keys]
     n_done = len(habits_done)
-    habit_pts = n_done * HABIT_POINTS
+    habit_proofs = (entry.habit_proofs or {}) if entry else {}
+    # Hábito marcado vale 10; marcado + foto-prova vale 12.
+    habit_pts = sum(HABIT_PROOF_POINTS if habit_proofs.get(k) else HABIT_POINTS for k in habits_done)
 
     proofs = (entry.challenge_proofs or {}) if entry else {}
     rerolls = (entry.challenge_rerolls or {}) if entry else {}
@@ -145,7 +148,7 @@ def compute_day(settings, entry, d: date) -> dict:
 
     points = habit_pts + challenge_pts + together_pts + balance_bonus + perfect_bonus
     max_challenge_pts = sum(c["points"] for c in challenges)
-    max_points = total_habits * HABIT_POINTS + max_challenge_pts + BALANCE_BONUS + PERFECT_BONUS
+    max_points = total_habits * HABIT_PROOF_POINTS + max_challenge_pts + BALANCE_BONUS + PERFECT_BONUS
 
     rerolls_used = sum(1 for v in rerolls.values() if v)
 
@@ -162,6 +165,7 @@ def compute_day(settings, entry, d: date) -> dict:
         "perfect_bonus": perfect_bonus,
         "habits": habits,
         "habits_done": habits_done,
+        "habit_proofs": {k: habit_proofs[k] for k in habits_done if habit_proofs.get(k)},
         "n_habits": total_habits,
         "n_done": n_done,
         "challenges": challenges,

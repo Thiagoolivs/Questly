@@ -570,3 +570,25 @@ input[type='range'] { width: 100%; accent-color: var(--accent); height: 24px; }
 .area-ring-circle.done { color: #fff; }
 .area-ring-streak { display: inline-flex; align-items: center; gap: 3px; justify-content: center; }
 .chat-send .ico { vertical-align: middle; }
+
+/* Hábito com foto-prova --------------------------------------------------- */
+.habit-row { display: flex; align-items: center; gap: 8px; }
+.habit-toggle { flex: 1; }
+.habit-bonus {
+  font-size: 0.68rem; font-weight: 700; color: var(--green);
+  background: rgba(63, 178, 127, 0.16); border-radius: 999px; padding: 1px 6px;
+}
+.habit-proof { display: flex; align-items: center; gap: 4px; }
+.habit-thumb { width: 40px; height: 40px; border-radius: 8px; object-fit: cover; border: 1px solid var(--border); }
+.habit-cam {
+  width: 40px; height: 40px; border-radius: 10px; flex-shrink: 0;
+  display: grid; place-items: center; color: var(--muted);
+  background: var(--card2); border: 1px solid var(--border);
+}
+
+/* Metas mensais (card fixo no topo) --------------------------------------- */
+.goal-card { border-color: var(--accent); }
+.goal-card.goal-done { border-color: var(--green); }
+.goal-title { font-weight: 700; font-size: 15px; display: inline-flex; align-items: center; gap: 7px; }
+.goal-emoji { font-size: 17px; }
+.new-goal-btn { border-style: dashed; }

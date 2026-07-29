@@ -66,6 +66,7 @@ export const api = {
   member: (g, mid) => req(`/api/groups/${g}/members/${mid}`),
   day: (g, mid, day) => req(`/api/groups/${g}/day/${mid}${qs(day)}`),
   toggle: (g, b) => req(`/api/groups/${g}/day/toggle`, { method: 'POST', body: b }),
+  habitPhoto: (g, b) => req(`/api/groups/${g}/day/habit-photo`, { method: 'POST', body: b }),
   setMood: (g, b) => req(`/api/groups/${g}/day/mood`, { method: 'POST', body: b }),
   setChallenge: (g, b) => req(`/api/groups/${g}/day/challenge`, { method: 'POST', body: b }),
   reroll: (g, b) => req(`/api/groups/${g}/day/reroll`, { method: 'POST', body: b }),
@@ -85,4 +86,8 @@ export const api = {
   activities: (g) => req(`/api/groups/${g}/activities`),
   radar: (g) => req(`/api/groups/${g}/radar`),
   gallery: (g) => req(`/api/groups/${g}/gallery`),
+  goals: (g) => req(`/api/groups/${g}/goals`),
+  createGoal: (g, b) => req(`/api/groups/${g}/goals`, { method: 'POST', body: b }),
+  goalCheckin: (g, id, b) => req(`/api/groups/${g}/goals/${id}/checkin`, { method: 'POST', body: b }),
+  endGoal: (g, id) => req(`/api/groups/${g}/goals/${id}`, { method: 'DELETE' }),
 }

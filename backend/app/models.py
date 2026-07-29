@@ -91,6 +91,8 @@ class DayEntry(Base):
     membership_id: Mapped[int] = mapped_column(ForeignKey("memberships.id"), index=True)
     date: Mapped[date] = mapped_column(Date, index=True)
     habits_done: Mapped[list] = mapped_column(JSON, default=list)
+    # Foto-prova opcional por hábito: {key: data_url}. Hábito com foto vale +2.
+    habit_proofs: Mapped[dict] = mapped_column(JSON, default=dict)
     # Comprovações dos desafios por área: {categoria: data_url}. A presença da
     # foto = desafio concluído (só pontua com prova).
     challenge_proofs: Mapped[dict] = mapped_column(JSON, default=dict)
@@ -156,6 +158,36 @@ class Activity(Base):
     emoji: Mapped[str] = mapped_column(String(8), default="🎯")
     text: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
+class Goal(Base):
+    """Meta de período (ex: 'sem refrigerante por 30 dias'). Fica fixada no topo
+    até terminar. Cada membro faz check-in diário."""
+
+    __tablename__ = "goals"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    group_id: Mapped[int] = mapped_column(ForeignKey("groups.id"), index=True)
+    title: Mapped[str] = mapped_column(String(120))
+    emoji: Mapped[str] = mapped_column(String(8), default="🎯")
+    icon: Mapped[Optional[str]] = mapped_column(String(24), nullable=True)  # nome de ícone SVG (opcional)
+    start_date: Mapped[date] = mapped_column(Date, default=date.today)
+    duration_days: Mapped[int] = mapped_column(Integer, default=30)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_by: Mapped[int] = mapped_column(ForeignKey("memberships.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class GoalCheckin(Base):
+    """Check-in diário de um membro numa meta."""
+
+    __tablename__ = "goal_checkins"
+    __table_args__ = (UniqueConstraint("goal_id", "membership_id", "date", name="uq_goal_member_date"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    goal_id: Mapped[int] = mapped_column(ForeignKey("goals.id"), index=True)
+    membership_id: Mapped[int] = mapped_column(ForeignKey("memberships.id"), index=True)
+    date: Mapped[date] = mapped_column(Date, index=True)
 
 
 class PushSubscription(Base):

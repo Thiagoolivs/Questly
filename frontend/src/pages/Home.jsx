@@ -22,6 +22,8 @@ export default function Home() {
   const [jointForm, setJointForm] = useState({ emoji: '💞', label: '' })
   const [jointPhoto, setJointPhoto] = useState(null)
   const [moodNote, setMoodNote] = useState('')
+  const [showGoalForm, setShowGoalForm] = useState(false)
+  const [goalForm, setGoalForm] = useState({ emoji: '🎯', title: '', duration_days: 30 })
 
   useEffect(() => {
     setMoodNote(me?.today?.mood_note || '')
@@ -66,6 +68,14 @@ export default function Home() {
 
   const toggleHabit = (habit_key) =>
     run(() => api.toggle(groupId, { date: state.date, type: 'habit', habit_key }))
+  async function attachHabitPhoto(habit_key) {
+    const f = await pickImage()
+    if (!f) return
+    const image = await fileToCompressedDataURL(f)
+    await run(() => api.habitPhoto(groupId, { date: state.date, habit_key, image }))
+  }
+  const removeHabitPhoto = (habit_key) =>
+    run(() => api.habitPhoto(groupId, { date: state.date, habit_key, image: null }))
   const toggleMood = (key) => {
     const cur = today.moods || []
     const next = cur.includes(key) ? cur.filter((k) => k !== key) : [...cur, key]
@@ -83,6 +93,22 @@ export default function Home() {
   }
   const toggleTogether = (c) =>
     run(() => api.setChallenge(groupId, { date: state.date, category: c.category, image: c.proof, together: !c.together }))
+
+  const goals = state.goals || []
+  const toggleGoalCheckin = (goalId) => run(() => api.goalCheckin(groupId, goalId, { date: state.date }))
+  const endGoal = (goalId) => run(() => api.endGoal(groupId, goalId))
+  function createGoal() {
+    if (!goalForm.title.trim()) return
+    run(async () => {
+      await api.createGoal(groupId, {
+        title: goalForm.title.trim(),
+        emoji: goalForm.emoji || '🎯',
+        duration_days: Number(goalForm.duration_days) || 30,
+      })
+      setGoalForm({ emoji: '🎯', title: '', duration_days: 30 })
+      setShowGoalForm(false)
+    })
+  }
 
   const joint = state.joint || { points_each: 20, activities: [], suggestions: [] }
   const removeJoint = (aid) => run(() => api.jointRemove(groupId, aid))
@@ -125,6 +151,81 @@ export default function Home() {
         </div>
         <div className="streak-chip" title="Sequência atual"><Icon name="flame" size={15} /> {me.stats.streak}</div>
       </header>
+
+      {/* Metas (fixas no topo) */}
+      {goals.map((g) => {
+        const pct = g.duration_days ? Math.min(100, ((g.me?.count || 0) / g.duration_days) * 100) : 0
+        const others = g.members.filter((m) => m.membership_id !== g.me?.membership_id)
+        return (
+          <section className={'card goal-card' + (g.me?.done ? ' goal-done' : '')} key={g.id}>
+            <div className="row between">
+              <div className="goal-title">
+                {g.icon ? <Icon name={g.icon} size={17} /> : <span className="goal-emoji">{g.emoji}</span>} {g.title}
+              </div>
+              <button className="link-btn" disabled={busy} onClick={() => endGoal(g.id)}>encerrar</button>
+            </div>
+            <div className="muted xsmall">
+              Dia {g.day_index} de {g.duration_days} · {g.days_left > 0 ? `faltam ${g.days_left}` : 'último dia'} ·{' '}
+              <Icon name="flame" size={11} /> {g.me?.streak || 0}
+            </div>
+            <div className="bar"><div className="bar-fill" style={{ width: `${pct}%` }} /></div>
+            <div className="row between">
+              <span className="muted xsmall">{g.me?.count || 0}/{g.duration_days} dias</span>
+              {others.map((o) => (
+                <span className="muted xsmall" key={o.membership_id}>{o.name}: {o.count}/{g.duration_days}</span>
+              ))}
+            </div>
+            <button
+              className={'btn full ' + (g.me?.checked_today ? 'btn-done' : 'btn-primary') + ' icon-btn'}
+              disabled={busy}
+              onClick={() => toggleGoalCheckin(g.id)}
+            >
+              <Icon name="check" size={15} /> {g.me?.checked_today ? 'Cumpri hoje' : 'Marcar check-in de hoje'}
+            </button>
+          </section>
+        )
+      })}
+
+      {/* Nova meta */}
+      {showGoalForm ? (
+        <section className="card">
+          <div className="card-title">Nova meta</div>
+          <div className="add-habit">
+            <input
+              className="add-habit-emoji"
+              value={goalForm.emoji}
+              maxLength={2}
+              onChange={(e) => setGoalForm({ ...goalForm, emoji: e.target.value })}
+              aria-label="emoji"
+            />
+            <input
+              className="add-habit-label"
+              placeholder="Ex: Sem refrigerante"
+              value={goalForm.title}
+              onChange={(e) => setGoalForm({ ...goalForm, title: e.target.value })}
+            />
+          </div>
+          <div className="chips">
+            {[7, 30, 60, 90].map((d) => (
+              <button
+                key={d}
+                className={'chip ' + (Number(goalForm.duration_days) === d ? 'active' : '')}
+                onClick={() => setGoalForm({ ...goalForm, duration_days: d })}
+              >
+                {d} dias
+              </button>
+            ))}
+          </div>
+          <div className="row" style={{ gap: 8 }}>
+            <button className="btn ghost full" onClick={() => setShowGoalForm(false)}>Cancelar</button>
+            <button className="btn full btn-primary" disabled={busy || !goalForm.title.trim()} onClick={createGoal}>Criar meta</button>
+          </div>
+        </section>
+      ) : (
+        <button className="btn ghost full icon-btn new-goal-btn" onClick={() => setShowGoalForm(true)}>
+          <Icon name="plus" size={15} /> Nova meta
+        </button>
+      )}
 
       {/* Mensagem do dia */}
       <section className="card motd">
@@ -352,20 +453,32 @@ export default function Home() {
         <div className="card-title">
           Hábitos de hoje <span className="muted small">({today.n_done}/{today.n_habits})</span>
         </div>
+        <p className="muted xsmall proof-note">Marcar vale 10 · com foto-prova vale 12.</p>
         <div className="habits">
           {today.habits.map((h) => {
             const done = today.habits_done.includes(h.key)
+            const proof = today.habit_proofs?.[h.key]
             return (
-              <button
-                key={h.key}
-                className={'habit ' + (done ? 'done' : '')}
-                disabled={busy}
-                onClick={() => toggleHabit(h.key)}
-              >
-                <span className="habit-emoji">{h.emoji}</span>
-                <span className="habit-label">{h.label}</span>
-                <span className={'check ' + (done ? 'on' : '')}>{done ? '✓' : ''}</span>
-              </button>
+              <div key={h.key} className={'habit-row ' + (done ? 'done' : '')}>
+                <button className="habit habit-toggle" disabled={busy} onClick={() => toggleHabit(h.key)}>
+                  <span className="habit-emoji">{h.emoji}</span>
+                  <span className="habit-label">{h.label}</span>
+                  {proof && <span className="habit-bonus">+2</span>}
+                  <span className={'check ' + (done ? 'on' : '')}>{done ? <Icon name="check" size={14} /> : ''}</span>
+                </button>
+                {proof ? (
+                  <div className="habit-proof">
+                    <img className="habit-thumb" src={proof} alt="prova" onClick={() => setZoom(proof)} />
+                    <button className="habit-cam" disabled={busy} title="Remover foto" onClick={() => removeHabitPhoto(h.key)}>
+                      <Icon name="x" size={15} />
+                    </button>
+                  </div>
+                ) : (
+                  <button className="habit-cam" disabled={busy} title="Foto-prova (+2)" onClick={() => attachHabitPhoto(h.key)}>
+                    <Icon name="camera" size={16} />
+                  </button>
+                )}
+              </div>
             )
           })}
         </div>

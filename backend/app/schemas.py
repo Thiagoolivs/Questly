@@ -41,6 +41,12 @@ class ToggleRequest(BaseModel):
     habit_key: Optional[str] = None
 
 
+class HabitPhotoRequest(BaseModel):
+    date: str
+    habit_key: str
+    image: Optional[str] = None  # data URL; None remove a foto (mantém marcado)
+
+
 class MoodRequest(BaseModel):
     date: str
     moods: list[str] = Field(default_factory=list)  # emoções selecionadas
@@ -64,6 +70,17 @@ class JointActivityCreate(BaseModel):
     label: str = Field(..., min_length=1, max_length=120)
     emoji: str = Field("💞", max_length=8)
     image: Optional[str] = None  # comprovação opcional
+
+
+class GoalCreate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=120)
+    emoji: str = Field("🎯", max_length=8)
+    icon: Optional[str] = Field(None, max_length=24)
+    duration_days: int = Field(30, ge=1, le=365)
+
+
+class GoalCheckinRequest(BaseModel):
+    date: str
 
 
 class PushKeys(BaseModel):
