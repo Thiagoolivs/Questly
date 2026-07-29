@@ -12,6 +12,7 @@ const Icon = ({ d, extra }) => (
 
 const items = [
   { to: '/', label: 'Início', icon: <Icon d={['M3 10.8 12 3l9 7.8', 'M5 9.6V21h14V9.6']} /> },
+  { to: '/tarefas', label: 'Tarefas', icon: <Icon d={['M8 6h13M8 12h13M8 18h13', 'M3 6l1.3 1.3L6 4.5', 'M3 17l1.3 1.3L6 15.5']} /> },
   { to: '/feed', label: 'Feed', icon: <Icon d={['M3 12h4l3 8 4-16 3 8h4']} /> },
   { to: '/chat', label: 'Chat', icon: <Icon d={['M21 15a2 2 0 0 1-2 2H8l-4 4V5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2z']} /> },
   { to: '/historico', label: 'Histórico', icon: <Icon d={['M8 2v4', 'M16 2v4', 'M3 10h18']} extra={<rect x="3" y="4" width="18" height="18" rx="2" />} /> },

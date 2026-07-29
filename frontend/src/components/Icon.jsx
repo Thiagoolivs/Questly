@@ -138,6 +138,7 @@ const icons = {
   bed: <><path d="M3 8v11M3 13h16a2 2 0 0 1 2 2v4M3 19h18" /><path d="M7 13v-2a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2v2" /></>,
   water: <path d="M4 6h16M6 6c0 6 2 12 6 12s6-6 6-12" />,
   run: <><circle cx="15" cy="5" r="2" /><path d="M4 20l3-5 3 1 1-4-4-2 3-3 3 3 3 1" /></>,
+  listCheck: <><path d="M8 6h13M8 12h13M8 18h13" /><path d="M3 6l1.5 1.5L7 4M3 17l1.5 1.5L7 15" /></>,
 }
 
 // Ícone por área (as 5 categorias do desafio).
