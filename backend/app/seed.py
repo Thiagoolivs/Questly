@@ -17,6 +17,18 @@ _NEW_COLUMNS = {
     "users": {
         "photo": "TEXT",
     },
+    "day_entries": {
+        "challenge_proofs": "JSON",
+        "challenge_rerolls": "JSON",
+        "challenge_together": "JSON",
+    },
+}
+
+# Colunas do modelo antigo de desafio (1 diário + surpresa), agora obsoletas.
+# No Postgres elas eram NOT NULL sem default do servidor, então quebrariam os
+# inserts do novo modelo — por isso são removidas quando existirem.
+_OBSOLETE_COLUMNS = {
+    "day_entries": ["daily_done", "surprise_done", "daily_proof", "surprise_proof"],
 }
 
 
@@ -31,6 +43,17 @@ def _ensure_columns() -> None:
             for name, ddl in columns.items():
                 if name not in have:
                     conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}"))
+
+        for table, columns in _OBSOLETE_COLUMNS.items():
+            if table not in existing:
+                continue
+            have = {c["name"] for c in insp.get_columns(table)}
+            for name in columns:
+                if name in have:
+                    try:
+                        conn.execute(text(f"ALTER TABLE {table} DROP COLUMN {name}"))
+                    except Exception:
+                        pass  # SQLite antigo pode não suportar DROP COLUMN; não é crítico
 
 
 def _reset_legacy_schema() -> None:

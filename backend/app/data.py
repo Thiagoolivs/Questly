@@ -1,12 +1,13 @@
-"""Conteúdo do desafio: hábitos fixos, pools de desafios, surpresas e conquistas.
+"""Conteúdo do desafio: hábitos, pools de desafios (por dificuldade) e conquistas.
 
 Tudo aqui é dado "de catálogo" (não muda em runtime), consumido pela lógica de
-pontuação em ``scoring.py``. As categorias seguem a especificação do desafio,
-com o acréscimo da categoria "Relação" (casal).
+pontuação em ``scoring.py``. Cada dia gera 5 desafios (um por área ativa), e
+cada área tem pools separados por dificuldade — Fácil / Médio / Difícil — com
+pontuações crescentes. As 5 áreas: Física, Mental, Social, Relação, Espiritual.
 """
 
-# --- Hábitos fixos ---------------------------------------------------------
-# Conjunto padrão (5 hábitos = 50 pontos), alinhado ao teto de 120 pts/dia.
+# --- Hábitos ---------------------------------------------------------------
+# Conjunto padrão. O grupo pode adicionar QUANTOS hábitos quiser nas configs.
 DEFAULT_HABITS = [
     {"key": "agua", "label": "Beber 2,5L de água", "emoji": "💧", "category": "Saúde"},
     {"key": "sono", "label": "Dormir no mínimo 7h30", "emoji": "😴", "category": "Saúde"},
@@ -15,7 +16,7 @@ DEFAULT_HABITS = [
     {"key": "devocional", "label": "Fazer o devocional", "emoji": "🙏", "category": "Espiritual"},
 ]
 
-# Menu completo de hábitos (o casal pode adicionar estes nas configurações).
+# Sugestões prontas (o grupo pode ativar estas além de criar as suas).
 HABITS_MENU = DEFAULT_HABITS + [
     {"key": "proteina", "label": "Bater a meta de proteína", "emoji": "🥩", "category": "Saúde"},
     {"key": "passos", "label": "Caminhar 8.000 passos", "emoji": "🚶", "category": "Corpo"},
@@ -25,83 +26,122 @@ HABITS_MENU = DEFAULT_HABITS + [
     {"key": "tarefas", "label": "Não deixar tarefas acumuladas", "emoji": "✅", "category": "Organização"},
 ]
 
-# --- Desafios variáveis por categoria -------------------------------------
+# --- Desafios por categoria e dificuldade ----------------------------------
+# Cada dia sorteia (determinístico por data) uma dificuldade + um item por área.
 CHALLENGE_POOLS = {
-    "Física": [
-        "Fazer um exercício que você normalmente evita.",
-        "Correr 5 km.",
-        "Fazer 100 agachamentos.",
-        "Fazer 60 flexões (pode dividir ao longo do dia).",
-        "Caminhar 12 mil passos.",
-        "Subir escadas em vez de usar o elevador.",
-        "Fazer um treino de mobilidade.",
-        "Completar um treino sem pausas longas.",
-        "Bater seu recorde na prancha.",
-        "Fazer um HIIT.",
-        "Treinar ao ar livre.",
-        "Fazer um treino em casal.",
-        "Experimentar um esporte diferente.",
-        "Alongar por 30 minutos.",
-        "Pedalar por 40 minutos.",
-    ],
-    "Mental": [
-        "Ficar 2 horas sem redes sociais.",
-        "Meditar por 15 minutos.",
-        "Escrever 10 coisas pelas quais você é grato.",
-        "Escrever suas metas para os próximos 6 meses.",
-        "Fazer uma atividade sem música.",
-        "Aprender algo novo por 30 minutos.",
-        "Resolver um quebra-cabeça ou sudoku.",
-        "Escrever em um diário.",
-        "Assistir a uma palestra educativa.",
-        "Organizar completamente um ambiente.",
-        "Passar o dia sem reclamar (registre se conseguiu).",
-        "Fazer uma lista de prioridades para a semana.",
-        "Refletir sobre um erro e escrever o aprendizado.",
-    ],
-    "Social": [
-        "Elogiar sinceramente três pessoas.",
-        "Conversar com alguém com quem você não fala há muito tempo.",
-        "Ajudar alguém sem esperar retorno.",
-        "Fazer uma ligação para um familiar.",
-        "Passar uma refeição inteira sem o celular.",
-        "Ter uma conversa de pelo menos 30 minutos com alguém importante.",
-        "Conhecer uma pessoa nova.",
-        "Escrever uma carta ou mensagem de agradecimento.",
-        "Fazer um ato de gentileza anônimo.",
-        "Convidar alguém para caminhar ou treinar junto.",
-        "Fazer uma refeição em família sem distrações.",
-        "Perguntar genuinamente como alguém está e ouvir com atenção.",
-    ],
-    "Relação": [
-        "Planejar e ter um encontro (date) com o(a) parceiro(a), sem celular.",
-        "Escrever um bilhete ou carta para o(a) parceiro(a).",
-        "Cozinhar uma refeição juntos.",
-        "Treinar ou caminhar em casal.",
-        "Relembrarem juntos uma memória boa de vocês.",
-        "Fazer algo que o(a) parceiro(a) ama (mesmo que você não curta tanto).",
-        "Dar um elogio sincero sobre algo além da aparência.",
-        "Ter uma conversa de 30 min sobre sonhos e planos do casal.",
-        "Definir juntos uma meta em comum para o mês.",
-        "Perguntar 'como posso te apoiar essa semana?' e agir nisso.",
-        "Resolver um desentendimento com calma, sem elevar a voz.",
-        "Orar ou agradecer juntos pelo relacionamento.",
-        "Fazer uma tarefa do outro sem ele(a) pedir.",
-        "Desligar as telas 1h antes de dormir e conversar.",
-    ],
-    "Espiritual": [
-        "Ler um capítulo da Bíblia.",
-        "Decorar um versículo.",
-        "Orar por alguém específico.",
-        "Ouvir um louvor refletindo sobre a letra.",
-        "Escrever um testemunho.",
-        "Fazer um momento de silêncio e reflexão.",
-        "Anotar três motivos de gratidão a Deus.",
-        "Compartilhar uma palavra de incentivo baseada na Bíblia.",
-    ],
+    "Física": {
+        "facil": [
+            "Subir escadas em vez de usar o elevador hoje.",
+            "Alongar por 15 minutos.",
+            "Caminhar 8 mil passos.",
+            "Fazer um treino de mobilidade.",
+            "Fazer 30 agachamentos.",
+        ],
+        "medio": [
+            "Fazer um exercício que você normalmente evita.",
+            "Caminhar 12 mil passos.",
+            "Completar um treino sem pausas longas.",
+            "Treinar ao ar livre.",
+            "Pedalar por 40 minutos.",
+            "Bater seu recorde na prancha.",
+        ],
+        "dificil": [
+            "Correr 5 km.",
+            "Fazer 100 agachamentos.",
+            "Fazer 60 flexões (pode dividir ao longo do dia).",
+            "Fazer um HIIT completo.",
+            "Caminhar 15 mil passos.",
+            "Experimentar um esporte novo por pelo menos 1h.",
+        ],
+    },
+    "Mental": {
+        "facil": [
+            "Meditar por 10 minutos.",
+            "Escrever 3 coisas pelas quais você é grato.",
+            "Resolver um quebra-cabeça ou sudoku.",
+            "Fazer uma atividade sem música e sem celular.",
+            "Fazer uma lista de prioridades para a semana.",
+        ],
+        "medio": [
+            "Ficar 2 horas sem redes sociais.",
+            "Meditar por 15 minutos.",
+            "Escrever em um diário.",
+            "Assistir a uma palestra educativa.",
+            "Refletir sobre um erro e escrever o aprendizado.",
+        ],
+        "dificil": [
+            "Escrever suas metas para os próximos 6 meses.",
+            "Aprender algo novo por 30 minutos e anotar o que aprendeu.",
+            "Organizar completamente um ambiente.",
+            "Passar o dia inteiro sem reclamar (registre se conseguiu).",
+            "Ficar 4 horas seguidas sem redes sociais.",
+        ],
+    },
+    "Social": {
+        "facil": [
+            "Elogiar sinceramente três pessoas.",
+            "Fazer uma ligação para um familiar.",
+            "Perguntar genuinamente como alguém está e ouvir com atenção.",
+            "Passar uma refeição inteira sem o celular.",
+        ],
+        "medio": [
+            "Conversar com alguém com quem você não fala há muito tempo.",
+            "Ajudar alguém sem esperar retorno.",
+            "Escrever uma mensagem de agradecimento a alguém.",
+            "Convidar alguém para caminhar ou treinar junto.",
+            "Fazer uma refeição em família sem distrações.",
+        ],
+        "dificil": [
+            "Conhecer uma pessoa nova de verdade.",
+            "Ter uma conversa de pelo menos 30 minutos com alguém importante.",
+            "Fazer um ato de gentileza anônimo.",
+            "Reconectar-se pessoalmente com um amigo distante.",
+        ],
+    },
+    "Relação": {
+        "facil": [
+            "Dar um elogio sincero sobre algo além da aparência.",
+            "Relembrar juntos uma memória boa de vocês.",
+            "Fazer uma tarefa do outro sem ele(a) pedir.",
+            "Agradecer juntos por algo do relacionamento.",
+        ],
+        "medio": [
+            "Cozinhar uma refeição juntos.",
+            "Treinar ou caminhar em casal.",
+            "Escrever um bilhete ou carta para o(a) parceiro(a).",
+            "Perguntar 'como posso te apoiar essa semana?' e agir nisso.",
+            "Desligar as telas 1h antes de dormir e conversar.",
+        ],
+        "dificil": [
+            "Planejar e ter um encontro (date) sem celular.",
+            "Ter uma conversa de 30 min sobre sonhos e planos do casal.",
+            "Definir juntos uma meta em comum para o mês.",
+            "Resolver um desentendimento com calma, sem elevar a voz.",
+        ],
+    },
+    "Espiritual": {
+        "facil": [
+            "Ouvir um louvor refletindo sobre a letra.",
+            "Fazer um momento de silêncio e reflexão.",
+            "Anotar três motivos de gratidão a Deus.",
+            "Orar por alguém específico.",
+        ],
+        "medio": [
+            "Ler um capítulo da Bíblia.",
+            "Decorar um versículo.",
+            "Escrever um testemunho.",
+            "Compartilhar uma palavra de incentivo baseada na Bíblia.",
+        ],
+        "dificil": [
+            "Ler três capítulos e escrever uma reflexão.",
+            "Passar 30 minutos em oração/meditação.",
+            "Jejuar de algo por um dia com propósito de oração.",
+            "Servir voluntariamente alguém em necessidade.",
+        ],
+    },
 }
 
-# Ordem de rotação das categorias do desafio do dia.
+# Ordem das áreas (também usada como ordem dos 5 desafios do dia).
 CATEGORY_ORDER = ["Física", "Mental", "Social", "Relação", "Espiritual"]
 
 CATEGORY_EMOJI = {
@@ -112,22 +152,10 @@ CATEGORY_EMOJI = {
     "Espiritual": "🙏",
 }
 
-# --- Desafios surpresa -----------------------------------------------------
-SURPRISE_POOL = [
-    "Tomar um banho gelado.",
-    "Acordar antes das 6h.",
-    "Caminhar 15 mil passos.",
-    "Fazer 200 abdominais (pode dividir).",
-    "Passar o dia sem açúcar.",
-    "Passar o dia sem refrigerante.",
-    "Ficar sem comida ultraprocessada hoje.",
-    "Organizar completamente o quarto.",
-    "Fazer uma boa ação sem contar para ninguém.",
-    "Assistir a um documentário.",
-    "Escrever uma carta para o 'eu do futuro'.",
-    "Passar o dia inteiro sem reclamar.",
-    "Doar roupas ou alimentos.",
-]
+# --- Dificuldades ----------------------------------------------------------
+DIFFICULTIES = ["facil", "medio", "dificil"]
+DIFFICULTY_POINTS = {"facil": 10, "medio": 25, "dificil": 45}
+DIFFICULTY_LABEL = {"facil": "Fácil", "medio": "Médio", "dificil": "Difícil"}
 
 # --- Conquistas ------------------------------------------------------------
 # Cada conquista define uma métrica e um alvo; a checagem fica em scoring.py.
@@ -145,16 +173,32 @@ ACHIEVEMENTS = [
     {"key": "leitor", "name": "Leitor Consistente", "emoji": "📚",
      "desc": "Cumpra o hábito de leitura em 20 dias.", "metric": "habit:leitura", "target": 20},
     {"key": "mente_forte", "name": "Mente Forte", "emoji": "🧠",
-     "desc": "Conclua 10 desafios da categoria Mental.", "metric": "cat:Mental", "target": 10},
+     "desc": "Conclua 10 desafios da área Mental.", "metric": "cat:Mental", "target": 10},
     {"key": "gentileza", "name": "Gentileza em Ação", "emoji": "🤝",
-     "desc": "Conclua 10 desafios da categoria Social.", "metric": "cat:Social", "target": 10},
+     "desc": "Conclua 10 desafios da área Social.", "metric": "cat:Social", "target": 10},
     {"key": "treino_sempre", "name": "Nunca faltou um treino", "emoji": "💪",
-     "desc": "Conclua 15 desafios da categoria Física.", "metric": "cat:Física", "target": 15},
+     "desc": "Conclua 15 desafios da área Física.", "metric": "cat:Física", "target": 15},
+    {"key": "equilibrio", "name": "Equilíbrio", "emoji": "⚖️",
+     "desc": "Feche as 5 áreas no mesmo dia 5 vezes.", "metric": "balance_days", "target": 5},
     {"key": "superacao", "name": "Superação", "emoji": "⚡",
-     "desc": "Conclua 5 desafios surpresa.", "metric": "surprise_done", "target": 5},
+     "desc": "Conclua 5 desafios difíceis.", "metric": "hard_done", "target": 5},
     {"key": "casal_inabalavel", "name": "Casal Inabalável", "emoji": "💞",
      "desc": "Vocês dois concluírem o mesmo dia (dia perfeito em conjunto).",
      "metric": "casal", "target": 1},
+]
+
+# --- Sugestões de atividades em dupla --------------------------------------
+# Atividades extras feitas juntos (pontuam para os dois). O grupo também pode
+# registrar as suas próprias.
+JOINT_SUGGESTIONS = [
+    {"emoji": "🍳", "label": "Cozinhar uma refeição juntos"},
+    {"emoji": "🚶", "label": "Caminhar juntos"},
+    {"emoji": "🏋️", "label": "Treinar juntos"},
+    {"emoji": "🙏", "label": "Orar / devocional juntos"},
+    {"emoji": "🎬", "label": "Assistir algo e conversar sobre"},
+    {"emoji": "🧹", "label": "Organizar um ambiente juntos"},
+    {"emoji": "💬", "label": "1h de conversa sem telas"},
+    {"emoji": "🌅", "label": "Ver o nascer/pôr do sol juntos"},
 ]
 
 # --- Status de humor -------------------------------------------------------
@@ -190,9 +234,9 @@ MOTD_POOL = [
     "Feito é melhor que perfeito. Bora fazer.",
 ]
 
-# --- Incentivos genéricos (usados quando não há nudge contextual) ----------
+# --- Incentivos genéricos --------------------------------------------------
 ENCOURAGEMENTS = [
-    "Bora! Cada hábito conta. 💪",
+    "Bora! Cada área conta. 💪",
     "Tá quase — não deixa pra amanhã. 🔥",
     "Orgulho de você por continuar. 👏",
     "Respira e faz o próximo. Um de cada vez. 🌱",

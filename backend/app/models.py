@@ -91,12 +91,14 @@ class DayEntry(Base):
     membership_id: Mapped[int] = mapped_column(ForeignKey("memberships.id"), index=True)
     date: Mapped[date] = mapped_column(Date, index=True)
     habits_done: Mapped[list] = mapped_column(JSON, default=list)
-    daily_done: Mapped[bool] = mapped_column(Boolean, default=False)
-    surprise_done: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Comprovações dos desafios por área: {categoria: data_url}. A presença da
+    # foto = desafio concluído (só pontua com prova).
+    challenge_proofs: Mapped[dict] = mapped_column(JSON, default=dict)
+    # Trocas (reroll) por área: {categoria: offset}.
+    challenge_rerolls: Mapped[dict] = mapped_column(JSON, default=dict)
+    # Desafios feitos em dupla: {categoria: true} — rende bônus "juntos".
+    challenge_together: Mapped[dict] = mapped_column(JSON, default=dict)
     mood: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
-    # Comprovações (imagens em data URL base64).
-    daily_proof: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    surprise_proof: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     membership: Mapped["Membership"] = relationship(back_populates="days")
 
@@ -133,4 +135,20 @@ class Message(Base):
     membership_id: Mapped[int] = mapped_column(ForeignKey("memberships.id"))
     text: Mapped[str] = mapped_column(Text, default="")
     image: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # data URL base64
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
+class JointActivity(Base):
+    """Atividade feita em dupla/grupo — pontua para TODOS os membros do dia."""
+
+    __tablename__ = "joint_activities"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    group_id: Mapped[int] = mapped_column(ForeignKey("groups.id"), index=True)
+    date: Mapped[date] = mapped_column(Date, index=True)
+    label: Mapped[str] = mapped_column(String(120))
+    emoji: Mapped[str] = mapped_column(String(8), default="💞")
+    points: Mapped[int] = mapped_column(Integer, default=20)
+    image: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # comprovação opcional
+    created_by: Mapped[int] = mapped_column(ForeignKey("memberships.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)

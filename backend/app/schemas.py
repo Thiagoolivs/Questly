@@ -37,7 +37,7 @@ class GroupJoin(BaseModel):
 # --- desafios / dia --------------------------------------------------------
 class ToggleRequest(BaseModel):
     date: str = Field(..., description="Data no formato ISO (YYYY-MM-DD).")
-    type: Literal["habit", "daily", "surprise"]
+    type: Literal["habit"] = "habit"
     habit_key: Optional[str] = None
 
 
@@ -46,10 +46,23 @@ class MoodRequest(BaseModel):
     mood: Optional[str] = None  # None limpa o humor do dia
 
 
-class ProofRequest(BaseModel):
+class ChallengeProofRequest(BaseModel):
     date: str
-    type: Literal["daily", "surprise"]
-    image: Optional[str] = None  # data URL (base64); None remove a comprovação
+    category: str
+    image: Optional[str] = None  # data URL (base64); None desfaz o desafio
+    together: bool = False        # feito em dupla → bônus "juntos"
+
+
+class RerollRequest(BaseModel):
+    date: str
+    category: str
+
+
+class JointActivityCreate(BaseModel):
+    date: str
+    label: str = Field(..., min_length=1, max_length=120)
+    emoji: str = Field("💞", max_length=8)
+    image: Optional[str] = None  # comprovação opcional
 
 
 class MessageCreate(BaseModel):
