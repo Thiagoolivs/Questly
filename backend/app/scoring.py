@@ -1,14 +1,14 @@
-"""Regras do jogo: seleção de desafios, pontuação, sequências e conquistas.
+"""Regras do jogo: geração dos desafios, pontuação, sequências e conquistas.
 
 Pontuação (por dia):
-  - Hábito fixo cumprido: 10 pts (padrão: 5 hábitos = 50 pts)
-  - Desafio do dia: 30 pts
-  - Desafio surpresa (quando aparece): 20 pts
-  - Bônus por cumprir tudo do dia: 20 pts
-  - Máximo diário: 120 pts (num dia com surpresa) — nunca há pontuação negativa.
+  - Hábito cumprido: 10 pts cada (o grupo define quantos quiser).
+  - Desafio de área: pontos pela dificuldade — Fácil 10 / Médio 25 / Difícil 45.
+    Cada dia gera 1 desafio por área ativa (até 5). Só pontua COM foto-prova.
+  - Bônus de equilíbrio: +20 por fechar TODAS as áreas do dia.
+  - Bônus de dia perfeito: +10 quando fecha as áreas E todos os hábitos.
 
-Os desafios do dia e da surpresa são determinísticos por data, então os dois
-jogadores recebem exatamente o mesmo desafio (competição justa).
+Os desafios são determinísticos por data (os dois jogadores recebem os mesmos),
+mas cada um pode "rerolar" 1 desafio por dia (offset por área).
 """
 import hashlib
 from datetime import date, timedelta
@@ -19,14 +19,16 @@ from .data import (
     CATEGORY_ORDER,
     CHALLENGE_POOLS,
     DEFAULT_HABITS,
+    DIFFICULTIES,
+    DIFFICULTY_LABEL,
+    DIFFICULTY_POINTS,
     MOTD_POOL,
-    SURPRISE_POOL,
 )
 
-DAILY_POINTS = 30
-SURPRISE_POINTS = 20
-BONUS_POINTS = 20
 HABIT_POINTS = 10
+BALANCE_BONUS = 20
+PERFECT_BONUS = 10
+MAX_REROLLS = 1  # trocas de desafio por dia
 
 
 def _seed(d: date, salt: str) -> int:
@@ -36,7 +38,7 @@ def _seed(d: date, salt: str) -> int:
 
 
 def active_categories(settings) -> list[str]:
-    """Categorias em rotação (remove Espiritual se desativada nas configs)."""
+    """Áreas em jogo (remove Espiritual se desativada nas configs)."""
     return [
         c for c in CATEGORY_ORDER
         if not (c == "Espiritual" and not settings.spiritual_enabled)
@@ -44,31 +46,48 @@ def active_categories(settings) -> list[str]:
 
 
 def day_number(settings, d: date) -> int:
-    """Número do dia dentro do desafio (1-based)."""
     return (d - settings.start_date).days + 1
 
 
-def daily_challenge(settings, d: date) -> dict:
-    """Desafio variável do dia (categoria em rotação, item determinístico)."""
-    cats = active_categories(settings)
-    cat = cats[(d - settings.start_date).days % len(cats)]
-    pool = CHALLENGE_POOLS[cat]
-    text = pool[_seed(d, "daily") % len(pool)]
-    return {"category": cat, "emoji": CATEGORY_EMOJI[cat], "text": text}
+def _catalog(cat: str) -> list[tuple[str, str]]:
+    """Lista achatada (dificuldade, texto) de uma área, em ordem estável."""
+    return [(diff, t) for diff in DIFFICULTIES for t in CHALLENGE_POOLS[cat][diff]]
 
 
-def surprise_challenge(settings, d: date):
-    """Desafio surpresa do dia, ou ``None`` se não houver surpresa nesse dia."""
-    freq = max(0.0, min(1.0, settings.surprise_frequency or 0.0))
-    chance = (_seed(d, "surprise-present") % 1000) / 1000.0
-    if chance >= freq:
-        return None
-    text = SURPRISE_POOL[_seed(d, "surprise-pick") % len(SURPRISE_POOL)]
-    return {"emoji": "🔥", "text": text}
+def challenge_for(d: date, cat: str, cat_index: int, offset: int = 0) -> dict:
+    """Desafio de uma área num dia.
+
+    A dificuldade base rotaciona pela posição da área (``cat_index``) somada a um
+    deslocamento diário — garante um MIX de níveis no mesmo dia e variação de dia
+    para dia. Cada troca (``offset`` > 0) avança para o próximo item do catálogo,
+    garantindo um desafio diferente (e possivelmente outra dificuldade).
+    """
+    items = _catalog(cat)
+    base_tier = DIFFICULTIES[(_seed(d, "tier") + cat_index) % len(DIFFICULTIES)]
+    base_pool = CHALLENGE_POOLS[cat][base_tier]
+    base_text = base_pool[_seed(d, f"text:{cat}") % len(base_pool)]
+    base_pos = items.index((base_tier, base_text))
+    diff, text = items[(base_pos + offset) % len(items)]
+    return {
+        "category": cat,
+        "emoji": CATEGORY_EMOJI[cat],
+        "difficulty": diff,
+        "difficulty_label": DIFFICULTY_LABEL[diff],
+        "points": DIFFICULTY_POINTS[diff],
+        "text": text,
+    }
+
+
+def daily_challenges(settings, d: date, rerolls: dict | None = None) -> list[dict]:
+    """Os desafios do dia (um por área ativa), aplicando as trocas do membro."""
+    rerolls = rerolls or {}
+    return [
+        challenge_for(d, cat, i, int(rerolls.get(cat, 0) or 0))
+        for i, cat in enumerate(active_categories(settings))
+    ]
 
 
 def motd(d: date) -> str:
-    """Mensagem do dia (determinística por data)."""
     return MOTD_POOL[_seed(d, "motd") % len(MOTD_POOL)]
 
 
@@ -77,37 +96,51 @@ def _fixed_habits(settings) -> list:
 
 
 def compute_day(settings, entry, d: date) -> dict:
-    """Calcula o resumo pontuado de um dia (entry pode ser ``None``)."""
+    """Resumo pontuado de um dia (entry pode ser ``None``)."""
     habits = _fixed_habits(settings)
     keys = {h["key"] for h in habits}
     total_habits = len(habits)
-
     done_raw = entry.habits_done if entry else []
-    done = [k for k in done_raw if k in keys]
-    n_done = len(done)
-
-    daily = daily_challenge(settings, d)
-    surprise = surprise_challenge(settings, d)
-    surprise_present = surprise is not None
-
-    daily_done = bool(entry.daily_done) if entry else False
-    surprise_done = (bool(entry.surprise_done) if entry else False) and surprise_present
-
-    all_habits = total_habits > 0 and n_done >= total_habits
-    everything = all_habits and daily_done and (surprise_done if surprise_present else True)
-
+    habits_done = [k for k in done_raw if k in keys]
+    n_done = len(habits_done)
     habit_pts = n_done * HABIT_POINTS
-    daily_pts = DAILY_POINTS if daily_done else 0
-    surprise_pts = SURPRISE_POINTS if surprise_done else 0
-    bonus = BONUS_POINTS if everything else 0
-    points = habit_pts + daily_pts + surprise_pts + bonus
 
-    max_points = (
-        total_habits * HABIT_POINTS
-        + DAILY_POINTS
-        + (SURPRISE_POINTS if surprise_present else 0)
-        + BONUS_POINTS
-    )
+    proofs = (entry.challenge_proofs or {}) if entry else {}
+    rerolls = (entry.challenge_rerolls or {}) if entry else {}
+
+    challenges = []
+    challenge_pts = 0
+    areas_done = 0
+    hard_done = 0
+    done_cats = []
+    for i, cat in enumerate(active_categories(settings)):
+        offset = int(rerolls.get(cat, 0) or 0)
+        ch = challenge_for(d, cat, i, offset)
+        proof = proofs.get(cat)
+        done = bool(proof)
+        ch["done"] = done
+        ch["proof"] = proof
+        ch["rerolled"] = offset > 0
+        if done:
+            challenge_pts += ch["points"]
+            areas_done += 1
+            done_cats.append(cat)
+            if ch["difficulty"] == "dificil":
+                hard_done += 1
+        challenges.append(ch)
+
+    areas_total = len(challenges)
+    all_habits = total_habits > 0 and n_done >= total_habits
+    all_areas = areas_total > 0 and areas_done >= areas_total
+    balance_bonus = BALANCE_BONUS if all_areas else 0
+    perfect = all_areas and all_habits
+    perfect_bonus = PERFECT_BONUS if perfect else 0
+
+    points = habit_pts + challenge_pts + balance_bonus + perfect_bonus
+    max_challenge_pts = sum(c["points"] for c in challenges)
+    max_points = total_habits * HABIT_POINTS + max_challenge_pts + BALANCE_BONUS + PERFECT_BONUS
+
+    rerolls_used = sum(1 for v in rerolls.values() if v)
 
     return {
         "date": d.isoformat(),
@@ -116,39 +149,38 @@ def compute_day(settings, entry, d: date) -> dict:
         "max_points": max_points,
         "completion_pct": round(points / max_points * 100) if max_points else 0,
         "habit_pts": habit_pts,
-        "daily_pts": daily_pts,
-        "surprise_pts": surprise_pts,
-        "bonus": bonus,
+        "challenge_pts": challenge_pts,
+        "balance_bonus": balance_bonus,
+        "perfect_bonus": perfect_bonus,
         "habits": habits,
-        "habits_done": done,
+        "habits_done": habits_done,
         "n_habits": total_habits,
         "n_done": n_done,
-        "daily": daily,
-        "daily_done": daily_done,
-        "daily_proof": entry.daily_proof if entry else None,
-        "surprise": surprise,
-        "surprise_present": surprise_present,
-        "surprise_done": surprise_done,
-        "surprise_proof": entry.surprise_proof if entry else None,
+        "challenges": challenges,
+        "done_cats": done_cats,
+        "hard_done": hard_done,
+        "areas_total": areas_total,
+        "areas_done": areas_done,
+        "rerolls_used": rerolls_used,
+        "rerolls_left": max(0, MAX_REROLLS - rerolls_used),
         "mood": entry.mood if entry else None,
-        "completed": all_habits and daily_done,  # conta para a sequência
-        "perfect": everything,                    # dia perfeito (ganhou o bônus)
+        "completed": all_areas,   # conta para a sequência (fechou as áreas)
+        "perfect": perfect,        # áreas + hábitos (ganhou o bônus perfeito)
     }
 
 
 def nudge(today_cd: dict, my_total: int, partner_total=None, partner_name=None) -> dict:
-    """Mensagem de incentivo/lembrete contextual para o dia de hoje."""
+    """Incentivo/lembrete contextual para o dia de hoje."""
     if today_cd["perfect"]:
         base = "Dia perfeito! Você fechou tudo hoje. Orgulho! ⭐"
     else:
         parts = []
-        pend = today_cd["n_habits"] - today_cd["n_done"]
-        if pend > 0:
-            parts.append(f"{pend} hábito(s)")
-        if not today_cd["daily_done"]:
-            parts.append("o desafio do dia")
-        if today_cd["surprise_present"] and not today_cd["surprise_done"]:
-            parts.append("a surpresa 🔥")
+        pend_areas = today_cd["areas_total"] - today_cd["areas_done"]
+        pend_habits = today_cd["n_habits"] - today_cd["n_done"]
+        if pend_areas > 0:
+            parts.append(f"{pend_areas} área(s)")
+        if pend_habits > 0:
+            parts.append(f"{pend_habits} hábito(s)")
         base = (
             "Faltam " + " e ".join(parts) + " pra fechar o dia. Bora! 💪"
             if parts else "Tudo em ordem por hoje. 👏"
@@ -164,7 +196,6 @@ def nudge(today_cd: dict, my_total: int, partner_total=None, partner_name=None) 
 
 
 def _challenge_window(settings, today: date):
-    """Datas do início do desafio até hoje (limitado à duração configurada)."""
     last = min(today, settings.start_date + timedelta(days=settings.duration_days - 1))
     d = settings.start_date
     while d <= last:
@@ -173,11 +204,10 @@ def _challenge_window(settings, today: date):
 
 
 def _current_streak(days: list[dict]) -> int:
-    """Sequência de dias concluídos até hoje (hoje pode estar em andamento)."""
     if not days:
         return 0
     i = len(days) - 1
-    if not days[i]["completed"]:  # hoje ainda não fechou: olha de ontem pra trás
+    if not days[i]["completed"]:
         i -= 1
     streak = 0
     while i >= 0 and days[i]["completed"]:
@@ -197,8 +227,22 @@ def _best_streak(days: list[dict]) -> int:
     return best
 
 
+def _category_streaks(days: list[dict], cats: list[str]) -> dict:
+    """Sequência atual de dias com o desafio concluído, por área."""
+    out = {}
+    for cat in cats:
+        i = len(days) - 1
+        if i >= 0 and cat not in days[i]["done_cats"]:
+            i -= 1  # hoje ainda em andamento
+        streak = 0
+        while i >= 0 and cat in days[i]["done_cats"]:
+            streak += 1
+            i -= 1
+        out[cat] = streak
+    return out
+
+
 def build_days(settings, entries_by_date: dict, today: date) -> list[dict]:
-    """Lista de resumos por dia do início do desafio até hoje."""
     return [
         compute_day(settings, entries_by_date.get(d), d)
         for d in _challenge_window(settings, today)
@@ -206,7 +250,6 @@ def build_days(settings, entries_by_date: dict, today: date) -> list[dict]:
 
 
 def player_stats(settings, days: list[dict], today: date) -> dict:
-    """Agrega as estatísticas de um jogador a partir dos dias calculados."""
     total = sum(cd["points"] for cd in days)
     possible = sum(cd["max_points"] for cd in days)
     weekly = sum(cd["points"] for cd in days[-7:])
@@ -227,26 +270,27 @@ def player_stats(settings, days: list[dict], today: date) -> dict:
         "streak": _current_streak(days),
         "best_streak": _best_streak(days),
         "completion_pct": round(total / possible * 100) if possible else 0,
+        "category_streaks": _category_streaks(days, active_categories(settings)),
     }
 
 
 def _metric_value(metric: str, days: list[dict], stats: dict) -> int:
-    """Valor atual de uma métrica usada pelas conquistas."""
     if metric.startswith("habit:"):
         key = metric.split(":", 1)[1]
         return sum(1 for cd in days if key in cd["habits_done"])
     if metric.startswith("cat:"):
         cat = metric.split(":", 1)[1]
-        return sum(1 for cd in days if cd["daily_done"] and cd["daily"]["category"] == cat)
-    if metric == "surprise_done":
-        return sum(1 for cd in days if cd["surprise_done"])
+        return sum(1 for cd in days if cat in cd["done_cats"])
+    if metric == "hard_done":
+        return sum(cd["hard_done"] for cd in days)
+    if metric == "balance_days":
+        return sum(1 for cd in days if cd["completed"])
     if metric == "all_habits_days":
         return sum(1 for cd in days if cd["n_habits"] > 0 and cd["n_done"] >= cd["n_habits"])
     return stats.get(metric, 0)
 
 
 def achievements_for(days: list[dict], stats: dict, casal_days: int = 0) -> list[dict]:
-    """Lista de conquistas com progresso e status de desbloqueio."""
     result = []
     for a in ACHIEVEMENTS:
         current = casal_days if a["metric"] == "casal" else _metric_value(a["metric"], days, stats)

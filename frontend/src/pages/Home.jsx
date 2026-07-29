@@ -4,6 +4,7 @@ import { api } from '../api.js'
 import { pickImage, fileToCompressedDataURL } from '../utils/image.js'
 import ProgressRing from '../components/ProgressRing.jsx'
 import Avatar from '../components/Avatar.jsx'
+import AreaRings from '../components/AreaRings.jsx'
 
 export default function Home() {
   const { state, me, groupId, refresh, loading, error } = useApp()
@@ -31,9 +32,8 @@ export default function Home() {
       </div>
     )
 
-  const daily = today.daily
-  const surprise = today.surprise
   const moodEmoji = (key) => state.moods.find((m) => m.key === key)?.emoji
+  const streaks = me.stats.category_streaks || {}
 
   async function run(fn) {
     if (busy) return
@@ -48,38 +48,25 @@ export default function Home() {
     }
   }
 
-  const toggle = (body) => run(() => api.toggle(groupId, { date: state.date, ...body }))
+  const toggleHabit = (habit_key) =>
+    run(() => api.toggle(groupId, { date: state.date, type: 'habit', habit_key }))
   const setMood = (key) =>
     run(() => api.setMood(groupId, { date: state.date, mood: today.mood === key ? null : key }))
-  const removeProof = (type) => run(() => api.setProof(groupId, { date: state.date, type, image: null }))
-  async function attachProof(type) {
+  const rerollChallenge = (category) => run(() => api.reroll(groupId, { date: state.date, category }))
+  const removeChallenge = (category) =>
+    run(() => api.setChallenge(groupId, { date: state.date, category, image: null }))
+  async function proveChallenge(category) {
     const f = await pickImage()
     if (!f) return
     const image = await fileToCompressedDataURL(f)
-    await run(() => api.setProof(groupId, { date: state.date, type, image }))
+    await run(() => api.setChallenge(groupId, { date: state.date, category, image }))
   }
 
   const someoneLeads =
     state.leaderboard.length > 1 &&
     state.leaderboard[0].stats.total > state.leaderboard[1].stats.total
 
-  const Proof = ({ type, done, proof }) =>
-    !done ? null : (
-      <div className="proof">
-        {proof ? (
-          <>
-            <img className="proof-thumb" src={proof} alt="comprovação" onClick={() => setZoom(proof)} />
-            <span className="muted xsmall">Comprovação ✓</span>
-            <button className="link-btn" disabled={busy} onClick={() => attachProof(type)}>trocar</button>
-            <button className="link-btn danger" disabled={busy} onClick={() => removeProof(type)}>remover</button>
-          </>
-        ) : (
-          <button className="btn ghost small-btn" disabled={busy} onClick={() => attachProof(type)}>
-            📷 Anexar comprovação
-          </button>
-        )}
-      </div>
-    )
+  const diffClass = (d) => 'diff-badge diff-' + d
 
   return (
     <div className="screen">
@@ -107,6 +94,9 @@ export default function Home() {
 
       {/* Incentivo / lembrete */}
       {me.nudge && <div className="nudge">{me.nudge.emoji} {me.nudge.text}</div>}
+
+      {/* Anel das 5 áreas */}
+      <AreaRings challenges={today.challenges} streaks={streaks} />
 
       {/* Ranking */}
       <section className="card leaderboard">
@@ -167,44 +157,53 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Desafio do dia */}
-      <section className={'card challenge ' + (today.daily_done ? 'done' : '')}>
-        <div className="challenge-head">
-          <span className="tag">{daily.emoji} {daily.category}</span>
-          <span className="pts">+30 pts</span>
+      {/* Desafios do dia (um por área) */}
+      <section className="card">
+        <div className="card-title">
+          Desafios do dia <span className="muted small">({today.areas_done}/{today.areas_total})</span>
+          {today.rerolls_left > 0 && <span className="reroll-hint muted xsmall"> · 🔁 {today.rerolls_left} troca</span>}
         </div>
-        <div className="card-title">Desafio do dia</div>
-        <p className="challenge-text">{daily.text}</p>
-        <button
-          className={'btn full ' + (today.daily_done ? 'btn-done' : 'btn-primary')}
-          disabled={busy}
-          onClick={() => toggle({ type: 'daily' })}
-        >
-          {today.daily_done ? '✓ Concluído' : 'Marcar como concluído'}
-        </button>
-        <Proof type="daily" done={today.daily_done} proof={today.daily_proof} />
+        <p className="muted xsmall proof-note">📷 Só pontua anexando a foto que comprova o desafio.</p>
+        <div className="challenge-list">
+          {today.challenges.map((c) => (
+            <div className={'challenge-item ' + (c.done ? 'done' : '')} key={c.category}>
+              <div className="challenge-head">
+                <span className="tag">{c.emoji} {c.category}</span>
+                <span className={diffClass(c.difficulty)}>{c.difficulty_label}</span>
+                <span className="pts">+{c.points}</span>
+              </div>
+              <p className="challenge-text">{c.text}</p>
+
+              {c.done ? (
+                <div className="proof done-proof">
+                  {c.proof && (
+                    <img className="proof-thumb" src={c.proof} alt="comprovação" onClick={() => setZoom(c.proof)} />
+                  )}
+                  <span className="challenge-ok">✓ Concluído</span>
+                  <button className="link-btn" disabled={busy} onClick={() => proveChallenge(c.category)}>trocar foto</button>
+                  <button className="link-btn danger" disabled={busy} onClick={() => removeChallenge(c.category)}>desfazer</button>
+                </div>
+              ) : (
+                <div className="challenge-actions">
+                  <button className="btn btn-primary small-btn" disabled={busy} onClick={() => proveChallenge(c.category)}>
+                    📷 Provar e concluir
+                  </button>
+                  {today.rerolls_left > 0 && (
+                    <button className="btn ghost small-btn" disabled={busy} onClick={() => rerollChallenge(c.category)}>
+                      🔁 Trocar
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+        {today.completed && (
+          <div className="perfect-banner">⚖️ Todas as áreas fechadas! +{today.balance_bonus} de bônus</div>
+        )}
       </section>
 
-      {/* Surpresa */}
-      {surprise && (
-        <section className={'card surprise ' + (today.surprise_done ? 'done' : '')}>
-          <div className="challenge-head">
-            <span className="tag hot">🔥 Surpresa</span>
-            <span className="pts">+20 pts</span>
-          </div>
-          <p className="challenge-text">{surprise.text}</p>
-          <button
-            className={'btn full ' + (today.surprise_done ? 'btn-done' : 'btn-hot')}
-            disabled={busy}
-            onClick={() => toggle({ type: 'surprise' })}
-          >
-            {today.surprise_done ? '✓ Encarada!' : 'Aceitar desafio'}
-          </button>
-          <Proof type="surprise" done={today.surprise_done} proof={today.surprise_proof} />
-        </section>
-      )}
-
-      {/* Hábitos fixos */}
+      {/* Hábitos */}
       <section className="card">
         <div className="card-title">
           Hábitos de hoje <span className="muted small">({today.n_done}/{today.n_habits})</span>
@@ -217,7 +216,7 @@ export default function Home() {
                 key={h.key}
                 className={'habit ' + (done ? 'done' : '')}
                 disabled={busy}
-                onClick={() => toggle({ type: 'habit', habit_key: h.key })}
+                onClick={() => toggleHabit(h.key)}
               >
                 <span className="habit-emoji">{h.emoji}</span>
                 <span className="habit-label">{h.label}</span>
@@ -226,7 +225,7 @@ export default function Home() {
             )
           })}
         </div>
-        {today.perfect && <div className="perfect-banner">⭐ Dia perfeito! +{today.bonus} de bônus</div>}
+        {today.perfect && <div className="perfect-banner">⭐ Dia perfeito! +{today.perfect_bonus} de bônus</div>}
       </section>
 
       {zoom && (

@@ -17,17 +17,18 @@ from .auth import (
     hash_password,
     verify_password,
 )
-from .data import CATEGORY_EMOJI, DEFAULT_HABITS, HABITS_MENU, MOODS, SURPRISE_POOL
+from .data import CATEGORY_EMOJI, DEFAULT_HABITS, HABITS_MENU, MOODS
 from .database import get_db
 from .models import DayEntry, Group, Membership, Message, Settings, User
 from .schemas import (
+    ChallengeProofRequest,
     GroupCreate,
     GroupJoin,
     LoginRequest,
     MessageCreate,
     MoodRequest,
-    ProofRequest,
     RegisterRequest,
+    RerollRequest,
     SettingsUpdate,
     ToggleRequest,
     UserUpdate,
@@ -332,8 +333,7 @@ def challenges_today(gid: int, day: str | None = None, user: User = Depends(get_
         "date": d.isoformat(),
         "day_number": scoring.day_number(s, d),
         "duration_days": s.duration_days,
-        "daily": scoring.daily_challenge(s, d),
-        "surprise": scoring.surprise_challenge(s, d),
+        "challenges": scoring.daily_challenges(s, d),
         "motd": scoring.motd(d),
     }
 
@@ -373,22 +373,15 @@ def toggle(gid: int, req: ToggleRequest, user: User = Depends(get_current_user),
     membership = get_membership(db, user, gid)
     s = get_group_settings(db, gid)
     d = parse_date(req.date)
+    if not req.habit_key:
+        raise HTTPException(400, "habit_key é obrigatório.")
     entry = get_or_create_entry(db, membership, d)
-
-    if req.type == "habit":
-        if not req.habit_key:
-            raise HTTPException(400, "habit_key é obrigatório para type='habit'.")
-        current = list(entry.habits_done or [])
-        if req.habit_key in current:
-            current.remove(req.habit_key)
-        else:
-            current.append(req.habit_key)
-        entry.habits_done = current
-    elif req.type == "daily":
-        entry.daily_done = not entry.daily_done
-    elif req.type == "surprise":
-        entry.surprise_done = not entry.surprise_done
-
+    current = list(entry.habits_done or [])
+    if req.habit_key in current:
+        current.remove(req.habit_key)
+    else:
+        current.append(req.habit_key)
+    entry.habits_done = current
     return _day_result(db, s, membership, entry, d)
 
 
@@ -405,17 +398,42 @@ def set_mood(gid: int, req: MoodRequest, user: User = Depends(get_current_user),
     return _day_result(db, s, membership, entry, d)
 
 
-@app.post("/api/groups/{gid}/day/proof")
-def set_proof(gid: int, req: ProofRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+@app.post("/api/groups/{gid}/day/challenge")
+def set_challenge(gid: int, req: ChallengeProofRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Conclui (ou desfaz) o desafio de uma área. Só pontua com foto-prova."""
     validate_image(req.image)
     membership = get_membership(db, user, gid)
     s = get_group_settings(db, gid)
+    if req.category not in scoring.active_categories(s):
+        raise HTTPException(400, "Área inválida.")
     d = parse_date(req.date)
     entry = get_or_create_entry(db, membership, d)
-    if req.type == "daily":
-        entry.daily_proof = req.image
+    proofs = dict(entry.challenge_proofs or {})
+    if req.image:
+        proofs[req.category] = req.image
     else:
-        entry.surprise_proof = req.image
+        proofs.pop(req.category, None)
+    entry.challenge_proofs = proofs
+    return _day_result(db, s, membership, entry, d)
+
+
+@app.post("/api/groups/{gid}/day/reroll")
+def reroll_challenge(gid: int, req: RerollRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Troca o desafio de uma área (limite de trocas por dia)."""
+    membership = get_membership(db, user, gid)
+    s = get_group_settings(db, gid)
+    if req.category not in scoring.active_categories(s):
+        raise HTTPException(400, "Área inválida.")
+    d = parse_date(req.date)
+    entry = get_or_create_entry(db, membership, d)
+    if (entry.challenge_proofs or {}).get(req.category):
+        raise HTTPException(400, "Desafio já concluído — não dá para trocar.")
+    rerolls = dict(entry.challenge_rerolls or {})
+    used = sum(1 for v in rerolls.values() if v)
+    if not rerolls.get(req.category) and used >= scoring.MAX_REROLLS:
+        raise HTTPException(400, "Você já usou sua troca de hoje.")
+    rerolls[req.category] = int(rerolls.get(req.category, 0)) + 1
+    entry.challenge_rerolls = rerolls
     return _day_result(db, s, membership, entry, d)
 
 
@@ -461,7 +479,8 @@ def history(gid: int, mid: int, user: User = Depends(get_current_user), db: Sess
             "max_points": cd["max_points"],
             "completed": cd["completed"],
             "perfect": cd["perfect"],
-            "category": cd["daily"]["category"],
+            "areas_done": cd["areas_done"],
+            "areas_total": cd["areas_total"],
             "mood": cd["mood"],
         }
         for cd in days
@@ -522,15 +541,13 @@ def state(gid: int, user: User = Depends(get_current_user), db: Session = Depend
         "day_number": scoring.day_number(s, today),
         "duration_days": s.duration_days,
         "spiritual_enabled": s.spiritual_enabled,
-        "daily": scoring.daily_challenge(s, today),
-        "surprise": scoring.surprise_challenge(s, today),
+        "categories": scoring.active_categories(s),
         "motd": scoring.motd(today),
         "moods": MOODS,
         "players": player_rows,
         "leaderboard": leaderboard,
         "casal_perfect_days": casal_perfect_days(s, members, today),
         "category_emoji": CATEGORY_EMOJI,
-        "surprise_pool_size": len(SURPRISE_POOL),
     }
 
 

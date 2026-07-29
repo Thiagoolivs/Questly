@@ -91,12 +91,12 @@ class DayEntry(Base):
     membership_id: Mapped[int] = mapped_column(ForeignKey("memberships.id"), index=True)
     date: Mapped[date] = mapped_column(Date, index=True)
     habits_done: Mapped[list] = mapped_column(JSON, default=list)
-    daily_done: Mapped[bool] = mapped_column(Boolean, default=False)
-    surprise_done: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Comprovações dos desafios por área: {categoria: data_url}. A presença da
+    # foto = desafio concluído (só pontua com prova).
+    challenge_proofs: Mapped[dict] = mapped_column(JSON, default=dict)
+    # Trocas (reroll) por área: {categoria: offset}.
+    challenge_rerolls: Mapped[dict] = mapped_column(JSON, default=dict)
     mood: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
-    # Comprovações (imagens em data URL base64).
-    daily_proof: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    surprise_proof: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     membership: Mapped["Membership"] = relationship(back_populates="days")
 

@@ -428,3 +428,61 @@ input[type='range'] { width: 100%; accent-color: var(--accent); height: 24px; }
   gap: 12px;
   margin-top: 12px;
 }
+
+/* Fase 3: desafios por área, dificuldade, anel das áreas -------------------- */
+.proof-note { margin: 2px 0 10px; }
+.reroll-hint { font-weight: 600; }
+
+.challenge-list { display: flex; flex-direction: column; gap: 10px; }
+.challenge-item {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px 14px;
+}
+.challenge-item.done { border-color: rgba(52, 211, 153, 0.4); background: rgba(52, 211, 153, 0.06); }
+.challenge-item .challenge-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.challenge-item .challenge-text { margin: 2px 0 10px; font-size: 0.98rem; }
+.challenge-item .pts { margin-left: auto; color: var(--gold); font-weight: 700; }
+
+.diff-badge {
+  font-size: 0.7rem; font-weight: 700; padding: 2px 8px; border-radius: 999px;
+  text-transform: uppercase; letter-spacing: 0.4px;
+}
+.diff-facil { background: rgba(52, 211, 153, 0.18); color: #6ee7b7; }
+.diff-medio { background: rgba(255, 209, 102, 0.18); color: var(--gold); }
+.diff-dificil { background: rgba(251, 113, 133, 0.18); color: var(--hot); }
+
+.challenge-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.done-proof { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.challenge-ok { color: var(--green); font-weight: 700; }
+
+/* Anel das 5 áreas */
+.area-rings-card { padding-bottom: 14px; }
+.area-rings { display: flex; justify-content: space-between; gap: 6px; margin-top: 12px; }
+.area-ring { display: flex; flex-direction: column; align-items: center; gap: 4px; flex: 1; }
+.area-ring-circle {
+  width: 46px; height: 46px; border-radius: 50%;
+  display: grid; place-items: center;
+  border: 2px solid var(--border); background: #191a30;
+  font-size: 20px;
+}
+.area-ring-circle.diff-facil { border-color: rgba(52, 211, 153, 0.5); }
+.area-ring-circle.diff-medio { border-color: rgba(255, 209, 102, 0.5); }
+.area-ring-circle.diff-dificil { border-color: rgba(251, 113, 133, 0.5); }
+.area-ring-circle.done {
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  border-color: transparent; color: #fff;
+}
+.area-ring-streak { font-size: 0.7rem; color: var(--muted); }
+
+/* Adicionar hábito */
+.add-habit { display: flex; gap: 8px; margin-top: 10px; }
+.add-habit-emoji {
+  width: 48px; text-align: center; font-size: 20px;
+  background: #191a30; border: 1px solid var(--border); border-radius: 10px; color: var(--text);
+}
+.add-habit-label {
+  flex: 1; background: #191a30; border: 1px solid var(--border);
+  border-radius: 10px; padding: 0 12px; color: var(--text);
+}
