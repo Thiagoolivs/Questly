@@ -72,6 +72,10 @@ export const api = {
   jointList: (g, day) => req(`/api/groups/${g}/joint${qs(day)}`),
   jointAdd: (g, b) => req(`/api/groups/${g}/joint`, { method: 'POST', body: b }),
   jointRemove: (g, aid) => req(`/api/groups/${g}/joint/${aid}`, { method: 'DELETE' }),
+  // --- push ---
+  pushKey: () => req('/api/push/key', { auth: false }),
+  pushSubscribe: (b) => req('/api/push/subscribe', { method: 'POST', body: b }),
+  pushUnsubscribe: (b) => req('/api/push/unsubscribe', { method: 'POST', body: b }),
   history: (g, mid) => req(`/api/groups/${g}/history/${mid}`),
   achievements: (g, mid) => req(`/api/groups/${g}/achievements/${mid}`),
   ranking: (g) => req(`/api/groups/${g}/ranking`),

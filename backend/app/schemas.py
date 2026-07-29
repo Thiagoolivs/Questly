@@ -65,6 +65,16 @@ class JointActivityCreate(BaseModel):
     image: Optional[str] = None  # comprovação opcional
 
 
+class PushKeys(BaseModel):
+    p256dh: str
+    auth: str
+
+
+class PushSubscribe(BaseModel):
+    endpoint: str
+    keys: PushKeys
+
+
 class MessageCreate(BaseModel):
     text: str = ""
     image: Optional[str] = None  # data URL (base64), anexo opcional
