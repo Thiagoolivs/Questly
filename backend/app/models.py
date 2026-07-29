@@ -154,9 +154,12 @@ class Activity(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     group_id: Mapped[int] = mapped_column(ForeignKey("groups.id"), index=True)
     membership_id: Mapped[int] = mapped_column(ForeignKey("memberships.id"))
-    kind: Mapped[str] = mapped_column(String(20))  # challenge | joint
+    kind: Mapped[str] = mapped_column(String(20))  # challenge | joint | habit | task
     emoji: Mapped[str] = mapped_column(String(8), default="🎯")
     text: Mapped[str] = mapped_column(Text, default="")
+    image: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # foto opcional
+    ref: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)  # p/ upsert/dedupe
+    day: Mapped[Optional[date]] = mapped_column(Date, nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
 
 
@@ -218,6 +221,7 @@ class TaskCompletion(Base):
     task_id: Mapped[int] = mapped_column(ForeignKey("scheduled_tasks.id"), index=True)
     membership_id: Mapped[int] = mapped_column(ForeignKey("memberships.id"), index=True)
     date: Mapped[date] = mapped_column(Date, index=True)
+    image: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # foto-prova opcional
 
 
 class PushSubscription(Base):

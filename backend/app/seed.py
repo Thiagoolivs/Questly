@@ -25,6 +25,14 @@ _NEW_COLUMNS = {
         "moods": "JSON",
         "mood_note": "TEXT",
     },
+    "activities": {
+        "image": "TEXT",
+        "ref": "VARCHAR(40)",
+        "day": "DATE",
+    },
+    "task_completions": {
+        "image": "TEXT",
+    },
 }
 
 # Colunas do modelo antigo de desafio (1 diário + surpresa), agora obsoletas.

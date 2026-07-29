@@ -15,6 +15,7 @@ export default function Feed() {
   const { groupId } = useApp()
   const [items, setItems] = useState(null)
   const [err, setErr] = useState(null)
+  const [zoom, setZoom] = useState(null)
 
   const load = useCallback(() => {
     if (!groupId) return
@@ -56,8 +57,15 @@ export default function Feed() {
                 </div>
                 <div className="muted xsmall">{timeAgo(a.created_at)}</div>
               </div>
+              {a.image && <img className="feed-row-thumb" src={a.image} alt="" onClick={() => setZoom(a.image)} />}
             </div>
           ))}
+        </div>
+      )}
+
+      {zoom && (
+        <div className="lightbox" onClick={() => setZoom(null)}>
+          <img src={zoom} alt="" />
         </div>
       )}
     </div>

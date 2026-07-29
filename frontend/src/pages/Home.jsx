@@ -117,6 +117,12 @@ export default function Home() {
   const tasks = state.tasks || []
   const toggleTask = (id) => run(() => api.completeTask(groupId, id, { date: state.date }))
   const deleteTask = (id) => run(() => api.deleteTask(groupId, id))
+  async function attachTaskPhoto(id) {
+    const f = await pickImage()
+    if (!f) return
+    const image = await fileToCompressedDataURL(f)
+    await run(() => api.completeTask(groupId, id, { date: state.date, image }))
+  }
   function createTask() {
     if (!taskForm.title.trim()) return
     if (taskForm.kind === 'once' && !taskForm.date) return alert('Escolha a data da tarefa.')
@@ -268,6 +274,10 @@ export default function Home() {
                   <span className="habit-label">{t.title}</span>
                   <span className={'check ' + (t.checked_today ? 'on' : '')}>{t.checked_today ? <Icon name="check" size={14} /> : ''}</span>
                 </button>
+                {t.image && <img className="habit-thumb" src={t.image} alt="prova" onClick={() => setZoom(t.image)} />}
+                <button className="habit-cam" disabled={busy} title="Foto-prova" onClick={() => attachTaskPhoto(t.id)}>
+                  <Icon name="camera" size={16} />
+                </button>
                 <button className="habit-cam" disabled={busy} title="Remover tarefa" onClick={() => deleteTask(t.id)}>
                   <Icon name="x" size={15} />
                 </button>
@@ -373,6 +383,7 @@ export default function Home() {
               <div className="feed-item" key={a.id}>
                 <span className="feed-emoji">{a.emoji}</span>
                 <span className="feed-text">{a.text}</span>
+                {a.image && <img className="feed-thumb" src={a.image} alt="" onClick={() => setZoom(a.image)} />}
                 <span className="muted xsmall feed-time">{timeAgo(a.created_at)}</span>
               </div>
             ))}

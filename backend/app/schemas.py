@@ -94,6 +94,7 @@ class TaskCreate(BaseModel):
 
 class TaskCompleteRequest(BaseModel):
     date: str
+    image: Optional[str] = None  # foto-prova opcional
 
 
 class PushKeys(BaseModel):
