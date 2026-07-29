@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useApp } from '../store.jsx'
 import { api } from '../api.js'
 import { pickImage, fileToCompressedDataURL } from '../utils/image.js'
+import Avatar from '../components/Avatar.jsx'
 
 function timeLabel(iso) {
   const d = new Date(iso)
@@ -91,7 +92,7 @@ export default function Chat() {
           const mine = m.player_id === myId
           return (
             <div key={m.id} className={'chat-msg ' + (mine ? 'me' : 'them')}>
-              {!mine && <div className="chat-av">{m.avatar}</div>}
+              {!mine && <div className="chat-av"><Avatar photo={m.photo} avatar={m.avatar} size={30} /></div>}
               <div className="chat-bubble">
                 {!mine && <div className="chat-author">{m.name}</div>}
                 {m.image && <img className="chat-img" src={m.image} alt="anexo" />}

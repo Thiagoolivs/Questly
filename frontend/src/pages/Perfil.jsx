@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useApp } from '../store.jsx'
+import { pickImage, fileToCompressedDataURL } from '../utils/image.js'
 
 const AVATARS = ['🦊', '🐨', '🐼', '🦁', '🐯', '🐸', '🐵', '🦉', '🔥', '⚡', '🌟', '💜']
 
@@ -8,16 +9,43 @@ export default function Perfil() {
   const [form, setForm] = useState(null)
   const [saved, setSaved] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [photoBusy, setPhotoBusy] = useState(false)
 
   useEffect(() => {
     if (user)
       setForm({
         name: user.name,
         avatar: user.avatar,
+        photo: user.photo || null,
         objetivo: user.objetivo || '',
         peso: user.peso ?? '',
       })
-  }, [user?.id, user?.name, user?.avatar, user?.objetivo, user?.peso])
+  }, [user?.id, user?.name, user?.avatar, user?.photo, user?.objetivo, user?.peso])
+
+  async function changePhoto() {
+    if (photoBusy) return
+    const f = await pickImage()
+    if (!f) return
+    setPhotoBusy(true)
+    try {
+      const photo = await fileToCompressedDataURL(f, 320, 0.8)
+      await updateUser({ photo })
+    } catch (e) {
+      alert('Não consegui enviar a foto: ' + e.message)
+    } finally {
+      setPhotoBusy(false)
+    }
+  }
+
+  async function removePhoto() {
+    if (photoBusy) return
+    setPhotoBusy(true)
+    try {
+      await updateUser({ photo: null })
+    } finally {
+      setPhotoBusy(false)
+    }
+  }
 
   if (loading || !user || !form) return <div className="screen center muted">Carregando…</div>
 
@@ -60,18 +88,35 @@ export default function Perfil() {
       </header>
 
       <section className="card center">
-        <div className="avatar-big">{form.avatar}</div>
-        <div className="avatar-picker">
-          {AVATARS.map((a) => (
-            <button
-              key={a}
-              className={'avatar-opt ' + (a === form.avatar ? 'active' : '')}
-              onClick={() => setForm({ ...form, avatar: a })}
-            >
-              {a}
-            </button>
-          ))}
+        <div className="avatar-big">
+          {form.photo ? <img className="avatar-big-photo" src={form.photo} alt="foto de perfil" /> : form.avatar}
         </div>
+        <div className="photo-actions">
+          <button className="btn ghost small-btn" disabled={photoBusy} onClick={changePhoto}>
+            {photoBusy ? '…' : form.photo ? '📷 Trocar foto' : '📷 Enviar foto'}
+          </button>
+          {form.photo && (
+            <button className="link-btn danger" disabled={photoBusy} onClick={removePhoto}>
+              remover foto
+            </button>
+          )}
+        </div>
+        {!form.photo && (
+          <>
+            <div className="muted xsmall" style={{ marginTop: 4 }}>ou escolha um emoji</div>
+            <div className="avatar-picker">
+              {AVATARS.map((a) => (
+                <button
+                  key={a}
+                  className={'avatar-opt ' + (a === form.avatar ? 'active' : '')}
+                  onClick={() => setForm({ ...form, avatar: a })}
+                >
+                  {a}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
       </section>
 
       <section className="card">

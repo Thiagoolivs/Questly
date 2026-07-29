@@ -71,6 +71,7 @@ def user_public(u: User) -> dict:
         "email": u.email,
         "name": u.name,
         "avatar": u.avatar,
+        "photo": u.photo,
         "objetivo": u.objetivo,
         "peso": u.peso,
     }
@@ -132,6 +133,7 @@ def member_payload(settings: Settings, membership: Membership, today: date) -> d
         "user_id": u.id,
         "name": u.name,
         "avatar": u.avatar,
+        "photo": u.photo,
         "objetivo": u.objetivo,
         "peso": u.peso,
         "role": membership.role,
@@ -172,6 +174,7 @@ def serialize_message(m: Message, members_by_id: dict) -> dict:
         "player_id": m.membership_id,  # compat com o frontend antigo
         "name": u.name if u else "?",
         "avatar": u.avatar if u else "❓",
+        "photo": u.photo if u else None,
         "text": m.text,
         "image": m.image,
         "created_at": m.created_at.isoformat() + "Z",
@@ -241,7 +244,10 @@ def me(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
 
 @app.put("/api/users/me")
 def update_me(payload: UserUpdate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    data = payload.model_dump(exclude_unset=True)
+    if "photo" in data:
+        validate_image(data["photo"])
+    for field, value in data.items():
         setattr(user, field, value)
     db.commit()
     db.refresh(user)

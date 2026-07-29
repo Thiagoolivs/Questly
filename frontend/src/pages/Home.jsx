@@ -3,6 +3,7 @@ import { useApp } from '../store.jsx'
 import { api } from '../api.js'
 import { pickImage, fileToCompressedDataURL } from '../utils/image.js'
 import ProgressRing from '../components/ProgressRing.jsx'
+import Avatar from '../components/Avatar.jsx'
 
 export default function Home() {
   const { state, me, groupId, refresh, loading, error } = useApp()
@@ -113,7 +114,7 @@ export default function Home() {
         {state.leaderboard.map((p, i) => (
           <div className="rank-row" key={p.id}>
             <div className="rank-pos">{i === 0 && someoneLeads ? '👑' : i + 1}</div>
-            <div className="rank-avatar">{p.avatar}</div>
+            <div className="rank-avatar"><Avatar photo={p.photo} avatar={p.avatar} size={34} /></div>
             <div className="rank-main">
               <div className="rank-name">
                 {p.name} {p.today?.mood && <span className="rank-mood">{moodEmoji(p.today.mood)}</span>}
