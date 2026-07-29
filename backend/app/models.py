@@ -138,6 +138,24 @@ class Message(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
 
 
+class Activity(Base):
+    """Evento do feed do grupo (conclusão de desafio, atividade em dupla…).
+
+    Separado do chat: o chat fica livre para conversa, e os avisos automáticos
+    vão para este feed.
+    """
+
+    __tablename__ = "activities"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    group_id: Mapped[int] = mapped_column(ForeignKey("groups.id"), index=True)
+    membership_id: Mapped[int] = mapped_column(ForeignKey("memberships.id"))
+    kind: Mapped[str] = mapped_column(String(20))  # challenge | joint
+    emoji: Mapped[str] = mapped_column(String(8), default="🎯")
+    text: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
 class PushSubscription(Base):
     """Inscrição de Web Push de um usuário (um por dispositivo/navegador)."""
 

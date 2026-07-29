@@ -22,6 +22,7 @@ from . import push as pushmod
 from .data import CATEGORY_EMOJI, DEFAULT_HABITS, HABITS_MENU, JOINT_SUGGESTIONS, MOODS
 from .database import SessionLocal, get_db
 from .models import (
+    Activity,
     DayEntry,
     Group,
     JointActivity,
@@ -273,10 +274,25 @@ def notify_group_others(db: Session, group_id: int, actor_user_id: int, title: s
         pushmod.send_to_user(db, uid, title, body, url)
 
 
-def post_auto_message(db: Session, group_id: int, membership: Membership, text: str) -> None:
-    """Publica uma mensagem automática no chat do grupo (aviso de conclusão)."""
-    db.add(Message(group_id=group_id, membership_id=membership.id, text=text, image=None))
+def post_activity(db: Session, group_id: int, membership: Membership, kind: str, emoji: str, text: str) -> None:
+    """Registra um evento no feed do grupo (separado do chat)."""
+    db.add(Activity(group_id=group_id, membership_id=membership.id, kind=kind, emoji=emoji, text=text))
     db.commit()
+
+
+def serialize_activity(a: Activity, members_by_id: dict) -> dict:
+    mem = members_by_id.get(a.membership_id)
+    u = mem.user if mem else None
+    return {
+        "id": a.id,
+        "kind": a.kind,
+        "emoji": a.emoji,
+        "text": a.text,
+        "author": u.name if u else "?",
+        "avatar": u.avatar if u else "❓",
+        "photo": u.photo if u else None,
+        "created_at": a.created_at.isoformat() + "Z",
+    }
 
 
 def settings_public(s: Settings) -> dict:
@@ -555,13 +571,13 @@ def set_challenge(gid: int, req: ChallengeProofRequest, user: User = Depends(get
     entry.challenge_together = together
     result = _day_result(db, s, membership, entry, d)
 
-    # Recém-concluído hoje → avisa o parceiro (chat automático + push).
+    # Recém-concluído hoje → registra no feed + avisa o parceiro (push).
     if req.image and not was_done and d == date.today():
         emoji = CATEGORY_EMOJI.get(req.category, "🎯")
         extra = " (juntos 💞)" if req.together else ""
-        text = f"{emoji} {membership.user.name} fechou o desafio de {req.category}!{extra}"
-        post_auto_message(db, gid, membership, text)
-        notify_group_others(db, gid, membership.user_id, membership.group.name, text, "/")
+        text = f"{membership.user.name} fechou o desafio de {req.category}!{extra}"
+        post_activity(db, gid, membership, "challenge", emoji, text)
+        notify_group_others(db, gid, membership.user_id, membership.group.name, f"{emoji} {text}", "/")
     return result
 
 
@@ -637,9 +653,9 @@ def create_joint(gid: int, payload: JointActivityCreate, user: User = Depends(ge
     db.commit()
     db.refresh(a)
     if d == date.today():
-        text = f"💞 {membership.user.name} registrou em dupla: {a.emoji} {a.label} (+{a.points} pra vocês!)"
-        post_auto_message(db, gid, membership, text)
-        notify_group_others(db, gid, membership.user_id, membership.group.name, text, "/")
+        text = f"{membership.user.name} registrou em dupla: {a.label} (+{a.points} pra vocês!)"
+        post_activity(db, gid, membership, "joint", a.emoji, text)
+        notify_group_others(db, gid, membership.user_id, membership.group.name, f"💞 {text}", "/")
     return serialize_joint(a, {membership.id: membership})
 
 
@@ -679,6 +695,21 @@ def create_message(gid: int, payload: MessageCreate, user: User = Depends(get_cu
     preview = m.text if m.text else "📷 Foto"
     notify_group_others(db, gid, membership.user_id, f"💬 {membership.user.name}", preview[:120], "/chat")
     return serialize_message(m, {membership.id: membership})
+
+
+# --- rotas: grupo (feed de atividades) -------------------------------------
+@app.get("/api/groups/{gid}/activities")
+def list_activities(gid: int, limit: int = 40, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    get_membership(db, user, gid)
+    members_by_id = {m.id: m for m in group_members(db, gid)}
+    rows = (
+        db.query(Activity)
+        .filter(Activity.group_id == gid)
+        .order_by(Activity.id.desc())
+        .limit(min(limit, 200))
+        .all()
+    )
+    return {"activities": [serialize_activity(a, members_by_id) for a in rows]}
 
 
 # --- rotas: grupo (histórico/conquistas/ranking) ---------------------------
@@ -762,6 +793,13 @@ def state(gid: int, user: User = Depends(get_current_user), db: Session = Depend
         .order_by(JointActivity.id)
         .all()
     )
+    recent_activities = (
+        db.query(Activity)
+        .filter(Activity.group_id == gid)
+        .order_by(Activity.id.desc())
+        .limit(12)
+        .all()
+    )
 
     return {
         "date": today.isoformat(),
@@ -782,6 +820,7 @@ def state(gid: int, user: User = Depends(get_current_user), db: Session = Depend
             "activities": [serialize_joint(a, members_by_id) for a in joint_today],
             "suggestions": JOINT_SUGGESTIONS,
         },
+        "activities": [serialize_activity(a, members_by_id) for a in recent_activities],
     }
 
 

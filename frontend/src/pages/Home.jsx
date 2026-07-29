@@ -6,6 +6,14 @@ import ProgressRing from '../components/ProgressRing.jsx'
 import Avatar from '../components/Avatar.jsx'
 import AreaRings from '../components/AreaRings.jsx'
 
+function timeAgo(iso) {
+  const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000)
+  if (s < 60) return 'agora'
+  if (s < 3600) return `${Math.floor(s / 60)}min`
+  if (s < 86400) return `${Math.floor(s / 3600)}h`
+  return `${Math.floor(s / 86400)}d`
+}
+
 export default function Home() {
   const { state, me, groupId, refresh, loading, error } = useApp()
   const [busy, setBusy] = useState(false)
@@ -148,6 +156,22 @@ export default function Home() {
           <div className="couple-note">💞 Casal Inabalável: {state.casal_perfect_days} dia(s) perfeito(s) juntos!</div>
         )}
       </section>
+
+      {/* Feed de atividades */}
+      {state.activities?.length > 0 && (
+        <section className="card">
+          <div className="card-title">📣 Atividades</div>
+          <div className="feed">
+            {state.activities.map((a) => (
+              <div className="feed-item" key={a.id}>
+                <span className="feed-emoji">{a.emoji}</span>
+                <span className="feed-text">{a.text}</span>
+                <span className="muted xsmall feed-time">{timeAgo(a.created_at)}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Humor */}
       <section className="card">
