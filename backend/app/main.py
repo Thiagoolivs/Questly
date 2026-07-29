@@ -31,7 +31,9 @@ from .models import (
     Membership,
     Message,
     PushSubscription,
+    ScheduledTask,
     Settings,
+    TaskCompletion,
     User,
 )
 from .schemas import (
@@ -42,6 +44,8 @@ from .schemas import (
     GroupJoin,
     HabitPhotoRequest,
     JointActivityCreate,
+    TaskCompleteRequest,
+    TaskCreate,
     LoginRequest,
     MessageCreate,
     MoodRequest,
@@ -79,19 +83,33 @@ REMINDER_HOURS = {
 
 
 def _run_daily_reminders() -> None:
-    """Manda um push de lembrete para todo usuário inscrito (best-effort)."""
+    """Manda um push de lembrete para todo usuário inscrito (best-effort).
+
+    Se o usuário tiver tarefas agendadas pendentes hoje, o texto menciona isso.
+    """
     if not pushmod.push_enabled():
         return
     db = SessionLocal()
     try:
+        today = date.today()
         user_ids = {row.user_id for row in db.query(PushSubscription).all()}
         for uid in user_ids:
-            pushmod.send_to_user(
-                db, uid,
-                "Questly 🎯",
-                "Bora fechar o dia? Seus desafios de hoje te esperam. 💪",
-                "/",
+            pending = 0
+            for m in db.query(Membership).filter(Membership.user_id == uid).all():
+                for t in tasks_due(db, m.group_id, today):
+                    done = (
+                        db.query(TaskCompletion)
+                        .filter(TaskCompletion.task_id == t.id, TaskCompletion.membership_id == m.id, TaskCompletion.date == today)
+                        .first()
+                    )
+                    if not done:
+                        pending += 1
+            body = (
+                f"Você tem {pending} tarefa(s) agendada(s) pra hoje. Bora?"
+                if pending
+                else "Bora fechar o dia? Seus desafios de hoje te esperam."
             )
+            pushmod.send_to_user(db, uid, "Questly", body, "/")
     finally:
         db.close()
 
@@ -809,6 +827,111 @@ def end_goal(gid: int, goal_id: int, user: User = Depends(get_current_user), db:
     return {"ok": True}
 
 
+# --- rotas: grupo (tarefas agendadas) --------------------------------------
+def _task_due(task: ScheduledTask, d: date) -> bool:
+    if task.kind == "once":
+        return task.date == d
+    # weekly: weekdays em convenção JS (0=Dom..6=Sáb)
+    return ((d.weekday() + 1) % 7) in (task.weekdays or [])
+
+
+def serialize_task(db: Session, task: ScheduledTask, members: list[Membership], me: Membership, d: date) -> dict:
+    done_rows = db.query(TaskCompletion).filter(TaskCompletion.task_id == task.id, TaskCompletion.date == d).all()
+    done_by = {r.membership_id for r in done_rows}
+    return {
+        "id": task.id,
+        "title": task.title,
+        "emoji": task.emoji,
+        "icon": task.icon,
+        "kind": task.kind,
+        "date": task.date.isoformat() if task.date else None,
+        "weekdays": task.weekdays or [],
+        "checked_today": me.id in done_by,
+        "members_done": [{"name": m.user.name, "done": m.id in done_by} for m in members],
+    }
+
+
+def tasks_due(db: Session, gid: int, d: date) -> list[ScheduledTask]:
+    rows = (
+        db.query(ScheduledTask)
+        .filter(ScheduledTask.group_id == gid, ScheduledTask.active == True)  # noqa: E712
+        .order_by(ScheduledTask.id)
+        .all()
+    )
+    return [t for t in rows if _task_due(t, d)]
+
+
+@app.get("/api/groups/{gid}/tasks")
+def list_tasks(gid: int, day: str | None = None, all: bool = False, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    me = get_membership(db, user, gid)
+    members = group_members(db, gid)
+    d = parse_date(day)
+    if all:
+        rows = (
+            db.query(ScheduledTask)
+            .filter(ScheduledTask.group_id == gid, ScheduledTask.active == True)  # noqa: E712
+            .order_by(ScheduledTask.id)
+            .all()
+        )
+    else:
+        rows = tasks_due(db, gid, d)
+    return {"date": d.isoformat(), "tasks": [serialize_task(db, t, members, me, d) for t in rows]}
+
+
+@app.post("/api/groups/{gid}/tasks")
+def create_task(gid: int, payload: TaskCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    me = get_membership(db, user, gid)
+    if payload.kind == "once" and not payload.date:
+        raise HTTPException(400, "Data obrigatória para tarefa única.")
+    if payload.kind == "weekly" and not payload.weekdays:
+        raise HTTPException(400, "Selecione ao menos um dia da semana.")
+    task = ScheduledTask(
+        group_id=gid,
+        title=payload.title.strip(),
+        emoji=(payload.emoji or "🗓️").strip() or "🗓️",
+        icon=payload.icon,
+        kind=payload.kind,
+        date=parse_date(payload.date) if (payload.kind == "once" and payload.date) else None,
+        weekdays=sorted(set(payload.weekdays)) if payload.kind == "weekly" else [],
+        created_by=me.id,
+    )
+    db.add(task)
+    db.commit()
+    db.refresh(task)
+    return serialize_task(db, task, group_members(db, gid), me, date.today())
+
+
+@app.post("/api/groups/{gid}/tasks/{task_id}/complete")
+def complete_task(gid: int, task_id: int, req: TaskCompleteRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    me = get_membership(db, user, gid)
+    task = db.get(ScheduledTask, task_id)
+    if task is None or task.group_id != gid:
+        raise HTTPException(404, "Tarefa não encontrada.")
+    d = parse_date(req.date)
+    existing = (
+        db.query(TaskCompletion)
+        .filter(TaskCompletion.task_id == task_id, TaskCompletion.membership_id == me.id, TaskCompletion.date == d)
+        .first()
+    )
+    if existing:
+        db.delete(existing)
+    else:
+        db.add(TaskCompletion(task_id=task_id, membership_id=me.id, date=d))
+    db.commit()
+    return serialize_task(db, task, group_members(db, gid), me, d)
+
+
+@app.delete("/api/groups/{gid}/tasks/{task_id}")
+def delete_task(gid: int, task_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    get_membership(db, user, gid)
+    task = db.get(ScheduledTask, task_id)
+    if task is None or task.group_id != gid:
+        raise HTTPException(404, "Tarefa não encontrada.")
+    task.active = False
+    db.commit()
+    return {"ok": True}
+
+
 # --- rotas: grupo (chat) ---------------------------------------------------
 @app.get("/api/groups/{gid}/messages")
 def list_messages(gid: int, after_id: int = 0, limit: int = 200, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -1069,6 +1192,7 @@ def state(gid: int, user: User = Depends(get_current_user), db: Session = Depend
         },
         "activities": [serialize_activity(a, members_by_id) for a in recent_activities],
         "goals": [serialize_goal(db, g, members, membership, today) for g in active_goals(db, gid)],
+        "tasks": [serialize_task(db, t, members, membership, today) for t in tasks_due(db, gid, today)],
     }
 
 

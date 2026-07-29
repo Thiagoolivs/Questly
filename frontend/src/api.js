@@ -90,4 +90,8 @@ export const api = {
   createGoal: (g, b) => req(`/api/groups/${g}/goals`, { method: 'POST', body: b }),
   goalCheckin: (g, id, b) => req(`/api/groups/${g}/goals/${id}/checkin`, { method: 'POST', body: b }),
   endGoal: (g, id) => req(`/api/groups/${g}/goals/${id}`, { method: 'DELETE' }),
+  tasks: (g, opts = '') => req(`/api/groups/${g}/tasks${opts}`),
+  createTask: (g, b) => req(`/api/groups/${g}/tasks`, { method: 'POST', body: b }),
+  completeTask: (g, id, b) => req(`/api/groups/${g}/tasks/${id}/complete`, { method: 'POST', body: b }),
+  deleteTask: (g, id) => req(`/api/groups/${g}/tasks/${id}`, { method: 'DELETE' }),
 }

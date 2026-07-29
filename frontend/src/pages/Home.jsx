@@ -7,6 +7,8 @@ import Avatar from '../components/Avatar.jsx'
 import AreaRings from '../components/AreaRings.jsx'
 import Icon, { categoryIconName } from '../components/Icon.jsx'
 
+const WEEKDAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
+
 function timeAgo(iso) {
   const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000)
   if (s < 60) return 'agora'
@@ -24,6 +26,8 @@ export default function Home() {
   const [moodNote, setMoodNote] = useState('')
   const [showGoalForm, setShowGoalForm] = useState(false)
   const [goalForm, setGoalForm] = useState({ emoji: '🎯', title: '', duration_days: 30 })
+  const [showTaskForm, setShowTaskForm] = useState(false)
+  const [taskForm, setTaskForm] = useState({ emoji: '🗓️', title: '', kind: 'once', date: '', weekdays: [] })
 
   useEffect(() => {
     setMoodNote(me?.today?.mood_note || '')
@@ -109,6 +113,31 @@ export default function Home() {
       setShowGoalForm(false)
     })
   }
+
+  const tasks = state.tasks || []
+  const toggleTask = (id) => run(() => api.completeTask(groupId, id, { date: state.date }))
+  const deleteTask = (id) => run(() => api.deleteTask(groupId, id))
+  function createTask() {
+    if (!taskForm.title.trim()) return
+    if (taskForm.kind === 'once' && !taskForm.date) return alert('Escolha a data da tarefa.')
+    if (taskForm.kind === 'weekly' && taskForm.weekdays.length === 0) return alert('Escolha os dias da semana.')
+    run(async () => {
+      await api.createTask(groupId, {
+        title: taskForm.title.trim(),
+        emoji: taskForm.emoji || '🗓️',
+        kind: taskForm.kind,
+        date: taskForm.kind === 'once' ? taskForm.date : null,
+        weekdays: taskForm.kind === 'weekly' ? taskForm.weekdays : [],
+      })
+      setTaskForm({ emoji: '🗓️', title: '', kind: 'once', date: '', weekdays: [] })
+      setShowTaskForm(false)
+    })
+  }
+  const toggleWeekday = (i) =>
+    setTaskForm((f) => ({
+      ...f,
+      weekdays: f.weekdays.includes(i) ? f.weekdays.filter((d) => d !== i) : [...f.weekdays, i],
+    }))
 
   const joint = state.joint || { points_each: 20, activities: [], suggestions: [] }
   const removeJoint = (aid) => run(() => api.jointRemove(groupId, aid))
@@ -224,6 +253,73 @@ export default function Home() {
       ) : (
         <button className="btn ghost full icon-btn new-goal-btn" onClick={() => setShowGoalForm(true)}>
           <Icon name="plus" size={15} /> Nova meta
+        </button>
+      )}
+
+      {/* Tarefas de hoje */}
+      {tasks.length > 0 && (
+        <section className="card">
+          <div className="card-title">Tarefas de hoje</div>
+          <div className="habits">
+            {tasks.map((t) => (
+              <div key={t.id} className={'habit-row ' + (t.checked_today ? 'done' : '')}>
+                <button className="habit habit-toggle" disabled={busy} onClick={() => toggleTask(t.id)}>
+                  <span className="habit-emoji">{t.icon ? <Icon name={t.icon} size={17} /> : t.emoji}</span>
+                  <span className="habit-label">{t.title}</span>
+                  <span className={'check ' + (t.checked_today ? 'on' : '')}>{t.checked_today ? <Icon name="check" size={14} /> : ''}</span>
+                </button>
+                <button className="habit-cam" disabled={busy} title="Remover tarefa" onClick={() => deleteTask(t.id)}>
+                  <Icon name="x" size={15} />
+                </button>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Agendar tarefa */}
+      {showTaskForm ? (
+        <section className="card">
+          <div className="card-title">Agendar tarefa</div>
+          <div className="add-habit">
+            <input
+              className="add-habit-emoji"
+              value={taskForm.emoji}
+              maxLength={2}
+              onChange={(e) => setTaskForm({ ...taskForm, emoji: e.target.value })}
+              aria-label="emoji"
+            />
+            <input
+              className="add-habit-label"
+              placeholder="Ex: Consulta médica / Treino especial"
+              value={taskForm.title}
+              onChange={(e) => setTaskForm({ ...taskForm, title: e.target.value })}
+            />
+          </div>
+          <div className="chips">
+            <button className={'chip ' + (taskForm.kind === 'once' ? 'active' : '')} onClick={() => setTaskForm({ ...taskForm, kind: 'once' })}>Data única</button>
+            <button className={'chip ' + (taskForm.kind === 'weekly' ? 'active' : '')} onClick={() => setTaskForm({ ...taskForm, kind: 'weekly' })}>Semanal</button>
+          </div>
+          {taskForm.kind === 'once' ? (
+            <label className="field">
+              <span>Data</span>
+              <input type="date" value={taskForm.date} onChange={(e) => setTaskForm({ ...taskForm, date: e.target.value })} />
+            </label>
+          ) : (
+            <div className="chips">
+              {WEEKDAYS.map((w, i) => (
+                <button key={w} className={'chip ' + (taskForm.weekdays.includes(i) ? 'active' : '')} onClick={() => toggleWeekday(i)}>{w}</button>
+              ))}
+            </div>
+          )}
+          <div className="row" style={{ gap: 8 }}>
+            <button className="btn ghost full" onClick={() => setShowTaskForm(false)}>Cancelar</button>
+            <button className="btn full btn-primary" disabled={busy || !taskForm.title.trim()} onClick={createTask}>Agendar</button>
+          </div>
+        </section>
+      ) : (
+        <button className="btn ghost full icon-btn new-goal-btn" onClick={() => setShowTaskForm(true)}>
+          <Icon name="plus" size={15} /> Agendar tarefa
         </button>
       )}
 

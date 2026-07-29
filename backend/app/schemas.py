@@ -83,6 +83,19 @@ class GoalCheckinRequest(BaseModel):
     date: str
 
 
+class TaskCreate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=120)
+    emoji: str = Field("🗓️", max_length=8)
+    icon: Optional[str] = Field(None, max_length=24)
+    kind: Literal["once", "weekly"] = "once"
+    date: Optional[str] = None          # para 'once' (YYYY-MM-DD)
+    weekdays: list[int] = Field(default_factory=list)  # para 'weekly' (0=Dom..6=Sáb)
+
+
+class TaskCompleteRequest(BaseModel):
+    date: str
+
+
 class PushKeys(BaseModel):
     p256dh: str
     auth: str
