@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useApp } from '../store.jsx'
 import { pickImage, fileToCompressedDataURL } from '../utils/image.js'
 import { getPushState, enablePush, disablePush } from '../utils/push.js'
+import Icon from '../components/Icon.jsx'
 
 const AVATARS = ['🦊', '🐨', '🐼', '🦁', '🐯', '🐸', '🐵', '🦉', '🔥', '⚡', '🌟', '💜']
 
@@ -103,7 +104,7 @@ export default function Perfil() {
   return (
     <div className="screen">
       <header className="topbar">
-        <div className="brand"><span className="brand-mark">👤</span> Perfil</div>
+        <div className="brand">Perfil</div>
         <div className="muted small">{user.email}</div>
       </header>
 
@@ -112,8 +113,8 @@ export default function Perfil() {
           {form.photo ? <img className="avatar-big-photo" src={form.photo} alt="foto de perfil" /> : form.avatar}
         </div>
         <div className="photo-actions">
-          <button className="btn ghost small-btn" disabled={photoBusy} onClick={changePhoto}>
-            {photoBusy ? '…' : form.photo ? '📷 Trocar foto' : '📷 Enviar foto'}
+          <button className="btn ghost small-btn icon-btn" disabled={photoBusy} onClick={changePhoto}>
+            <Icon name="camera" size={15} /> {photoBusy ? '…' : form.photo ? 'Trocar foto' : 'Enviar foto'}
           </button>
           {form.photo && (
             <button className="link-btn danger" disabled={photoBusy} onClick={removePhoto}>
@@ -168,7 +169,7 @@ export default function Perfil() {
 
       {/* Grupo atual + convite */}
       <section className="card">
-        <div className="card-title">👥 Grupo</div>
+        <div className="card-title">Grupo</div>
         <div className="row between">
           <div>
             <div className="group-name">{group?.name}</div>
@@ -180,8 +181,8 @@ export default function Perfil() {
             <div className="muted xsmall">Código de convite</div>
             <div className="invite-code">{group?.invite_code}</div>
           </div>
-          <button className="btn ghost small-btn" onClick={copyCode}>
-            {copied ? '✓ Copiado' : '📋 Copiar'}
+          <button className="btn ghost small-btn icon-btn" onClick={copyCode}>
+            <Icon name={copied ? 'check' : 'copy'} size={14} /> {copied ? 'Copiado' : 'Copiar'}
           </button>
         </div>
         <p className="muted xsmall">Compartilhe esse código para alguém entrar no grupo.</p>
@@ -194,12 +195,12 @@ export default function Perfil() {
                 className={'group-row ' + (g.id === group?.id ? 'active' : '')}
                 onClick={() => selectGroup(g.id)}
               >
-                <span className="group-emoji">👥</span>
+                <span className="group-emoji"><Icon name="users" size={18} /></span>
                 <span className="group-main">
                   <span className="group-name">{g.name}</span>
                   <span className="muted xsmall">{g.member_count} membro(s)</span>
                 </span>
-                <span className="group-go">{g.id === group?.id ? '✓' : '→'}</span>
+                <span className="group-go"><Icon name={g.id === group?.id ? 'check' : 'chevronRight'} size={16} /></span>
               </button>
             ))}
           </div>
@@ -208,8 +209,8 @@ export default function Perfil() {
         <button className="btn ghost full" onClick={() => selectGroup(null)}>
           Criar / entrar em outro grupo
         </button>
-        <Link to="/config" className="btn ghost full config-link">
-          ⚙️ Configurações do grupo
+        <Link to="/config" className="btn ghost full config-link icon-btn">
+          <Icon name="settings" size={15} /> Configurações do grupo
         </Link>
       </section>
 
@@ -217,7 +218,7 @@ export default function Perfil() {
       <section className="card">
         <div className="row between">
           <div>
-            <div className="card-title no-margin">🔔 Notificações</div>
+            <div className="card-title no-margin">Notificações</div>
             <div className="muted small">
               {pushState === 'denied'
                 ? 'Bloqueadas no navegador — libere nas permissões do site.'
@@ -245,7 +246,6 @@ export default function Perfil() {
           <div className="stat-grid">
             {stats.map((st) => (
               <div className="stat-box" key={st.label}>
-                <div className="stat-emoji">{st.emoji}</div>
                 <div className="stat-value">{st.value}</div>
                 <div className="muted xsmall">{st.label}</div>
               </div>
@@ -254,7 +254,7 @@ export default function Perfil() {
         </section>
       )}
 
-      <button className="btn full logout-btn" onClick={logout}>Sair da conta</button>
+      <button className="btn full logout-btn icon-btn" onClick={logout}><Icon name="logout" size={15} /> Sair da conta</button>
     </div>
   )
 }

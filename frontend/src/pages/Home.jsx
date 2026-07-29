@@ -5,6 +5,7 @@ import { pickImage, fileToCompressedDataURL } from '../utils/image.js'
 import ProgressRing from '../components/ProgressRing.jsx'
 import Avatar from '../components/Avatar.jsx'
 import AreaRings from '../components/AreaRings.jsx'
+import Icon, { categoryIconName } from '../components/Icon.jsx'
 
 function timeAgo(iso) {
   const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000)
@@ -114,7 +115,7 @@ export default function Home() {
     <div className="screen">
       <header className="topbar">
         <div>
-          <div className="brand"><span className="brand-mark">🎯</span> {state.group?.name || 'Questly'}</div>
+          <div className="brand">{state.group?.name || 'Questly'}</div>
           <div className="muted small">
             Dia {state.day_number} de {state.duration_days} ·{' '}
             {new Date(state.date + 'T00:00').toLocaleDateString('pt-BR', {
@@ -122,12 +123,12 @@ export default function Home() {
             })}
           </div>
         </div>
-        <div className="streak-chip" title="Sequência atual">🔥 {me.stats.streak}</div>
+        <div className="streak-chip" title="Sequência atual"><Icon name="flame" size={15} /> {me.stats.streak}</div>
       </header>
 
       {/* Mensagem do dia */}
       <section className="card motd">
-        <div className="motd-icon">✨</div>
+        <div className="motd-icon"><Icon name="sparkle" size={18} /></div>
         <div>
           <div className="muted xsmall">Mensagem do dia</div>
           <div className="motd-text">{state.motd}</div>
@@ -135,17 +136,17 @@ export default function Home() {
       </section>
 
       {/* Incentivo / lembrete */}
-      {me.nudge && <div className="nudge">{me.nudge.emoji} {me.nudge.text}</div>}
+      {me.nudge && <div className="nudge">{me.nudge.text}</div>}
 
       {/* Anel das 5 áreas */}
       <AreaRings challenges={today.challenges} streaks={streaks} />
 
       {/* Ranking */}
       <section className="card leaderboard">
-        <div className="card-title">🏆 Ranking</div>
+        <div className="card-title">Ranking</div>
         {state.leaderboard.map((p, i) => (
           <div className="rank-row" key={p.id}>
-            <div className="rank-pos">{i === 0 && someoneLeads ? '👑' : i + 1}</div>
+            <div className="rank-pos">{i + 1}</div>
             <div className="rank-avatar"><Avatar photo={p.photo} avatar={p.avatar} size={34} /></div>
             <div className="rank-main">
               <div className="rank-name">
@@ -169,7 +170,7 @@ export default function Home() {
       {/* Feed de atividades */}
       {state.activities?.length > 0 && (
         <section className="card">
-          <div className="card-title">📣 Atividades</div>
+          <div className="card-title">Atividades</div>
           <div className="feed">
             {state.activities.map((a) => (
               <div className="feed-item" key={a.id}>
@@ -229,14 +230,14 @@ export default function Home() {
       <section className="card">
         <div className="card-title">
           Desafios do dia <span className="muted small">({today.areas_done}/{today.areas_total})</span>
-          {today.rerolls_left > 0 && <span className="reroll-hint muted xsmall"> · 🔁 {today.rerolls_left} troca</span>}
+          {today.rerolls_left > 0 && <span className="reroll-hint muted xsmall"> · {today.rerolls_left} troca</span>}
         </div>
-        <p className="muted xsmall proof-note">📷 Só pontua anexando a foto que comprova o desafio.</p>
+        <p className="muted xsmall proof-note">Só pontua anexando a foto que comprova o desafio.</p>
         <div className="challenge-list">
           {today.challenges.map((c) => (
             <div className={'challenge-item ' + (c.done ? 'done' : '')} key={c.category}>
               <div className="challenge-head">
-                <span className="tag">{c.emoji} {c.category}</span>
+                <span className="tag"><Icon name={categoryIconName(c.category)} size={14} /> {c.category}</span>
                 <span className={diffClass(c.difficulty)}>{c.difficulty_label}</span>
                 <span className="pts">+{c.points}</span>
               </div>
@@ -247,25 +248,25 @@ export default function Home() {
                   {c.proof && (
                     <img className="proof-thumb" src={c.proof} alt="comprovação" onClick={() => setZoom(c.proof)} />
                   )}
-                  <span className="challenge-ok">✓ Concluído</span>
+                  <span className="challenge-ok"><Icon name="check" size={15} /> Concluído</span>
                   <button
                     className={'together-btn ' + (c.together ? 'on' : '')}
                     disabled={busy}
                     onClick={() => toggleTogether(c)}
                   >
-                    💞 {c.together ? 'Juntos +10' : 'Fizemos juntos?'}
+                    <Icon name="heart" size={13} /> {c.together ? 'Juntos +10' : 'Fizemos juntos?'}
                   </button>
                   <button className="link-btn" disabled={busy} onClick={() => proveChallenge(c.category, c.together)}>trocar foto</button>
                   <button className="link-btn danger" disabled={busy} onClick={() => removeChallenge(c.category)}>desfazer</button>
                 </div>
               ) : (
                 <div className="challenge-actions">
-                  <button className="btn btn-primary small-btn" disabled={busy} onClick={() => proveChallenge(c.category)}>
-                    📷 Provar e concluir
+                  <button className="btn btn-primary small-btn icon-btn" disabled={busy} onClick={() => proveChallenge(c.category)}>
+                    <Icon name="camera" size={15} /> Provar e concluir
                   </button>
                   {today.rerolls_left > 0 && (
-                    <button className="btn ghost small-btn" disabled={busy} onClick={() => rerollChallenge(c.category)}>
-                      🔁 Trocar
+                    <button className="btn ghost small-btn icon-btn" disabled={busy} onClick={() => rerollChallenge(c.category)}>
+                      <Icon name="refresh" size={14} /> Trocar
                     </button>
                   )}
                 </div>
@@ -274,14 +275,14 @@ export default function Home() {
           ))}
         </div>
         {today.completed && (
-          <div className="perfect-banner">⚖️ Todas as áreas fechadas! +{today.balance_bonus} de bônus</div>
+          <div className="perfect-banner"><Icon name="scale" size={15} /> Todas as áreas fechadas! +{today.balance_bonus} de bônus</div>
         )}
       </section>
 
       {/* Atividades em dupla */}
       <section className="card">
         <div className="card-title">
-          💞 Atividades em dupla <span className="muted small">(+{joint.points_each} pra cada)</span>
+          Atividades em dupla <span className="muted small">(+{joint.points_each} pra cada)</span>
         </div>
         <p className="muted xsmall proof-note">Fizeram algo juntos além dos desafios? Registrem — os dois pontuam.</p>
 
@@ -333,7 +334,7 @@ export default function Home() {
             onChange={(e) => setJointForm({ ...jointForm, label: e.target.value })}
             onKeyDown={(e) => e.key === 'Enter' && addJoint()}
           />
-          <button className="chat-attach" title="Foto (opcional)" onClick={attachJointPhoto}>📷</button>
+          <button className="chat-attach" title="Foto (opcional)" onClick={attachJointPhoto}><Icon name="camera" size={17} /></button>
         </div>
         {jointPhoto && (
           <div className="chat-preview">
@@ -341,8 +342,8 @@ export default function Home() {
             <button className="chat-preview-x" onClick={() => setJointPhoto(null)}>✕</button>
           </div>
         )}
-        <button className="btn full btn-primary small-btn" disabled={busy || !jointForm.label.trim()} onClick={addJoint}>
-          + Registrar atividade em dupla
+        <button className="btn full btn-primary small-btn icon-btn" disabled={busy || !jointForm.label.trim()} onClick={addJoint}>
+          <Icon name="plus" size={15} /> Registrar atividade em dupla
         </button>
       </section>
 
@@ -368,7 +369,7 @@ export default function Home() {
             )
           })}
         </div>
-        {today.perfect && <div className="perfect-banner">⭐ Dia perfeito! +{today.perfect_bonus} de bônus</div>}
+        {today.perfect && <div className="perfect-banner"><Icon name="star" size={15} /> Dia perfeito! +{today.perfect_bonus} de bônus</div>}
       </section>
 
       {zoom && (

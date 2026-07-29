@@ -556,3 +556,17 @@ input[type='range'] { width: 100%; accent-color: var(--accent); height: 24px; }
 .lightbox-inner { max-width: 92vw; max-height: 88vh; display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .lightbox-inner img { max-width: 92vw; max-height: 78vh; border-radius: 10px; object-fit: contain; }
 .lightbox-cap { color: #e6e8ec; font-size: 13px; text-align: center; }
+
+/* Ícones SVG (alinhamento) ------------------------------------------------ */
+.ico { display: inline-block; vertical-align: -0.15em; flex-shrink: 0; }
+.icon-btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
+.tag { display: inline-flex; align-items: center; gap: 5px; }
+.streak-chip { display: inline-flex; align-items: center; gap: 5px; }
+.challenge-ok { display: inline-flex; align-items: center; gap: 5px; color: var(--green); font-weight: 700; }
+.together-btn { display: inline-flex; align-items: center; gap: 5px; }
+.perfect-banner { display: flex; align-items: center; justify-content: center; gap: 7px; }
+.motd-icon { color: var(--accent-text); display: flex; }
+.area-ring-circle { color: var(--muted); }
+.area-ring-circle.done { color: #fff; }
+.area-ring-streak { display: inline-flex; align-items: center; gap: 3px; justify-content: center; }
+.chat-send .ico { vertical-align: middle; }

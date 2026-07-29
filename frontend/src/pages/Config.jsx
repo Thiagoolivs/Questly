@@ -84,7 +84,7 @@ export default function Config() {
   return (
     <div className="screen">
       <header className="topbar">
-        <div className="brand"><span className="brand-mark">⚙️</span> Configurações</div>
+        <div className="brand">Configurações</div>
       </header>
 
       <section className="card">
@@ -104,22 +104,22 @@ export default function Config() {
 
       <section className="card">
         <div className="card-title">Metas diárias</div>
-        <label className="field row"><span>💧 Água (L)</span>
+        <label className="field row"><span>Água (L)</span>
           <input type="number" step="0.1" value={s.water_goal_l} onChange={(e) => set({ water_goal_l: e.target.value })} /></label>
-        <label className="field row"><span>🚶 Passos</span>
+        <label className="field row"><span>Passos</span>
           <input type="number" value={s.steps_goal} onChange={(e) => set({ steps_goal: e.target.value })} /></label>
-        <label className="field row"><span>🥩 Proteína (g)</span>
+        <label className="field row"><span>Proteína (g)</span>
           <input type="number" value={s.protein_goal_g} onChange={(e) => set({ protein_goal_g: e.target.value })} /></label>
-        <label className="field row"><span>🔥 Calorias</span>
+        <label className="field row"><span>Calorias</span>
           <input type="number" value={s.calories_goal} onChange={(e) => set({ calories_goal: e.target.value })} /></label>
-        <label className="field row"><span>😴 Sono (h)</span>
+        <label className="field row"><span>Sono (h)</span>
           <input type="number" step="0.5" value={s.sleep_goal_h} onChange={(e) => set({ sleep_goal_h: e.target.value })} /></label>
       </section>
 
       <section className="card">
         <div className="row between">
           <div>
-            <div className="card-title no-margin">🙏 Área espiritual</div>
+            <div className="card-title no-margin">Área espiritual</div>
             <div className="muted small">Inclui a área espiritual nos desafios do dia.</div>
           </div>
           <button

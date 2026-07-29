@@ -35,7 +35,7 @@ export default function Auth() {
     <div className="auth-screen">
       <div className="auth-card">
         <div className="auth-brand">
-          <span className="brand-mark">🎯</span> Questly
+          Questly
         </div>
         <p className="muted small auth-sub">Evolução em dupla (ou em grupo), com constância.</p>
 
