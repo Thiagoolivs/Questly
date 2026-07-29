@@ -8,7 +8,9 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['icon.svg'],
+      includeAssets: ['icon.svg', 'push-handlers.js'],
+      // Injeta nossos handlers de push/clique no service worker gerado.
+      workbox: { importScripts: ['/push-handlers.js'] },
       manifest: {
         name: 'Questly — Desafio de Evolução',
         short_name: 'Questly',

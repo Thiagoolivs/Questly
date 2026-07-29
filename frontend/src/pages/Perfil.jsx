@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useApp } from '../store.jsx'
 import { pickImage, fileToCompressedDataURL } from '../utils/image.js'
+import { getPushState, enablePush, disablePush } from '../utils/push.js'
 
 const AVATARS = ['🦊', '🐨', '🐼', '🦁', '🐯', '🐸', '🐵', '🦉', '🔥', '⚡', '🌟', '💜']
 
@@ -10,6 +11,24 @@ export default function Perfil() {
   const [saved, setSaved] = useState(false)
   const [copied, setCopied] = useState(false)
   const [photoBusy, setPhotoBusy] = useState(false)
+  const [pushState, setPushState] = useState('off')
+  const [pushBusy, setPushBusy] = useState(false)
+
+  useEffect(() => {
+    getPushState().then(setPushState).catch(() => setPushState('off'))
+  }, [])
+
+  async function togglePush() {
+    if (pushBusy) return
+    setPushBusy(true)
+    try {
+      setPushState(pushState === 'on' ? await disablePush() : await enablePush())
+    } catch (e) {
+      alert(e.message)
+    } finally {
+      setPushBusy(false)
+    }
+  }
 
   useEffect(() => {
     if (user)
@@ -188,6 +207,32 @@ export default function Perfil() {
         <button className="btn ghost full" onClick={() => selectGroup(null)}>
           Criar / entrar em outro grupo
         </button>
+      </section>
+
+      {/* Notificações push */}
+      <section className="card">
+        <div className="row between">
+          <div>
+            <div className="card-title no-margin">🔔 Notificações</div>
+            <div className="muted small">
+              {pushState === 'denied'
+                ? 'Bloqueadas no navegador — libere nas permissões do site.'
+                : pushState === 'unsupported'
+                ? 'Não suportadas neste navegador.'
+                : 'Lembretes do dia, avisos do par e do chat.'}
+            </div>
+          </div>
+          {pushState !== 'unsupported' && pushState !== 'denied' && (
+            <button
+              className={'toggle ' + (pushState === 'on' ? 'on' : '')}
+              onClick={togglePush}
+              disabled={pushBusy}
+              aria-pressed={pushState === 'on'}
+            >
+              <span className="knob" />
+            </button>
+          )}
+        </div>
       </section>
 
       {stats.length > 0 && (

@@ -4,5 +4,7 @@ SQLAlchemy==2.0.31
 pydantic==2.8.2
 # Tokens JWT (puro Python, sem dependência nativa).
 PyJWT==2.9.0
+# Web Push (notificações). Puxa cryptography (com wheels) e py-vapid/http-ece.
+pywebpush==2.3.0
 # Necessário apenas quando DATABASE_URL (Postgres) estiver definido — ex: Railway.
 psycopg[binary]==3.2.1

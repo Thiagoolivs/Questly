@@ -1,7 +1,8 @@
 """API do Questly (FastAPI) — multi-tenant com auth e grupos (Fase 1)."""
+import asyncio
 import os
 import re
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException
@@ -17,9 +18,19 @@ from .auth import (
     hash_password,
     verify_password,
 )
+from . import push as pushmod
 from .data import CATEGORY_EMOJI, DEFAULT_HABITS, HABITS_MENU, JOINT_SUGGESTIONS, MOODS
-from .database import get_db
-from .models import DayEntry, Group, JointActivity, Membership, Message, Settings, User
+from .database import SessionLocal, get_db
+from .models import (
+    DayEntry,
+    Group,
+    JointActivity,
+    Membership,
+    Message,
+    PushSubscription,
+    Settings,
+    User,
+)
 from .schemas import (
     ChallengeProofRequest,
     GroupCreate,
@@ -28,6 +39,7 @@ from .schemas import (
     LoginRequest,
     MessageCreate,
     MoodRequest,
+    PushSubscribe,
     RegisterRequest,
     RerollRequest,
     SettingsUpdate,
@@ -52,6 +64,53 @@ app.add_middleware(
 )
 
 init_db()
+
+# Horas (UTC) em que o lembrete diário dispara. Padrão ≈ 9h e 20h no horário de
+# Brasília (UTC-3). Ajuste com a variável REMINDER_HOURS (ex: "12,23").
+REMINDER_HOURS = {
+    int(h) for h in os.getenv("REMINDER_HOURS", "12,23").split(",") if h.strip().isdigit()
+}
+
+
+def _run_daily_reminders() -> None:
+    """Manda um push de lembrete para todo usuário inscrito (best-effort)."""
+    if not pushmod.push_enabled():
+        return
+    db = SessionLocal()
+    try:
+        user_ids = {row.user_id for row in db.query(PushSubscription).all()}
+        for uid in user_ids:
+            pushmod.send_to_user(
+                db, uid,
+                "Questly 🎯",
+                "Bora fechar o dia? Seus desafios de hoje te esperam. 💪",
+                "/",
+            )
+    finally:
+        db.close()
+
+
+async def _reminder_loop() -> None:
+    fired: set[tuple[str, int]] = set()
+    while True:
+        try:
+            now = datetime.utcnow()
+            key = (now.date().isoformat(), now.hour)
+            if now.hour in REMINDER_HOURS and now.minute < 5 and key not in fired:
+                fired.add(key)
+                if len(fired) > 100:
+                    fired.clear()
+                    fired.add(key)
+                await asyncio.to_thread(_run_daily_reminders)
+        except Exception:
+            pass
+        await asyncio.sleep(60)
+
+
+@app.on_event("startup")
+async def _start_reminders() -> None:
+    if pushmod.push_enabled() and REMINDER_HOURS:
+        asyncio.create_task(_reminder_loop())
 
 
 # --- helpers genéricos -----------------------------------------------------
@@ -205,6 +264,21 @@ def serialize_message(m: Message, members_by_id: dict) -> dict:
     }
 
 
+def notify_group_others(db: Session, group_id: int, actor_user_id: int, title: str, body: str, url: str = "/") -> None:
+    """Envia push para os demais membros do grupo (menos quem disparou a ação)."""
+    if not pushmod.push_enabled():
+        return
+    rows = db.query(Membership).filter(Membership.group_id == group_id).all()
+    for uid in {m.user_id for m in rows if m.user_id != actor_user_id}:
+        pushmod.send_to_user(db, uid, title, body, url)
+
+
+def post_auto_message(db: Session, group_id: int, membership: Membership, text: str) -> None:
+    """Publica uma mensagem automática no chat do grupo (aviso de conclusão)."""
+    db.add(Message(group_id=group_id, membership_id=membership.id, text=text, image=None))
+    db.commit()
+
+
 def settings_public(s: Settings) -> dict:
     return {
         "start_date": s.start_date.isoformat(),
@@ -226,6 +300,39 @@ def settings_public(s: Settings) -> dict:
 @app.get("/api/health")
 def health():
     return {"status": "ok"}
+
+
+# --- rotas: push -----------------------------------------------------------
+@app.get("/api/push/key")
+def push_key():
+    return {"enabled": pushmod.push_enabled(), "public_key": pushmod.VAPID_PUBLIC_KEY}
+
+
+@app.post("/api/push/subscribe")
+def push_subscribe(payload: PushSubscribe, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    existing = db.query(PushSubscription).filter(PushSubscription.endpoint == payload.endpoint).first()
+    if existing:
+        existing.user_id = user.id
+        existing.p256dh = payload.keys.p256dh
+        existing.auth = payload.keys.auth
+    else:
+        db.add(PushSubscription(
+            user_id=user.id,
+            endpoint=payload.endpoint,
+            p256dh=payload.keys.p256dh,
+            auth=payload.keys.auth,
+        ))
+    db.commit()
+    return {"ok": True}
+
+
+@app.post("/api/push/unsubscribe")
+def push_unsubscribe(payload: PushSubscribe, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    db.query(PushSubscription).filter(
+        PushSubscription.endpoint == payload.endpoint, PushSubscription.user_id == user.id
+    ).delete()
+    db.commit()
+    return {"ok": True}
 
 
 # --- rotas: auth -----------------------------------------------------------
@@ -432,6 +539,7 @@ def set_challenge(gid: int, req: ChallengeProofRequest, user: User = Depends(get
         raise HTTPException(400, "Área inválida.")
     d = parse_date(req.date)
     entry = get_or_create_entry(db, membership, d)
+    was_done = bool((entry.challenge_proofs or {}).get(req.category))
     proofs = dict(entry.challenge_proofs or {})
     together = dict(entry.challenge_together or {})
     if req.image:
@@ -445,7 +553,16 @@ def set_challenge(gid: int, req: ChallengeProofRequest, user: User = Depends(get
         together.pop(req.category, None)
     entry.challenge_proofs = proofs
     entry.challenge_together = together
-    return _day_result(db, s, membership, entry, d)
+    result = _day_result(db, s, membership, entry, d)
+
+    # Recém-concluído hoje → avisa o parceiro (chat automático + push).
+    if req.image and not was_done and d == date.today():
+        emoji = CATEGORY_EMOJI.get(req.category, "🎯")
+        extra = " (juntos 💞)" if req.together else ""
+        text = f"{emoji} {membership.user.name} fechou o desafio de {req.category}!{extra}"
+        post_auto_message(db, gid, membership, text)
+        notify_group_others(db, gid, membership.user_id, membership.group.name, text, "/")
+    return result
 
 
 @app.post("/api/groups/{gid}/day/reroll")
@@ -519,6 +636,10 @@ def create_joint(gid: int, payload: JointActivityCreate, user: User = Depends(ge
     db.add(a)
     db.commit()
     db.refresh(a)
+    if d == date.today():
+        text = f"💞 {membership.user.name} registrou em dupla: {a.emoji} {a.label} (+{a.points} pra vocês!)"
+        post_auto_message(db, gid, membership, text)
+        notify_group_others(db, gid, membership.user_id, membership.group.name, text, "/")
     return serialize_joint(a, {membership.id: membership})
 
 
@@ -555,6 +676,8 @@ def create_message(gid: int, payload: MessageCreate, user: User = Depends(get_cu
     db.add(m)
     db.commit()
     db.refresh(m)
+    preview = m.text if m.text else "📷 Foto"
+    notify_group_others(db, gid, membership.user_id, f"💬 {membership.user.name}", preview[:120], "/chat")
     return serialize_message(m, {membership.id: membership})
 
 
