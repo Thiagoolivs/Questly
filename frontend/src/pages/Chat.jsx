@@ -3,6 +3,7 @@ import { useApp } from '../store.jsx'
 import { api } from '../api.js'
 import { pickImage, fileToCompressedDataURL } from '../utils/image.js'
 import Avatar from '../components/Avatar.jsx'
+import Icon from '../components/Icon.jsx'
 
 function timeLabel(iso) {
   const d = new Date(iso)
@@ -79,13 +80,13 @@ export default function Chat() {
   return (
     <div className="chat-screen">
       <header className="topbar chat-topbar">
-        <div className="brand"><span className="brand-mark">💬</span> Chat</div>
+        <div className="brand">Chat</div>
       </header>
 
       <div className="chat-log">
         {messages.length === 0 && (
           <p className="muted small center" style={{ marginTop: 24 }}>
-            Sem mensagens ainda. Manda a primeira (e a foto da comprovação 📷).
+            Sem mensagens ainda. Manda a primeira.
           </p>
         )}
         {messages.map((m) => {
@@ -115,7 +116,7 @@ export default function Chat() {
           </div>
         )}
         <div className="chat-row">
-          <button className="chat-attach" onClick={attach} title="Anexar foto">📷</button>
+          <button className="chat-attach" onClick={attach} title="Anexar foto"><Icon name="camera" size={19} /></button>
           <input
             className="chat-field"
             placeholder="Mensagem…"
@@ -123,7 +124,7 @@ export default function Chat() {
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && send()}
           />
-          <button className="chat-send" onClick={send} disabled={sending}>➤</button>
+          <button className="chat-send" onClick={send} disabled={sending}><Icon name="arrowRight" size={18} /></button>
         </div>
       </div>
     </div>

@@ -22,7 +22,7 @@ export default function Conquistas() {
   return (
     <div className="screen">
       <header className="topbar">
-        <div className="brand"><span className="brand-mark">🏅</span> Conquistas</div>
+        <div className="brand">Conquistas</div>
         <div className="streak-chip">{unlocked}/{list.length}</div>
       </header>
       <PlayerSwitch />

@@ -4,6 +4,7 @@ import { useApp } from '../store.jsx'
 import { api } from '../api.js'
 import PlayerSwitch from '../components/PlayerSwitch.jsx'
 import RadarChart, { RADAR_COLORS } from '../components/RadarChart.jsx'
+import Icon from '../components/Icon.jsx'
 
 const WEEKDAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 
@@ -42,11 +43,11 @@ export default function Historico() {
   return (
     <div className="screen">
       <header className="topbar">
-        <div className="brand"><span className="brand-mark">📅</span> Histórico</div>
+        <div className="brand">Histórico</div>
       </header>
       <PlayerSwitch />
 
-      <Link to="/mural" className="btn ghost full config-link">🖼️ Mural de fotos &amp; retrospectiva</Link>
+      <Link to="/mural" className="btn ghost full config-link icon-btn"><Icon name="image" size={15} /> Mural de fotos &amp; retrospectiva</Link>
 
       {/* Radar por área */}
       {radar && radar.members.length > 0 && (

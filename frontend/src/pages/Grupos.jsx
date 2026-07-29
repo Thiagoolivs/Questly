@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useApp } from '../store.jsx'
 import { api } from '../api.js'
+import Icon from '../components/Icon.jsx'
 
 // Tela de escolha/criação de grupo (mostrada quando o usuário ainda não tem
 // grupo selecionado). Um "casal" é só um grupo de 2 pessoas.
@@ -33,7 +34,7 @@ export default function Grupos() {
   return (
     <div className="auth-screen">
       <div className="auth-card">
-        <div className="auth-brand"><span className="brand-mark">👥</span> Seus grupos</div>
+        <div className="auth-brand">Seus grupos</div>
         <p className="muted small auth-sub">
           Olá, {user?.name || 'você'}! Crie um grupo e convide seu par, ou entre com um código.
         </p>
@@ -42,12 +43,12 @@ export default function Grupos() {
           <div className="group-list">
             {groups.map((g) => (
               <button key={g.id} className="group-row" onClick={() => selectGroup(g.id)}>
-                <span className="group-emoji">👥</span>
+                <span className="group-emoji"><Icon name="users" size={18} /></span>
                 <span className="group-main">
                   <span className="group-name">{g.name}</span>
                   <span className="muted xsmall">{g.member_count} membro(s) · {g.role === 'owner' ? 'dono' : 'membro'}</span>
                 </span>
-                <span className="group-go">→</span>
+                <span className="group-go"><Icon name="chevronRight" size={16} /></span>
               </button>
             ))}
           </div>
