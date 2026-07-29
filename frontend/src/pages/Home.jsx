@@ -2,11 +2,10 @@ import { useState } from 'react'
 import { useApp } from '../store.jsx'
 import { api } from '../api.js'
 import { pickImage, fileToCompressedDataURL } from '../utils/image.js'
-import PlayerSwitch from '../components/PlayerSwitch.jsx'
 import ProgressRing from '../components/ProgressRing.jsx'
 
 export default function Home() {
-  const { state, me, playerId, refresh, loading, error } = useApp()
+  const { state, me, groupId, refresh, loading, error } = useApp()
   const [busy, setBusy] = useState(false)
   const [zoom, setZoom] = useState(null)
 
@@ -48,15 +47,15 @@ export default function Home() {
     }
   }
 
-  const toggle = (body) => run(() => api.toggle(playerId, { date: state.date, ...body }))
+  const toggle = (body) => run(() => api.toggle(groupId, { date: state.date, ...body }))
   const setMood = (key) =>
-    run(() => api.setMood(playerId, { date: state.date, mood: today.mood === key ? null : key }))
-  const removeProof = (type) => run(() => api.setProof(playerId, { date: state.date, type, image: null }))
+    run(() => api.setMood(groupId, { date: state.date, mood: today.mood === key ? null : key }))
+  const removeProof = (type) => run(() => api.setProof(groupId, { date: state.date, type, image: null }))
   async function attachProof(type) {
     const f = await pickImage()
     if (!f) return
     const image = await fileToCompressedDataURL(f)
-    await run(() => api.setProof(playerId, { date: state.date, type, image }))
+    await run(() => api.setProof(groupId, { date: state.date, type, image }))
   }
 
   const someoneLeads =
@@ -85,7 +84,7 @@ export default function Home() {
     <div className="screen">
       <header className="topbar">
         <div>
-          <div className="brand"><span className="brand-mark">🎯</span> Questly</div>
+          <div className="brand"><span className="brand-mark">🎯</span> {state.group?.name || 'Questly'}</div>
           <div className="muted small">
             Dia {state.day_number} de {state.duration_days} ·{' '}
             {new Date(state.date + 'T00:00').toLocaleDateString('pt-BR', {
@@ -104,8 +103,6 @@ export default function Home() {
           <div className="motd-text">{state.motd}</div>
         </div>
       </section>
-
-      <PlayerSwitch />
 
       {/* Incentivo / lembrete */}
       {me.nudge && <div className="nudge">{me.nudge.emoji} {me.nudge.text}</div>}

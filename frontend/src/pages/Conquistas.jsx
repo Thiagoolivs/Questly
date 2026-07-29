@@ -4,15 +4,15 @@ import { api } from '../api.js'
 import PlayerSwitch from '../components/PlayerSwitch.jsx'
 
 export default function Conquistas() {
-  const { playerId } = useApp()
+  const { groupId, viewId } = useApp()
   const [list, setList] = useState(null)
   const [err, setErr] = useState(null)
 
   useEffect(() => {
-    if (!playerId) return
+    if (!groupId || !viewId) return
     setList(null)
-    api.achievements(playerId).then((d) => setList(d.achievements)).catch((e) => setErr(e.message))
-  }, [playerId])
+    api.achievements(groupId, viewId).then((d) => setList(d.achievements)).catch((e) => setErr(e.message))
+  }, [groupId, viewId])
 
   if (err) return <div className="screen center error">{err}</div>
   if (!list) return <div className="screen center muted">Carregando…</div>

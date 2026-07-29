@@ -6,7 +6,7 @@ const WEEKDAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 const DURATIONS = [30, 60, 75, 90]
 
 export default function Config() {
-  const { refresh } = useApp()
+  const { groupId, refresh } = useApp()
   const [s, setS] = useState(null)
   const [menu, setMenu] = useState([])
   const [selected, setSelected] = useState(new Set())
@@ -14,14 +14,15 @@ export default function Config() {
   const [err, setErr] = useState(null)
 
   useEffect(() => {
-    api.settings()
+    if (!groupId) return
+    api.settings(groupId)
       .then((d) => {
         setS(d)
         setMenu(d.habits_menu || [])
         setSelected(new Set((d.fixed_habits || []).map((h) => h.key)))
       })
       .catch((e) => setErr(e.message))
-  }, [])
+  }, [groupId])
 
   if (err) return <div className="screen center error">{err}</div>
   if (!s) return <div className="screen center muted">Carregando…</div>
@@ -40,7 +41,7 @@ export default function Config() {
 
   async function save() {
     const fixed_habits = menu.filter((h) => selected.has(h.key))
-    await api.updateSettings({
+    await api.updateSettings(groupId, {
       duration_days: Number(s.duration_days),
       water_goal_l: Number(s.water_goal_l),
       steps_goal: Number(s.steps_goal),

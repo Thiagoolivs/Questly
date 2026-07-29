@@ -3,36 +3,75 @@
 // o padrão aponta para o backend local. VITE_API_URL sobrescreve quando definido.
 const BASE = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : '')
 
-async function req(path, options = {}) {
+const TOKEN_KEY = 'questly.token'
+let TOKEN = localStorage.getItem(TOKEN_KEY) || null
+let onAuthFail = null
+
+export function setToken(t) {
+  TOKEN = t || null
+  if (t) localStorage.setItem(TOKEN_KEY, t)
+  else localStorage.removeItem(TOKEN_KEY)
+}
+export const getToken = () => TOKEN
+export function setOnAuthFail(fn) {
+  onAuthFail = fn
+}
+
+async function req(path, { method = 'GET', body, auth = true } = {}) {
+  const headers = { 'Content-Type': 'application/json' }
+  if (auth && TOKEN) headers.Authorization = `Bearer ${TOKEN}`
   const res = await fetch(BASE + path, {
-    headers: { 'Content-Type': 'application/json' },
-    ...options,
+    method,
+    headers,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
   })
   if (!res.ok) {
     const detail = await res.text().catch(() => '')
-    throw new Error(`HTTP ${res.status} — ${detail}`)
+    if (res.status === 401 && auth && onAuthFail) onAuthFail()
+    const err = new Error(prettyError(res.status, detail))
+    err.status = res.status
+    throw err
   }
   return res.json()
+}
+
+// Extrai a mensagem "detail" do FastAPI, quando houver.
+function prettyError(status, raw) {
+  try {
+    const j = JSON.parse(raw)
+    if (typeof j.detail === 'string') return j.detail
+  } catch {
+    /* ignore */
+  }
+  return `HTTP ${status}${raw ? ' — ' + raw : ''}`
 }
 
 const qs = (day) => (day ? `?day=${encodeURIComponent(day)}` : '')
 
 export const api = {
   BASE,
-  state: () => req('/api/state'),
-  settings: () => req('/api/settings'),
-  updateSettings: (body) => req('/api/settings', { method: 'PUT', body: JSON.stringify(body) }),
-  players: () => req('/api/players'),
-  player: (id) => req(`/api/players/${id}`),
-  updatePlayer: (id, body) => req(`/api/players/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
-  day: (id, day) => req(`/api/day/${id}${qs(day)}`),
-  toggle: (id, body) => req(`/api/day/${id}/toggle`, { method: 'POST', body: JSON.stringify(body) }),
-  setMood: (id, body) => req(`/api/day/${id}/mood`, { method: 'POST', body: JSON.stringify(body) }),
-  setProof: (id, body) => req(`/api/day/${id}/proof`, { method: 'POST', body: JSON.stringify(body) }),
-  history: (id) => req(`/api/history/${id}`),
-  achievements: (id) => req(`/api/achievements/${id}`),
-  ranking: () => req('/api/ranking'),
-  challengesToday: (day) => req(`/api/challenges/today${qs(day)}`),
-  messages: (afterId = 0) => req(`/api/messages${afterId ? `?after_id=${afterId}` : ''}`),
-  sendMessage: (body) => req('/api/messages', { method: 'POST', body: JSON.stringify(body) }),
+  // --- auth ---
+  register: (b) => req('/api/auth/register', { method: 'POST', body: b, auth: false }),
+  login: (b) => req('/api/auth/login', { method: 'POST', body: b, auth: false }),
+  me: () => req('/api/auth/me'),
+  updateMe: (b) => req('/api/users/me', { method: 'PUT', body: b }),
+  // --- grupos ---
+  groups: () => req('/api/groups'),
+  createGroup: (b) => req('/api/groups', { method: 'POST', body: b }),
+  joinGroup: (b) => req('/api/groups/join', { method: 'POST', body: b }),
+  // --- por grupo ---
+  state: (g) => req(`/api/groups/${g}/state`),
+  settings: (g) => req(`/api/groups/${g}/settings`),
+  updateSettings: (g, b) => req(`/api/groups/${g}/settings`, { method: 'PUT', body: b }),
+  member: (g, mid) => req(`/api/groups/${g}/members/${mid}`),
+  day: (g, mid, day) => req(`/api/groups/${g}/day/${mid}${qs(day)}`),
+  toggle: (g, b) => req(`/api/groups/${g}/day/toggle`, { method: 'POST', body: b }),
+  setMood: (g, b) => req(`/api/groups/${g}/day/mood`, { method: 'POST', body: b }),
+  setProof: (g, b) => req(`/api/groups/${g}/day/proof`, { method: 'POST', body: b }),
+  history: (g, mid) => req(`/api/groups/${g}/history/${mid}`),
+  achievements: (g, mid) => req(`/api/groups/${g}/achievements/${mid}`),
+  ranking: (g) => req(`/api/groups/${g}/ranking`),
+  challengesToday: (g, day) => req(`/api/groups/${g}/challenges/today${qs(day)}`),
+  messages: (g, afterId = 0) => req(`/api/groups/${g}/messages${afterId ? `?after_id=${afterId}` : ''}`),
+  sendMessage: (g, b) => req(`/api/groups/${g}/messages`, { method: 'POST', body: b }),
 }

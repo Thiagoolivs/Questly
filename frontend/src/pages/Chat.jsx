@@ -2,7 +2,6 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useApp } from '../store.jsx'
 import { api } from '../api.js'
 import { pickImage, fileToCompressedDataURL } from '../utils/image.js'
-import PlayerSwitch from '../components/PlayerSwitch.jsx'
 
 function timeLabel(iso) {
   const d = new Date(iso)
@@ -10,7 +9,7 @@ function timeLabel(iso) {
 }
 
 export default function Chat() {
-  const { playerId, loading } = useApp()
+  const { groupId, myId, loading } = useApp()
   const [messages, setMessages] = useState([])
   const [text, setText] = useState('')
   const [pending, setPending] = useState(null)
@@ -30,18 +29,20 @@ export default function Chat() {
   }, [])
 
   useEffect(() => {
-    api.messages()
+    if (!groupId) return
+    api.messages(groupId)
       .then((d) => merge(d.messages))
       .catch((e) => setErr(e.message))
-  }, [merge])
+  }, [merge, groupId])
 
   // polling leve para chegar perto de tempo real
   useEffect(() => {
+    if (!groupId) return
     const t = setInterval(() => {
-      api.messages(lastIdRef.current).then((d) => merge(d.messages)).catch(() => {})
+      api.messages(groupId, lastIdRef.current).then((d) => merge(d.messages)).catch(() => {})
     }, 5000)
     return () => clearInterval(t)
-  }, [merge])
+  }, [merge, groupId])
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -61,7 +62,7 @@ export default function Chat() {
     if (sending || (!text.trim() && !pending)) return
     setSending(true)
     try {
-      const msg = await api.sendMessage({ player_id: playerId, text, image: pending })
+      const msg = await api.sendMessage(groupId, { text, image: pending })
       merge([msg])
       setText('')
       setPending(null)
@@ -79,7 +80,6 @@ export default function Chat() {
       <header className="topbar chat-topbar">
         <div className="brand"><span className="brand-mark">💬</span> Chat</div>
       </header>
-      <div className="chat-switch"><PlayerSwitch /></div>
 
       <div className="chat-log">
         {messages.length === 0 && (
@@ -88,7 +88,7 @@ export default function Chat() {
           </p>
         )}
         {messages.map((m) => {
-          const mine = m.player_id === playerId
+          const mine = m.player_id === myId
           return (
             <div key={m.id} className={'chat-msg ' + (mine ? 'me' : 'them')}>
               {!mine && <div className="chat-av">{m.avatar}</div>}
