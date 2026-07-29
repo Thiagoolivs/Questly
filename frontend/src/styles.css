@@ -585,3 +585,10 @@ input[type='range'] { width: 100%; accent-color: var(--accent); height: 24px; }
   display: grid; place-items: center; color: var(--muted);
   background: var(--card2); border: 1px solid var(--border);
 }
+
+/* Metas mensais (card fixo no topo) --------------------------------------- */
+.goal-card { border-color: var(--accent); }
+.goal-card.goal-done { border-color: var(--green); }
+.goal-title { font-weight: 700; font-size: 15px; display: inline-flex; align-items: center; gap: 7px; }
+.goal-emoji { font-size: 17px; }
+.new-goal-btn { border-style: dashed; }

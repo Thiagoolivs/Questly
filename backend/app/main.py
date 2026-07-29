@@ -24,6 +24,8 @@ from .database import SessionLocal, get_db
 from .models import (
     Activity,
     DayEntry,
+    Goal,
+    GoalCheckin,
     Group,
     JointActivity,
     Membership,
@@ -34,6 +36,8 @@ from .models import (
 )
 from .schemas import (
     ChallengeProofRequest,
+    GoalCheckinRequest,
+    GoalCreate,
     GroupCreate,
     GroupJoin,
     HabitPhotoRequest,
@@ -695,6 +699,116 @@ def delete_joint(gid: int, aid: int, user: User = Depends(get_current_user), db:
     return {"ok": True}
 
 
+# --- rotas: grupo (metas mensais) ------------------------------------------
+def _goal_member_progress(db: Session, goal: Goal, membership: Membership, today: date) -> dict:
+    dates = {
+        c.date
+        for c in db.query(GoalCheckin).filter(
+            GoalCheckin.goal_id == goal.id, GoalCheckin.membership_id == membership.id
+        ).all()
+    }
+    window_end = goal.start_date + timedelta(days=goal.duration_days)
+    count = sum(1 for d in dates if goal.start_date <= d < window_end)
+    i = today if today in dates else today - timedelta(days=1)
+    streak = 0
+    while i in dates and i >= goal.start_date:
+        streak += 1
+        i -= timedelta(days=1)
+    return {
+        "membership_id": membership.id,
+        "name": membership.user.name,
+        "count": count,
+        "streak": streak,
+        "done": count >= goal.duration_days,
+        "checked_today": today in dates,
+    }
+
+
+def serialize_goal(db: Session, goal: Goal, members: list[Membership], me: Membership, today: date) -> dict:
+    elapsed = (today - goal.start_date).days + 1
+    progress = [_goal_member_progress(db, goal, m, today) for m in members]
+    mine = next((p for p in progress if p["membership_id"] == me.id), None)
+    return {
+        "id": goal.id,
+        "title": goal.title,
+        "emoji": goal.emoji,
+        "icon": goal.icon,
+        "duration_days": goal.duration_days,
+        "start_date": goal.start_date.isoformat(),
+        "day_index": min(max(1, elapsed), goal.duration_days),
+        "days_left": max(0, goal.duration_days - elapsed),
+        "ended": elapsed > goal.duration_days,
+        "members": progress,
+        "me": mine,
+    }
+
+
+def active_goals(db: Session, gid: int) -> list[Goal]:
+    return (
+        db.query(Goal)
+        .filter(Goal.group_id == gid, Goal.active == True)  # noqa: E712
+        .order_by(Goal.id)
+        .all()
+    )
+
+
+@app.get("/api/groups/{gid}/goals")
+def list_goals(gid: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    me = get_membership(db, user, gid)
+    members = group_members(db, gid)
+    today = date.today()
+    return {"goals": [serialize_goal(db, g, members, me, today) for g in active_goals(db, gid)]}
+
+
+@app.post("/api/groups/{gid}/goals")
+def create_goal(gid: int, payload: GoalCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    me = get_membership(db, user, gid)
+    goal = Goal(
+        group_id=gid,
+        title=payload.title.strip(),
+        emoji=(payload.emoji or "🎯").strip() or "🎯",
+        icon=payload.icon,
+        start_date=date.today(),
+        duration_days=payload.duration_days,
+        created_by=me.id,
+    )
+    db.add(goal)
+    db.commit()
+    db.refresh(goal)
+    return serialize_goal(db, goal, group_members(db, gid), me, date.today())
+
+
+@app.post("/api/groups/{gid}/goals/{goal_id}/checkin")
+def goal_checkin(gid: int, goal_id: int, req: GoalCheckinRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    me = get_membership(db, user, gid)
+    goal = db.get(Goal, goal_id)
+    if goal is None or goal.group_id != gid:
+        raise HTTPException(404, "Meta não encontrada.")
+    d = parse_date(req.date)
+    existing = (
+        db.query(GoalCheckin)
+        .filter(GoalCheckin.goal_id == goal_id, GoalCheckin.membership_id == me.id, GoalCheckin.date == d)
+        .first()
+    )
+    if existing:
+        db.delete(existing)
+    else:
+        db.add(GoalCheckin(goal_id=goal_id, membership_id=me.id, date=d))
+    db.commit()
+    return serialize_goal(db, goal, group_members(db, gid), me, date.today())
+
+
+@app.delete("/api/groups/{gid}/goals/{goal_id}")
+def end_goal(gid: int, goal_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    get_membership(db, user, gid)
+    goal = db.get(Goal, goal_id)
+    if goal is None or goal.group_id != gid:
+        raise HTTPException(404, "Meta não encontrada.")
+    goal.active = False
+    db.commit()
+    return {"ok": True}
+
+
 # --- rotas: grupo (chat) ---------------------------------------------------
 @app.get("/api/groups/{gid}/messages")
 def list_messages(gid: int, after_id: int = 0, limit: int = 200, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -954,6 +1068,7 @@ def state(gid: int, user: User = Depends(get_current_user), db: Session = Depend
             "suggestions": JOINT_SUGGESTIONS,
         },
         "activities": [serialize_activity(a, members_by_id) for a in recent_activities],
+        "goals": [serialize_goal(db, g, members, membership, today) for g in active_goals(db, gid)],
     }
 
 

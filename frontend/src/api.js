@@ -86,4 +86,8 @@ export const api = {
   activities: (g) => req(`/api/groups/${g}/activities`),
   radar: (g) => req(`/api/groups/${g}/radar`),
   gallery: (g) => req(`/api/groups/${g}/gallery`),
+  goals: (g) => req(`/api/groups/${g}/goals`),
+  createGoal: (g, b) => req(`/api/groups/${g}/goals`, { method: 'POST', body: b }),
+  goalCheckin: (g, id, b) => req(`/api/groups/${g}/goals/${id}/checkin`, { method: 'POST', body: b }),
+  endGoal: (g, id) => req(`/api/groups/${g}/goals/${id}`, { method: 'DELETE' }),
 }

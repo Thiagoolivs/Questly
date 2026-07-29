@@ -22,6 +22,8 @@ export default function Home() {
   const [jointForm, setJointForm] = useState({ emoji: '💞', label: '' })
   const [jointPhoto, setJointPhoto] = useState(null)
   const [moodNote, setMoodNote] = useState('')
+  const [showGoalForm, setShowGoalForm] = useState(false)
+  const [goalForm, setGoalForm] = useState({ emoji: '🎯', title: '', duration_days: 30 })
 
   useEffect(() => {
     setMoodNote(me?.today?.mood_note || '')
@@ -92,6 +94,22 @@ export default function Home() {
   const toggleTogether = (c) =>
     run(() => api.setChallenge(groupId, { date: state.date, category: c.category, image: c.proof, together: !c.together }))
 
+  const goals = state.goals || []
+  const toggleGoalCheckin = (goalId) => run(() => api.goalCheckin(groupId, goalId, { date: state.date }))
+  const endGoal = (goalId) => run(() => api.endGoal(groupId, goalId))
+  function createGoal() {
+    if (!goalForm.title.trim()) return
+    run(async () => {
+      await api.createGoal(groupId, {
+        title: goalForm.title.trim(),
+        emoji: goalForm.emoji || '🎯',
+        duration_days: Number(goalForm.duration_days) || 30,
+      })
+      setGoalForm({ emoji: '🎯', title: '', duration_days: 30 })
+      setShowGoalForm(false)
+    })
+  }
+
   const joint = state.joint || { points_each: 20, activities: [], suggestions: [] }
   const removeJoint = (aid) => run(() => api.jointRemove(groupId, aid))
   async function attachJointPhoto() {
@@ -133,6 +151,81 @@ export default function Home() {
         </div>
         <div className="streak-chip" title="Sequência atual"><Icon name="flame" size={15} /> {me.stats.streak}</div>
       </header>
+
+      {/* Metas (fixas no topo) */}
+      {goals.map((g) => {
+        const pct = g.duration_days ? Math.min(100, ((g.me?.count || 0) / g.duration_days) * 100) : 0
+        const others = g.members.filter((m) => m.membership_id !== g.me?.membership_id)
+        return (
+          <section className={'card goal-card' + (g.me?.done ? ' goal-done' : '')} key={g.id}>
+            <div className="row between">
+              <div className="goal-title">
+                {g.icon ? <Icon name={g.icon} size={17} /> : <span className="goal-emoji">{g.emoji}</span>} {g.title}
+              </div>
+              <button className="link-btn" disabled={busy} onClick={() => endGoal(g.id)}>encerrar</button>
+            </div>
+            <div className="muted xsmall">
+              Dia {g.day_index} de {g.duration_days} · {g.days_left > 0 ? `faltam ${g.days_left}` : 'último dia'} ·{' '}
+              <Icon name="flame" size={11} /> {g.me?.streak || 0}
+            </div>
+            <div className="bar"><div className="bar-fill" style={{ width: `${pct}%` }} /></div>
+            <div className="row between">
+              <span className="muted xsmall">{g.me?.count || 0}/{g.duration_days} dias</span>
+              {others.map((o) => (
+                <span className="muted xsmall" key={o.membership_id}>{o.name}: {o.count}/{g.duration_days}</span>
+              ))}
+            </div>
+            <button
+              className={'btn full ' + (g.me?.checked_today ? 'btn-done' : 'btn-primary') + ' icon-btn'}
+              disabled={busy}
+              onClick={() => toggleGoalCheckin(g.id)}
+            >
+              <Icon name="check" size={15} /> {g.me?.checked_today ? 'Cumpri hoje' : 'Marcar check-in de hoje'}
+            </button>
+          </section>
+        )
+      })}
+
+      {/* Nova meta */}
+      {showGoalForm ? (
+        <section className="card">
+          <div className="card-title">Nova meta</div>
+          <div className="add-habit">
+            <input
+              className="add-habit-emoji"
+              value={goalForm.emoji}
+              maxLength={2}
+              onChange={(e) => setGoalForm({ ...goalForm, emoji: e.target.value })}
+              aria-label="emoji"
+            />
+            <input
+              className="add-habit-label"
+              placeholder="Ex: Sem refrigerante"
+              value={goalForm.title}
+              onChange={(e) => setGoalForm({ ...goalForm, title: e.target.value })}
+            />
+          </div>
+          <div className="chips">
+            {[7, 30, 60, 90].map((d) => (
+              <button
+                key={d}
+                className={'chip ' + (Number(goalForm.duration_days) === d ? 'active' : '')}
+                onClick={() => setGoalForm({ ...goalForm, duration_days: d })}
+              >
+                {d} dias
+              </button>
+            ))}
+          </div>
+          <div className="row" style={{ gap: 8 }}>
+            <button className="btn ghost full" onClick={() => setShowGoalForm(false)}>Cancelar</button>
+            <button className="btn full btn-primary" disabled={busy || !goalForm.title.trim()} onClick={createGoal}>Criar meta</button>
+          </div>
+        </section>
+      ) : (
+        <button className="btn ghost full icon-btn new-goal-btn" onClick={() => setShowGoalForm(true)}>
+          <Icon name="plus" size={15} /> Nova meta
+        </button>
+      )}
 
       {/* Mensagem do dia */}
       <section className="card motd">

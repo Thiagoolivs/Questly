@@ -72,6 +72,17 @@ class JointActivityCreate(BaseModel):
     image: Optional[str] = None  # comprovação opcional
 
 
+class GoalCreate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=120)
+    emoji: str = Field("🎯", max_length=8)
+    icon: Optional[str] = Field(None, max_length=24)
+    duration_days: int = Field(30, ge=1, le=365)
+
+
+class GoalCheckinRequest(BaseModel):
+    date: str
+
+
 class PushKeys(BaseModel):
     p256dh: str
     auth: str
