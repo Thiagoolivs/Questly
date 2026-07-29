@@ -486,3 +486,22 @@ input[type='range'] { width: 100%; accent-color: var(--accent); height: 24px; }
   flex: 1; background: #191a30; border: 1px solid var(--border);
   border-radius: 10px; padding: 0 12px; color: var(--text);
 }
+
+/* Fase "Juntos": bônus em dupla + atividades em dupla ---------------------- */
+.together-btn {
+  font-size: 0.75rem; font-weight: 700; padding: 4px 10px; border-radius: 999px;
+  border: 1px solid var(--border); color: var(--muted); background: #191a30;
+}
+.together-btn.on { background: rgba(168, 85, 247, 0.18); color: #d8b4fe; border-color: transparent; }
+
+.joint-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+.joint-item {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; padding: 8px 12px;
+}
+.joint-emoji { font-size: 22px; width: 34px; text-align: center; }
+.joint-thumb { width: 34px; height: 34px; border-radius: 8px; object-fit: cover; cursor: pointer; }
+.joint-main { flex: 1; display: flex; flex-direction: column; }
+.joint-label { font-weight: 600; }
+.joint-suggestions { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.joint-suggestions .chip { font-size: 0.78rem; }

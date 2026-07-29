@@ -10,6 +10,8 @@ export default function Home() {
   const { state, me, groupId, refresh, loading, error } = useApp()
   const [busy, setBusy] = useState(false)
   const [zoom, setZoom] = useState(null)
+  const [jointForm, setJointForm] = useState({ emoji: '💞', label: '' })
+  const [jointPhoto, setJointPhoto] = useState(null)
 
   if (loading) return <div className="screen center muted">Carregando…</div>
   if (error)
@@ -55,11 +57,34 @@ export default function Home() {
   const rerollChallenge = (category) => run(() => api.reroll(groupId, { date: state.date, category }))
   const removeChallenge = (category) =>
     run(() => api.setChallenge(groupId, { date: state.date, category, image: null }))
-  async function proveChallenge(category) {
+  async function proveChallenge(category, together = false) {
     const f = await pickImage()
     if (!f) return
     const image = await fileToCompressedDataURL(f)
-    await run(() => api.setChallenge(groupId, { date: state.date, category, image }))
+    await run(() => api.setChallenge(groupId, { date: state.date, category, image, together }))
+  }
+  const toggleTogether = (c) =>
+    run(() => api.setChallenge(groupId, { date: state.date, category: c.category, image: c.proof, together: !c.together }))
+
+  const joint = state.joint || { points_each: 20, activities: [], suggestions: [] }
+  const removeJoint = (aid) => run(() => api.jointRemove(groupId, aid))
+  async function attachJointPhoto() {
+    const f = await pickImage()
+    if (!f) return
+    setJointPhoto(await fileToCompressedDataURL(f))
+  }
+  function addJoint() {
+    if (!jointForm.label.trim()) return
+    run(async () => {
+      await api.jointAdd(groupId, {
+        date: state.date,
+        label: jointForm.label.trim(),
+        emoji: jointForm.emoji || '💞',
+        image: jointPhoto,
+      })
+      setJointForm({ emoji: '💞', label: '' })
+      setJointPhoto(null)
+    })
   }
 
   const someoneLeads =
@@ -180,7 +205,14 @@ export default function Home() {
                     <img className="proof-thumb" src={c.proof} alt="comprovação" onClick={() => setZoom(c.proof)} />
                   )}
                   <span className="challenge-ok">✓ Concluído</span>
-                  <button className="link-btn" disabled={busy} onClick={() => proveChallenge(c.category)}>trocar foto</button>
+                  <button
+                    className={'together-btn ' + (c.together ? 'on' : '')}
+                    disabled={busy}
+                    onClick={() => toggleTogether(c)}
+                  >
+                    💞 {c.together ? 'Juntos +10' : 'Fizemos juntos?'}
+                  </button>
+                  <button className="link-btn" disabled={busy} onClick={() => proveChallenge(c.category, c.together)}>trocar foto</button>
                   <button className="link-btn danger" disabled={busy} onClick={() => removeChallenge(c.category)}>desfazer</button>
                 </div>
               ) : (
@@ -201,6 +233,74 @@ export default function Home() {
         {today.completed && (
           <div className="perfect-banner">⚖️ Todas as áreas fechadas! +{today.balance_bonus} de bônus</div>
         )}
+      </section>
+
+      {/* Atividades em dupla */}
+      <section className="card">
+        <div className="card-title">
+          💞 Atividades em dupla <span className="muted small">(+{joint.points_each} pra cada)</span>
+        </div>
+        <p className="muted xsmall proof-note">Fizeram algo juntos além dos desafios? Registrem — os dois pontuam.</p>
+
+        {joint.activities.length > 0 && (
+          <div className="joint-list">
+            {joint.activities.map((a) => (
+              <div className="joint-item" key={a.id}>
+                {a.image ? (
+                  <img className="joint-thumb" src={a.image} alt="" onClick={() => setZoom(a.image)} />
+                ) : (
+                  <span className="joint-emoji">{a.emoji}</span>
+                )}
+                <span className="joint-main">
+                  <span className="joint-label">{a.label}</span>
+                  <span className="muted xsmall">+{a.points} · por {a.author}</span>
+                </span>
+                <button className="link-btn danger" disabled={busy} onClick={() => removeJoint(a.id)}>remover</button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {joint.suggestions?.length > 0 && (
+          <div className="joint-suggestions">
+            {joint.suggestions.map((sug) => (
+              <button
+                key={sug.label}
+                className="chip"
+                onClick={() => setJointForm({ emoji: sug.emoji, label: sug.label })}
+              >
+                {sug.emoji} {sug.label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div className="add-habit">
+          <input
+            className="add-habit-emoji"
+            value={jointForm.emoji}
+            maxLength={2}
+            onChange={(e) => setJointForm({ ...jointForm, emoji: e.target.value })}
+            aria-label="emoji"
+          />
+          <input
+            className="add-habit-label"
+            placeholder="O que fizeram juntos?"
+            value={jointForm.label}
+            onChange={(e) => setJointForm({ ...jointForm, label: e.target.value })}
+            onKeyDown={(e) => e.key === 'Enter' && addJoint()}
+          />
+          <button className="chat-attach" title="Foto (opcional)" onClick={attachJointPhoto}>📷</button>
+        </div>
+        {jointPhoto && (
+          <div className="chat-preview">
+            <img src={jointPhoto} alt="prévia" />
+            <button className="chat-preview-x" onClick={() => setJointPhoto(null)}>✕</button>
+          </div>
+        )}
+        <button className="btn full btn-primary small-btn" disabled={busy || !jointForm.label.trim()} onClick={addJoint}>
+          + Registrar atividade em dupla
+        </button>
       </section>
 
       {/* Hábitos */}

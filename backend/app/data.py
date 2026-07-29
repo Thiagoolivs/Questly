@@ -187,6 +187,20 @@ ACHIEVEMENTS = [
      "metric": "casal", "target": 1},
 ]
 
+# --- Sugestões de atividades em dupla --------------------------------------
+# Atividades extras feitas juntos (pontuam para os dois). O grupo também pode
+# registrar as suas próprias.
+JOINT_SUGGESTIONS = [
+    {"emoji": "🍳", "label": "Cozinhar uma refeição juntos"},
+    {"emoji": "🚶", "label": "Caminhar juntos"},
+    {"emoji": "🏋️", "label": "Treinar juntos"},
+    {"emoji": "🙏", "label": "Orar / devocional juntos"},
+    {"emoji": "🎬", "label": "Assistir algo e conversar sobre"},
+    {"emoji": "🧹", "label": "Organizar um ambiente juntos"},
+    {"emoji": "💬", "label": "1h de conversa sem telas"},
+    {"emoji": "🌅", "label": "Ver o nascer/pôr do sol juntos"},
+]
+
 # --- Status de humor -------------------------------------------------------
 MOODS = [
     {"key": "otimo", "emoji": "😄", "label": "Ótimo"},

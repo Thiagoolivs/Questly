@@ -20,6 +20,7 @@ _NEW_COLUMNS = {
     "day_entries": {
         "challenge_proofs": "JSON",
         "challenge_rerolls": "JSON",
+        "challenge_together": "JSON",
     },
 }
 

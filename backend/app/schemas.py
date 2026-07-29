@@ -50,11 +50,19 @@ class ChallengeProofRequest(BaseModel):
     date: str
     category: str
     image: Optional[str] = None  # data URL (base64); None desfaz o desafio
+    together: bool = False        # feito em dupla → bônus "juntos"
 
 
 class RerollRequest(BaseModel):
     date: str
     category: str
+
+
+class JointActivityCreate(BaseModel):
+    date: str
+    label: str = Field(..., min_length=1, max_length=120)
+    emoji: str = Field("💞", max_length=8)
+    image: Optional[str] = None  # comprovação opcional
 
 
 class MessageCreate(BaseModel):

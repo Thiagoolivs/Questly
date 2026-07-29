@@ -28,6 +28,7 @@ from .data import (
 HABIT_POINTS = 10
 BALANCE_BONUS = 20
 PERFECT_BONUS = 10
+TOGETHER_BONUS = 10  # bônus por concluir um desafio em dupla ("juntos")
 MAX_REROLLS = 1  # trocas de desafio por dia
 
 
@@ -107,9 +108,11 @@ def compute_day(settings, entry, d: date) -> dict:
 
     proofs = (entry.challenge_proofs or {}) if entry else {}
     rerolls = (entry.challenge_rerolls or {}) if entry else {}
+    together = (entry.challenge_together or {}) if entry else {}
 
     challenges = []
     challenge_pts = 0
+    together_pts = 0
     areas_done = 0
     hard_done = 0
     done_cats = []
@@ -118,15 +121,19 @@ def compute_day(settings, entry, d: date) -> dict:
         ch = challenge_for(d, cat, i, offset)
         proof = proofs.get(cat)
         done = bool(proof)
+        is_together = done and bool(together.get(cat))
         ch["done"] = done
         ch["proof"] = proof
         ch["rerolled"] = offset > 0
+        ch["together"] = is_together
         if done:
             challenge_pts += ch["points"]
             areas_done += 1
             done_cats.append(cat)
             if ch["difficulty"] == "dificil":
                 hard_done += 1
+            if is_together:
+                together_pts += TOGETHER_BONUS
         challenges.append(ch)
 
     areas_total = len(challenges)
@@ -136,7 +143,7 @@ def compute_day(settings, entry, d: date) -> dict:
     perfect = all_areas and all_habits
     perfect_bonus = PERFECT_BONUS if perfect else 0
 
-    points = habit_pts + challenge_pts + balance_bonus + perfect_bonus
+    points = habit_pts + challenge_pts + together_pts + balance_bonus + perfect_bonus
     max_challenge_pts = sum(c["points"] for c in challenges)
     max_points = total_habits * HABIT_POINTS + max_challenge_pts + BALANCE_BONUS + PERFECT_BONUS
 
@@ -147,9 +154,10 @@ def compute_day(settings, entry, d: date) -> dict:
         "day_number": day_number(settings, d),
         "points": points,
         "max_points": max_points,
-        "completion_pct": round(points / max_points * 100) if max_points else 0,
+        "completion_pct": min(100, round(points / max_points * 100)) if max_points else 0,
         "habit_pts": habit_pts,
         "challenge_pts": challenge_pts,
+        "together_pts": together_pts,
         "balance_bonus": balance_bonus,
         "perfect_bonus": perfect_bonus,
         "habits": habits,
@@ -269,7 +277,7 @@ def player_stats(settings, days: list[dict], today: date) -> dict:
         "perfect_days": perfect_days,
         "streak": _current_streak(days),
         "best_streak": _best_streak(days),
-        "completion_pct": round(total / possible * 100) if possible else 0,
+        "completion_pct": min(100, round(total / possible * 100)) if possible else 0,
         "category_streaks": _category_streaks(days, active_categories(settings)),
     }
 

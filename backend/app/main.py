@@ -17,13 +17,14 @@ from .auth import (
     hash_password,
     verify_password,
 )
-from .data import CATEGORY_EMOJI, DEFAULT_HABITS, HABITS_MENU, MOODS
+from .data import CATEGORY_EMOJI, DEFAULT_HABITS, HABITS_MENU, JOINT_SUGGESTIONS, MOODS
 from .database import get_db
-from .models import DayEntry, Group, Membership, Message, Settings, User
+from .models import DayEntry, Group, JointActivity, Membership, Message, Settings, User
 from .schemas import (
     ChallengeProofRequest,
     GroupCreate,
     GroupJoin,
+    JointActivityCreate,
     LoginRequest,
     MessageCreate,
     MoodRequest,
@@ -33,6 +34,8 @@ from .schemas import (
     ToggleRequest,
     UserUpdate,
 )
+
+JOINT_ACTIVITY_POINTS = 20  # pontos por atividade em dupla (para cada membro)
 from .seed import init_db
 
 # Limite defensivo p/ imagens em data URL (o cliente já reduz antes de enviar).
@@ -123,9 +126,29 @@ def group_summary(group: Group, role: str, member_count: int) -> dict:
     }
 
 
-def member_payload(settings: Settings, membership: Membership, today: date) -> dict:
-    entries = {e.date: e for e in membership.days}
-    days = scoring.build_days(settings, entries, today)
+def joint_points_map(db: Session, group_id: int) -> dict:
+    """Pontos de atividades em dupla por data (iguais para todos os membros)."""
+    out: dict[str, int] = {}
+    for a in db.query(JointActivity).filter(JointActivity.group_id == group_id).all():
+        key = a.date.isoformat()
+        out[key] = out.get(key, 0) + a.points
+    return out
+
+
+def build_member_days(settings: Settings, membership: Membership, joint_points: dict, today: date) -> list[dict]:
+    """Dias do membro com os pontos das atividades em dupla somados."""
+    days = scoring.build_days(settings, {e.date: e for e in membership.days}, today)
+    for cd in days:
+        jp = joint_points.get(cd["date"], 0)
+        cd["joint_pts"] = jp
+        if jp:
+            cd["points"] += jp
+            cd["max_points"] += jp
+    return days
+
+
+def member_payload(settings: Settings, membership: Membership, joint_points: dict, today: date) -> dict:
+    days = build_member_days(settings, membership, joint_points, today)
     stats = scoring.player_stats(settings, days, today)
     today_cd = next((cd for cd in days if cd["date"] == today.isoformat()), None)
     u = membership.user
@@ -342,7 +365,7 @@ def challenges_today(gid: int, day: str | None = None, user: User = Depends(get_
 def read_member(gid: int, mid: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     get_membership(db, user, gid)
     membership = get_group_member(db, gid, mid)
-    return member_payload(get_group_settings(db, gid), membership, date.today())
+    return member_payload(get_group_settings(db, gid), membership, joint_points_map(db, gid), date.today())
 
 
 @app.get("/api/groups/{gid}/day/{mid}")
@@ -358,14 +381,15 @@ def read_day(gid: int, mid: int, day: str | None = None, user: User = Depends(ge
 def _day_result(db: Session, settings: Settings, membership: Membership, entry: DayEntry, d: date):
     db.commit()
     db.refresh(membership)
-    return {
-        "day": scoring.compute_day(settings, entry, d),
-        "stats": scoring.player_stats(
-            settings,
-            scoring.build_days(settings, {e.date: e for e in membership.days}, date.today()),
-            date.today(),
-        ),
-    }
+    today = date.today()
+    joint = joint_points_map(db, membership.group_id)
+    days = build_member_days(settings, membership, joint, today)
+    day_cd = scoring.compute_day(settings, entry, d)
+    day_cd["joint_pts"] = joint.get(d.isoformat(), 0)
+    if day_cd["joint_pts"]:
+        day_cd["points"] += day_cd["joint_pts"]
+        day_cd["max_points"] += day_cd["joint_pts"]
+    return {"day": day_cd, "stats": scoring.player_stats(settings, days, today)}
 
 
 @app.post("/api/groups/{gid}/day/toggle")
@@ -409,11 +433,18 @@ def set_challenge(gid: int, req: ChallengeProofRequest, user: User = Depends(get
     d = parse_date(req.date)
     entry = get_or_create_entry(db, membership, d)
     proofs = dict(entry.challenge_proofs or {})
+    together = dict(entry.challenge_together or {})
     if req.image:
         proofs[req.category] = req.image
+        if req.together:
+            together[req.category] = True
+        else:
+            together.pop(req.category, None)
     else:
         proofs.pop(req.category, None)
+        together.pop(req.category, None)
     entry.challenge_proofs = proofs
+    entry.challenge_together = together
     return _day_result(db, s, membership, entry, d)
 
 
@@ -435,6 +466,71 @@ def reroll_challenge(gid: int, req: RerollRequest, user: User = Depends(get_curr
     rerolls[req.category] = int(rerolls.get(req.category, 0)) + 1
     entry.challenge_rerolls = rerolls
     return _day_result(db, s, membership, entry, d)
+
+
+# --- rotas: grupo (atividades em dupla) ------------------------------------
+def serialize_joint(a: JointActivity, members_by_id: dict) -> dict:
+    mem = members_by_id.get(a.created_by)
+    return {
+        "id": a.id,
+        "date": a.date.isoformat(),
+        "label": a.label,
+        "emoji": a.emoji,
+        "points": a.points,
+        "image": a.image,
+        "created_by": a.created_by,
+        "author": mem.user.name if mem else "?",
+    }
+
+
+@app.get("/api/groups/{gid}/joint")
+def list_joint(gid: int, day: str | None = None, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    get_membership(db, user, gid)
+    d = parse_date(day)
+    members_by_id = {m.id: m for m in group_members(db, gid)}
+    rows = (
+        db.query(JointActivity)
+        .filter(JointActivity.group_id == gid, JointActivity.date == d)
+        .order_by(JointActivity.id)
+        .all()
+    )
+    return {
+        "date": d.isoformat(),
+        "points_each": JOINT_ACTIVITY_POINTS,
+        "activities": [serialize_joint(a, members_by_id) for a in rows],
+        "suggestions": JOINT_SUGGESTIONS,
+    }
+
+
+@app.post("/api/groups/{gid}/joint")
+def create_joint(gid: int, payload: JointActivityCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    validate_image(payload.image)
+    membership = get_membership(db, user, gid)
+    d = parse_date(payload.date)
+    a = JointActivity(
+        group_id=gid,
+        date=d,
+        label=payload.label.strip(),
+        emoji=(payload.emoji or "💞").strip() or "💞",
+        points=JOINT_ACTIVITY_POINTS,
+        image=payload.image,
+        created_by=membership.id,
+    )
+    db.add(a)
+    db.commit()
+    db.refresh(a)
+    return serialize_joint(a, {membership.id: membership})
+
+
+@app.delete("/api/groups/{gid}/joint/{aid}")
+def delete_joint(gid: int, aid: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    get_membership(db, user, gid)
+    a = db.get(JointActivity, aid)
+    if a is None or a.group_id != gid:
+        raise HTTPException(404, "Atividade não encontrada.")
+    db.delete(a)
+    db.commit()
+    return {"ok": True}
 
 
 # --- rotas: grupo (chat) ---------------------------------------------------
@@ -469,7 +565,7 @@ def history(gid: int, mid: int, user: User = Depends(get_current_user), db: Sess
     membership = get_group_member(db, gid, mid)
     s = get_group_settings(db, gid)
     today = date.today()
-    days = scoring.build_days(s, {e.date: e for e in membership.days}, today)
+    days = build_member_days(s, membership, joint_points_map(db, gid), today)
     stats = scoring.player_stats(s, days, today)
     calendar = [
         {
@@ -494,7 +590,7 @@ def achievements(gid: int, mid: int, user: User = Depends(get_current_user), db:
     membership = get_group_member(db, gid, mid)
     s = get_group_settings(db, gid)
     today = date.today()
-    days = scoring.build_days(s, {e.date: e for e in membership.days}, today)
+    days = build_member_days(s, membership, joint_points_map(db, gid), today)
     stats = scoring.player_stats(s, days, today)
     casal = casal_perfect_days(s, group_members(db, gid), today)
     return {"achievements": scoring.achievements_for(days, stats, casal)}
@@ -506,7 +602,8 @@ def ranking(gid: int, user: User = Depends(get_current_user), db: Session = Depe
     s = get_group_settings(db, gid)
     today = date.today()
     members = group_members(db, gid)
-    rows = [member_payload(s, m, today) for m in members]
+    joint = joint_points_map(db, gid)
+    rows = [member_payload(s, m, joint, today) for m in members]
     rows.sort(key=lambda r: r["stats"]["total"], reverse=True)
     return {"ranking": rows, "casal_perfect_days": casal_perfect_days(s, members, today)}
 
@@ -518,7 +615,8 @@ def state(gid: int, user: User = Depends(get_current_user), db: Session = Depend
     s = get_group_settings(db, gid)
     today = date.today()
     members = group_members(db, gid)
-    player_rows = [member_payload(s, m, today) for m in members]
+    joint = joint_points_map(db, gid)
+    player_rows = [member_payload(s, m, joint, today) for m in members]
 
     for row in player_rows:
         others = [r for r in player_rows if r["id"] != row["id"]]
@@ -534,6 +632,14 @@ def state(gid: int, user: User = Depends(get_current_user), db: Session = Depend
 
     leaderboard = sorted(player_rows, key=lambda r: r["stats"]["total"], reverse=True)
 
+    members_by_id = {m.id: m for m in members}
+    joint_today = (
+        db.query(JointActivity)
+        .filter(JointActivity.group_id == gid, JointActivity.date == today)
+        .order_by(JointActivity.id)
+        .all()
+    )
+
     return {
         "date": today.isoformat(),
         "group": {"id": gid, "name": membership.group.name, "invite_code": membership.group.invite_code, "role": membership.role},
@@ -548,6 +654,11 @@ def state(gid: int, user: User = Depends(get_current_user), db: Session = Depend
         "leaderboard": leaderboard,
         "casal_perfect_days": casal_perfect_days(s, members, today),
         "category_emoji": CATEGORY_EMOJI,
+        "joint": {
+            "points_each": JOINT_ACTIVITY_POINTS,
+            "activities": [serialize_joint(a, members_by_id) for a in joint_today],
+            "suggestions": JOINT_SUGGESTIONS,
+        },
     }
 
 
