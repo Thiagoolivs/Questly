@@ -20,6 +20,7 @@ class LoginRequest(BaseModel):
 class UserUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=60)
     avatar: Optional[str] = Field(None, max_length=8)
+    photo: Optional[str] = None  # data URL base64; None remove a foto
     objetivo: Optional[str] = Field(None, max_length=200)
     peso: Optional[float] = None
 

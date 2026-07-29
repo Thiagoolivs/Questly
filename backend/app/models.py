@@ -34,6 +34,7 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255))
     name: Mapped[str] = mapped_column(String(60))
     avatar: Mapped[str] = mapped_column(String(8), default="🎮")
+    photo: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # data URL base64 (opcional)
     objetivo: Mapped[str] = mapped_column(String(200), default="")
     peso: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

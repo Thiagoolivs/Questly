@@ -8,7 +8,29 @@ então os dados persistem normalmente entre deploys.
 """
 from sqlalchemy import inspect, text
 
+from . import models  # noqa: F401  (registra as tabelas no Base.metadata)
 from .database import Base, engine
+
+# Colunas aditivas do schema novo, garantidas em bancos já existentes
+# (ALTER TABLE ADD COLUMN funciona em SQLite e Postgres).
+_NEW_COLUMNS = {
+    "users": {
+        "photo": "TEXT",
+    },
+}
+
+
+def _ensure_columns() -> None:
+    insp = inspect(engine)
+    existing = set(insp.get_table_names())
+    with engine.begin() as conn:
+        for table, columns in _NEW_COLUMNS.items():
+            if table not in existing:
+                continue
+            have = {c["name"] for c in insp.get_columns(table)}
+            for name, ddl in columns.items():
+                if name not in have:
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}"))
 
 
 def _reset_legacy_schema() -> None:
@@ -34,3 +56,4 @@ def init_db() -> None:
     if "users" not in tables:
         _reset_legacy_schema()
     Base.metadata.create_all(bind=engine)
+    _ensure_columns()
