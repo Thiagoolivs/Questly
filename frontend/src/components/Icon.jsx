@@ -103,6 +103,29 @@ const icons = {
   ),
   chevronRight: <path d="m9 6 6 6-6 6" />,
   arrowRight: <path d="M5 12h14M13 6l6 6-6 6" />,
+  lock: (
+    <>
+      <rect x="5" y="11" width="14" height="9" rx="2" />
+      <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+    </>
+  ),
+  target: (
+    <>
+      <circle cx="12" cy="12" r="8" />
+      <circle cx="12" cy="12" r="3" />
+    </>
+  ),
+  leaf: <><path d="M6 18C6 10 12 6 19 6c0 8-6 12-13 12z" /><path d="M9 15c3-1 5-3 6.5-6" /></>,
+  zap: <path d="M13 2 4 14h6l-1 8 9-12h-6z" />,
+  moon: <path d="M20 14A8 8 0 0 1 10 4a8 8 0 1 0 10 10z" />,
+  // Rostos de humor
+  faceGrin: <><circle cx="12" cy="12" r="9" /><circle cx="9" cy="10" r="0.7" fill="currentColor" stroke="none" /><circle cx="15" cy="10" r="0.7" fill="currentColor" stroke="none" /><path d="M8 13.5a5 4 0 0 0 8 0" /></>,
+  faceSmile: <><circle cx="12" cy="12" r="9" /><circle cx="9" cy="10.5" r="0.7" fill="currentColor" stroke="none" /><circle cx="15" cy="10.5" r="0.7" fill="currentColor" stroke="none" /><path d="M8.5 14a4 3 0 0 0 7 0" /></>,
+  faceNeutral: <><circle cx="12" cy="12" r="9" /><circle cx="9" cy="10.5" r="0.7" fill="currentColor" stroke="none" /><circle cx="15" cy="10.5" r="0.7" fill="currentColor" stroke="none" /><path d="M9 15h6" /></>,
+  faceWorried: <><circle cx="12" cy="12" r="9" /><circle cx="9" cy="10.5" r="0.7" fill="currentColor" stroke="none" /><circle cx="15" cy="10.5" r="0.7" fill="currentColor" stroke="none" /><path d="M8.5 15.5c1-1 2-1 3.5 0s2.5 1 3.5 0" /></>,
+  faceSad: <><circle cx="12" cy="12" r="9" /><circle cx="9" cy="10.5" r="0.7" fill="currentColor" stroke="none" /><circle cx="15" cy="10.5" r="0.7" fill="currentColor" stroke="none" /><path d="M8.5 16a4 3 0 0 1 7 0" /></>,
+  faceAngry: <><circle cx="12" cy="12" r="9" /><path d="M8 9.2 10 10M16 9.2 14 10" /><circle cx="9" cy="11" r="0.7" fill="currentColor" stroke="none" /><circle cx="15" cy="11" r="0.7" fill="currentColor" stroke="none" /><path d="M8.5 16a4 3 0 0 1 7 0" /></>,
+  faceTired: <><circle cx="12" cy="12" r="9" /><path d="M7.8 9.8 10 10.6M16.2 9.8 14 10.6" /><path d="M8.5 15.5a4 3 0 0 1 7 0" /></>,
 }
 
 // Ícone por área (as 5 categorias do desafio).
