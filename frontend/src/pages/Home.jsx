@@ -66,6 +66,14 @@ export default function Home() {
 
   const toggleHabit = (habit_key) =>
     run(() => api.toggle(groupId, { date: state.date, type: 'habit', habit_key }))
+  async function attachHabitPhoto(habit_key) {
+    const f = await pickImage()
+    if (!f) return
+    const image = await fileToCompressedDataURL(f)
+    await run(() => api.habitPhoto(groupId, { date: state.date, habit_key, image }))
+  }
+  const removeHabitPhoto = (habit_key) =>
+    run(() => api.habitPhoto(groupId, { date: state.date, habit_key, image: null }))
   const toggleMood = (key) => {
     const cur = today.moods || []
     const next = cur.includes(key) ? cur.filter((k) => k !== key) : [...cur, key]
@@ -352,20 +360,32 @@ export default function Home() {
         <div className="card-title">
           Hábitos de hoje <span className="muted small">({today.n_done}/{today.n_habits})</span>
         </div>
+        <p className="muted xsmall proof-note">Marcar vale 10 · com foto-prova vale 12.</p>
         <div className="habits">
           {today.habits.map((h) => {
             const done = today.habits_done.includes(h.key)
+            const proof = today.habit_proofs?.[h.key]
             return (
-              <button
-                key={h.key}
-                className={'habit ' + (done ? 'done' : '')}
-                disabled={busy}
-                onClick={() => toggleHabit(h.key)}
-              >
-                <span className="habit-emoji">{h.emoji}</span>
-                <span className="habit-label">{h.label}</span>
-                <span className={'check ' + (done ? 'on' : '')}>{done ? '✓' : ''}</span>
-              </button>
+              <div key={h.key} className={'habit-row ' + (done ? 'done' : '')}>
+                <button className="habit habit-toggle" disabled={busy} onClick={() => toggleHabit(h.key)}>
+                  <span className="habit-emoji">{h.emoji}</span>
+                  <span className="habit-label">{h.label}</span>
+                  {proof && <span className="habit-bonus">+2</span>}
+                  <span className={'check ' + (done ? 'on' : '')}>{done ? <Icon name="check" size={14} /> : ''}</span>
+                </button>
+                {proof ? (
+                  <div className="habit-proof">
+                    <img className="habit-thumb" src={proof} alt="prova" onClick={() => setZoom(proof)} />
+                    <button className="habit-cam" disabled={busy} title="Remover foto" onClick={() => removeHabitPhoto(h.key)}>
+                      <Icon name="x" size={15} />
+                    </button>
+                  </div>
+                ) : (
+                  <button className="habit-cam" disabled={busy} title="Foto-prova (+2)" onClick={() => attachHabitPhoto(h.key)}>
+                    <Icon name="camera" size={16} />
+                  </button>
+                )}
+              </div>
             )
           })}
         </div>

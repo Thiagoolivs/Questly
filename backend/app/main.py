@@ -36,6 +36,7 @@ from .schemas import (
     ChallengeProofRequest,
     GroupCreate,
     GroupJoin,
+    HabitPhotoRequest,
     JointActivityCreate,
     LoginRequest,
     MessageCreate,
@@ -526,9 +527,33 @@ def toggle(gid: int, req: ToggleRequest, user: User = Depends(get_current_user),
     current = list(entry.habits_done or [])
     if req.habit_key in current:
         current.remove(req.habit_key)
+        # Ao desmarcar, remove a foto-prova associada.
+        proofs = dict(entry.habit_proofs or {})
+        if proofs.pop(req.habit_key, None) is not None:
+            entry.habit_proofs = proofs
     else:
         current.append(req.habit_key)
     entry.habits_done = current
+    return _day_result(db, s, membership, entry, d)
+
+
+@app.post("/api/groups/{gid}/day/habit-photo")
+def set_habit_photo(gid: int, req: HabitPhotoRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Anexa (ou remove) a foto-prova de um hábito. Com foto, o hábito vale +2."""
+    validate_image(req.image)
+    membership = get_membership(db, user, gid)
+    s = get_group_settings(db, gid)
+    d = parse_date(req.date)
+    entry = get_or_create_entry(db, membership, d)
+    proofs = dict(entry.habit_proofs or {})
+    if req.image:
+        proofs[req.habit_key] = req.image
+        # Anexar foto marca o hábito como feito.
+        if req.habit_key not in (entry.habits_done or []):
+            entry.habits_done = list(entry.habits_done or []) + [req.habit_key]
+    else:
+        proofs.pop(req.habit_key, None)
+    entry.habit_proofs = proofs
     return _day_result(db, s, membership, entry, d)
 
 

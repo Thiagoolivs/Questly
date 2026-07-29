@@ -1,10 +1,12 @@
-// Abre o seletor de arquivo/câmera e devolve o File escolhido (ou null).
-export function pickImage() {
+// Abre o seletor de imagem e devolve o File escolhido (ou null).
+// source: 'camera' força tirar na hora; 'library'/undefined deixa o sistema
+// oferecer galeria + câmera (padrão — permite escolher a origem).
+export function pickImage({ source } = {}) {
   return new Promise((resolve) => {
     const input = document.createElement('input')
     input.type = 'file'
     input.accept = 'image/*'
-    input.capture = 'environment' // no celular, sugere a câmera traseira
+    if (source === 'camera') input.capture = 'environment'
     input.onchange = () => resolve(input.files?.[0] || null)
     input.click()
   })

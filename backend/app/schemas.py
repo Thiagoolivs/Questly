@@ -41,6 +41,12 @@ class ToggleRequest(BaseModel):
     habit_key: Optional[str] = None
 
 
+class HabitPhotoRequest(BaseModel):
+    date: str
+    habit_key: str
+    image: Optional[str] = None  # data URL; None remove a foto (mantém marcado)
+
+
 class MoodRequest(BaseModel):
     date: str
     moods: list[str] = Field(default_factory=list)  # emoções selecionadas

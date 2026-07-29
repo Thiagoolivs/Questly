@@ -75,7 +75,9 @@ export function AppProvider({ children }) {
       setLoading(false)
       return
     }
-    setLoading(true)
+    // Não ligamos `loading` aqui: em refreshes de fundo (após cada ação) isso
+    // desmontaria a página inteira ("Carregando…") e jogaria o scroll pro topo.
+    // `loading` cobre só a carga inicial (começa true, desliga no finally).
     try {
       const s = await api.state(gid)
       setState(s)

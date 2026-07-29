@@ -91,6 +91,8 @@ class DayEntry(Base):
     membership_id: Mapped[int] = mapped_column(ForeignKey("memberships.id"), index=True)
     date: Mapped[date] = mapped_column(Date, index=True)
     habits_done: Mapped[list] = mapped_column(JSON, default=list)
+    # Foto-prova opcional por hábito: {key: data_url}. Hábito com foto vale +2.
+    habit_proofs: Mapped[dict] = mapped_column(JSON, default=dict)
     # Comprovações dos desafios por área: {categoria: data_url}. A presença da
     # foto = desafio concluído (só pontua com prova).
     challenge_proofs: Mapped[dict] = mapped_column(JSON, default=dict)
