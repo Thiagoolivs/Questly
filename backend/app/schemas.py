@@ -4,6 +4,36 @@ from typing import Literal, Optional
 from pydantic import BaseModel, Field
 
 
+# --- auth / usuário --------------------------------------------------------
+class RegisterRequest(BaseModel):
+    email: str = Field(..., max_length=255)
+    password: str = Field(..., min_length=6, max_length=128)
+    name: str = Field(..., min_length=1, max_length=60)
+    avatar: str = Field("🎮", max_length=8)
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class UserUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=60)
+    avatar: Optional[str] = Field(None, max_length=8)
+    objetivo: Optional[str] = Field(None, max_length=200)
+    peso: Optional[float] = None
+
+
+# --- grupos ----------------------------------------------------------------
+class GroupCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=80)
+
+
+class GroupJoin(BaseModel):
+    invite_code: str = Field(..., min_length=4, max_length=12)
+
+
+# --- desafios / dia --------------------------------------------------------
 class ToggleRequest(BaseModel):
     date: str = Field(..., description="Data no formato ISO (YYYY-MM-DD).")
     type: Literal["habit", "daily", "surprise"]
@@ -22,16 +52,8 @@ class ProofRequest(BaseModel):
 
 
 class MessageCreate(BaseModel):
-    player_id: int
     text: str = ""
     image: Optional[str] = None  # data URL (base64), anexo opcional
-
-
-class PlayerUpdate(BaseModel):
-    name: Optional[str] = None
-    avatar: Optional[str] = None
-    objetivo: Optional[str] = None
-    peso: Optional[float] = None
 
 
 class HabitDef(BaseModel):

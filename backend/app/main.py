@@ -1,5 +1,6 @@
-"""API do Questly (FastAPI)."""
+"""API do Questly (FastAPI) — multi-tenant com auth e grupos (Fase 1)."""
 import os
+import re
 from datetime import date
 from pathlib import Path
 
@@ -9,16 +10,35 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from . import scoring
-from .data import CATEGORY_EMOJI, HABITS_MENU, MOODS, SURPRISE_POOL
+from .auth import (
+    create_token,
+    generate_invite_code,
+    get_current_user,
+    hash_password,
+    verify_password,
+)
+from .data import CATEGORY_EMOJI, DEFAULT_HABITS, HABITS_MENU, MOODS, SURPRISE_POOL
 from .database import get_db
-from .models import DayEntry, Message, Player, Settings
-from .schemas import MessageCreate, MoodRequest, PlayerUpdate, ProofRequest, SettingsUpdate, ToggleRequest
+from .models import DayEntry, Group, Membership, Message, Settings, User
+from .schemas import (
+    GroupCreate,
+    GroupJoin,
+    LoginRequest,
+    MessageCreate,
+    MoodRequest,
+    ProofRequest,
+    RegisterRequest,
+    SettingsUpdate,
+    ToggleRequest,
+    UserUpdate,
+)
 from .seed import init_db
 
 # Limite defensivo p/ imagens em data URL (o cliente já reduz antes de enviar).
 MAX_IMAGE_CHARS = 3_500_000
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
-app = FastAPI(title="Questly API", version="0.2.0")
+app = FastAPI(title="Questly API", version="0.3.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -27,19 +47,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Inicializa o banco (idempotente) já no carregamento do módulo, para funcionar
-# com qualquer runner ASGI e também nos testes.
 init_db()
 
 
-# --- helpers ---------------------------------------------------------------
-def get_settings(db: Session) -> Settings:
-    settings = db.get(Settings, 1)
-    if settings is None:
-        raise HTTPException(500, "Configurações não inicializadas.")
-    return settings
-
-
+# --- helpers genéricos -----------------------------------------------------
 def parse_date(value: str | None) -> date:
     if not value:
         return date.today()
@@ -49,86 +60,125 @@ def parse_date(value: str | None) -> date:
         raise HTTPException(400, f"Data inválida: {value!r} (use YYYY-MM-DD).")
 
 
-def get_player(db: Session, player_id: int) -> Player:
-    player = db.get(Player, player_id)
-    if player is None:
-        raise HTTPException(404, "Jogador não encontrado.")
-    return player
-
-
-def get_or_create_entry(db: Session, player: Player, d: date) -> DayEntry:
-    entry = next((e for e in player.days if e.date == d), None)
-    if entry is None:
-        entry = DayEntry(player_id=player.id, date=d, habits_done=[])
-        db.add(entry)
-        db.flush()
-    return entry
-
-
 def validate_image(image: str | None) -> None:
     if image and len(image) > MAX_IMAGE_CHARS:
         raise HTTPException(413, "Imagem muito grande. Tente uma foto menor.")
 
 
-def entries_by_date(player: Player) -> dict:
-    return {e.date: e for e in player.days}
+def user_public(u: User) -> dict:
+    return {
+        "id": u.id,
+        "email": u.email,
+        "name": u.name,
+        "avatar": u.avatar,
+        "objetivo": u.objetivo,
+        "peso": u.peso,
+    }
 
 
-def days_for(settings: Settings, player: Player, today: date) -> list[dict]:
-    return scoring.build_days(settings, entries_by_date(player), today)
+# --- helpers de grupo ------------------------------------------------------
+def get_membership(db: Session, user: User, group_id: int) -> Membership:
+    m = (
+        db.query(Membership)
+        .filter(Membership.user_id == user.id, Membership.group_id == group_id)
+        .first()
+    )
+    if m is None:
+        raise HTTPException(403, "Você não faz parte deste grupo.")
+    return m
 
 
-def player_payload(settings: Settings, player: Player, today: date) -> dict:
-    days = days_for(settings, player, today)
+def get_group_member(db: Session, group_id: int, membership_id: int) -> Membership:
+    m = db.get(Membership, membership_id)
+    if m is None or m.group_id != group_id:
+        raise HTTPException(404, "Membro não encontrado neste grupo.")
+    return m
+
+
+def get_group_settings(db: Session, group_id: int) -> Settings:
+    s = db.query(Settings).filter(Settings.group_id == group_id).first()
+    if s is None:
+        raise HTTPException(500, "Configurações do grupo não inicializadas.")
+    return s
+
+
+def group_members(db: Session, group_id: int) -> list[Membership]:
+    return (
+        db.query(Membership)
+        .filter(Membership.group_id == group_id)
+        .order_by(Membership.id)
+        .all()
+    )
+
+
+def group_summary(group: Group, role: str, member_count: int) -> dict:
+    return {
+        "id": group.id,
+        "name": group.name,
+        "invite_code": group.invite_code,
+        "role": role,
+        "member_count": member_count,
+    }
+
+
+def member_payload(settings: Settings, membership: Membership, today: date) -> dict:
+    entries = {e.date: e for e in membership.days}
+    days = scoring.build_days(settings, entries, today)
     stats = scoring.player_stats(settings, days, today)
     today_cd = next((cd for cd in days if cd["date"] == today.isoformat()), None)
+    u = membership.user
     return {
-        "id": player.id,
-        "name": player.name,
-        "avatar": player.avatar,
-        "objetivo": player.objetivo,
-        "peso": player.peso,
+        "id": membership.id,
+        "user_id": u.id,
+        "name": u.name,
+        "avatar": u.avatar,
+        "objetivo": u.objetivo,
+        "peso": u.peso,
+        "role": membership.role,
         "stats": stats,
         "today": today_cd,
     }
 
 
-def casal_perfect_days(settings: Settings, players: list[Player], today: date) -> int:
-    """Quantidade de datas em que TODOS os jogadores tiveram dia perfeito."""
-    if len(players) < 2:
+def get_or_create_entry(db: Session, membership: Membership, d: date) -> DayEntry:
+    entry = next((e for e in membership.days if e.date == d), None)
+    if entry is None:
+        entry = DayEntry(membership_id=membership.id, date=d, habits_done=[])
+        db.add(entry)
+        db.flush()
+    return entry
+
+
+def casal_perfect_days(settings: Settings, members: list[Membership], today: date) -> int:
+    """Datas em que TODOS os membros tiveram dia perfeito."""
+    if len(members) < 2:
         return 0
-    per_player = [
-        {cd["date"]: cd["perfect"] for cd in days_for(settings, p, today)}
-        for p in players
+    per = [
+        {cd["date"]: cd["perfect"] for cd in scoring.build_days(settings, {e.date: e for e in m.days}, today)}
+        for m in members
     ]
-    dates = set(per_player[0])
-    for pp in per_player[1:]:
+    dates = set(per[0])
+    for pp in per[1:]:
         dates &= set(pp)
-    return sum(1 for d in dates if all(pp.get(d) for pp in per_player))
+    return sum(1 for d in dates if all(pp.get(d) for pp in per))
 
 
-def serialize_message(m: Message, players_by_id: dict) -> dict:
-    p = players_by_id.get(m.player_id)
+def serialize_message(m: Message, members_by_id: dict) -> dict:
+    mem = members_by_id.get(m.membership_id)
+    u = mem.user if mem else None
     return {
         "id": m.id,
-        "player_id": m.player_id,
-        "name": p.name if p else "?",
-        "avatar": p.avatar if p else "❓",
+        "membership_id": m.membership_id,
+        "player_id": m.membership_id,  # compat com o frontend antigo
+        "name": u.name if u else "?",
+        "avatar": u.avatar if u else "❓",
         "text": m.text,
         "image": m.image,
         "created_at": m.created_at.isoformat() + "Z",
     }
 
 
-# --- rotas -----------------------------------------------------------------
-@app.get("/api/health")
-def health():
-    return {"status": "ok"}
-
-
-@app.get("/api/settings")
-def read_settings(db: Session = Depends(get_db)):
-    s = get_settings(db)
+def settings_public(s: Settings) -> dict:
     return {
         "start_date": s.start_date.isoformat(),
         "duration_days": s.duration_days,
@@ -145,81 +195,179 @@ def read_settings(db: Session = Depends(get_db)):
     }
 
 
-@app.put("/api/settings")
-def update_settings(payload: SettingsUpdate, db: Session = Depends(get_db)):
-    s = get_settings(db)
+# --- rotas: saúde ----------------------------------------------------------
+@app.get("/api/health")
+def health():
+    return {"status": "ok"}
+
+
+# --- rotas: auth -----------------------------------------------------------
+@app.post("/api/auth/register")
+def register(payload: RegisterRequest, db: Session = Depends(get_db)):
+    email = payload.email.strip().lower()
+    if not EMAIL_RE.match(email):
+        raise HTTPException(400, "E-mail inválido.")
+    if db.query(User).filter(User.email == email).first():
+        raise HTTPException(409, "Já existe uma conta com esse e-mail.")
+    user = User(
+        email=email,
+        password_hash=hash_password(payload.password),
+        name=payload.name.strip(),
+        avatar=payload.avatar or "🎮",
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return {"token": create_token(user.id), "user": user_public(user)}
+
+
+@app.post("/api/auth/login")
+def login(payload: LoginRequest, db: Session = Depends(get_db)):
+    email = payload.email.strip().lower()
+    user = db.query(User).filter(User.email == email).first()
+    if user is None or not verify_password(payload.password, user.password_hash):
+        raise HTTPException(401, "E-mail ou senha incorretos.")
+    return {"token": create_token(user.id), "user": user_public(user)}
+
+
+@app.get("/api/auth/me")
+def me(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    groups = []
+    for m in db.query(Membership).filter(Membership.user_id == user.id).order_by(Membership.id).all():
+        count = db.query(Membership).filter(Membership.group_id == m.group_id).count()
+        groups.append(group_summary(m.group, m.role, count))
+    return {"user": user_public(user), "groups": groups}
+
+
+@app.put("/api/users/me")
+def update_me(payload: UserUpdate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(user, field, value)
+    db.commit()
+    db.refresh(user)
+    return user_public(user)
+
+
+# --- rotas: grupos ---------------------------------------------------------
+@app.get("/api/groups")
+def list_groups(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    out = []
+    for m in db.query(Membership).filter(Membership.user_id == user.id).order_by(Membership.id).all():
+        count = db.query(Membership).filter(Membership.group_id == m.group_id).count()
+        out.append(group_summary(m.group, m.role, count))
+    return {"groups": out}
+
+
+@app.post("/api/groups")
+def create_group(payload: GroupCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    code = generate_invite_code()
+    while db.query(Group).filter(Group.invite_code == code).first():
+        code = generate_invite_code()
+    group = Group(name=payload.name.strip(), invite_code=code)
+    db.add(group)
+    db.flush()
+    db.add(Settings(group_id=group.id, start_date=date.today(), duration_days=30, fixed_habits=DEFAULT_HABITS))
+    db.add(Membership(user_id=user.id, group_id=group.id, role="owner"))
+    db.commit()
+    db.refresh(group)
+    return group_summary(group, "owner", 1)
+
+
+@app.post("/api/groups/join")
+def join_group(payload: GroupJoin, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    code = payload.invite_code.strip().upper()
+    group = db.query(Group).filter(Group.invite_code == code).first()
+    if group is None:
+        raise HTTPException(404, "Código de convite inválido.")
+    existing = get_membership_or_none(db, user, group.id)
+    if existing is None:
+        db.add(Membership(user_id=user.id, group_id=group.id, role="member"))
+        db.commit()
+    count = db.query(Membership).filter(Membership.group_id == group.id).count()
+    role = existing.role if existing else "member"
+    return group_summary(group, role, count)
+
+
+def get_membership_or_none(db: Session, user: User, group_id: int) -> Membership | None:
+    return (
+        db.query(Membership)
+        .filter(Membership.user_id == user.id, Membership.group_id == group_id)
+        .first()
+    )
+
+
+# --- rotas: grupo (config) -------------------------------------------------
+@app.get("/api/groups/{gid}/settings")
+def read_settings(gid: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    get_membership(db, user, gid)
+    return settings_public(get_group_settings(db, gid))
+
+
+@app.put("/api/groups/{gid}/settings")
+def update_settings(gid: int, payload: SettingsUpdate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    get_membership(db, user, gid)
+    s = get_group_settings(db, gid)
     data = payload.model_dump(exclude_unset=True)
     if "fixed_habits" in data and data["fixed_habits"] is not None:
-        data["fixed_habits"] = [h.model_dump() if hasattr(h, "model_dump") else h
-                                for h in payload.fixed_habits]
+        data["fixed_habits"] = [h.model_dump() if hasattr(h, "model_dump") else h for h in payload.fixed_habits]
     for field, value in data.items():
         setattr(s, field, value)
     db.commit()
-    return read_settings(db)
+    return settings_public(s)
 
 
-@app.get("/api/players")
-def list_players(db: Session = Depends(get_db)):
-    settings = get_settings(db)
-    today = date.today()
-    players = db.query(Player).order_by(Player.id).all()
-    return [player_payload(settings, p, today) for p in players]
-
-
-@app.get("/api/players/{player_id}")
-def read_player(player_id: int, db: Session = Depends(get_db)):
-    settings = get_settings(db)
-    player = get_player(db, player_id)
-    return player_payload(settings, player, date.today())
-
-
-@app.put("/api/players/{player_id}")
-def update_player(player_id: int, payload: PlayerUpdate, db: Session = Depends(get_db)):
-    player = get_player(db, player_id)
-    for field, value in payload.model_dump(exclude_unset=True).items():
-        setattr(player, field, value)
-    db.commit()
-    return player_payload(get_settings(db), player, date.today())
-
-
-@app.get("/api/challenges/today")
-def challenges_today(day: str | None = None, db: Session = Depends(get_db)):
-    settings = get_settings(db)
+# --- rotas: grupo (desafios/dia) -------------------------------------------
+@app.get("/api/groups/{gid}/challenges/today")
+def challenges_today(gid: int, day: str | None = None, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    get_membership(db, user, gid)
+    s = get_group_settings(db, gid)
     d = parse_date(day)
     return {
         "date": d.isoformat(),
-        "day_number": scoring.day_number(settings, d),
-        "duration_days": settings.duration_days,
-        "daily": scoring.daily_challenge(settings, d),
-        "surprise": scoring.surprise_challenge(settings, d),
+        "day_number": scoring.day_number(s, d),
+        "duration_days": s.duration_days,
+        "daily": scoring.daily_challenge(s, d),
+        "surprise": scoring.surprise_challenge(s, d),
         "motd": scoring.motd(d),
     }
 
 
-@app.get("/api/day/{player_id}")
-def read_day(player_id: int, day: str | None = None, db: Session = Depends(get_db)):
-    settings = get_settings(db)
-    player = get_player(db, player_id)
+@app.get("/api/groups/{gid}/members/{mid}")
+def read_member(gid: int, mid: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    get_membership(db, user, gid)
+    membership = get_group_member(db, gid, mid)
+    return member_payload(get_group_settings(db, gid), membership, date.today())
+
+
+@app.get("/api/groups/{gid}/day/{mid}")
+def read_day(gid: int, mid: int, day: str | None = None, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    get_membership(db, user, gid)
+    membership = get_group_member(db, gid, mid)
+    s = get_group_settings(db, gid)
     d = parse_date(day)
-    entry = next((e for e in player.days if e.date == d), None)
-    return scoring.compute_day(settings, entry, d)
+    entry = next((e for e in membership.days if e.date == d), None)
+    return scoring.compute_day(s, entry, d)
 
 
-def _day_result(db: Session, settings: Settings, player: Player, entry: DayEntry, d: date):
+def _day_result(db: Session, settings: Settings, membership: Membership, entry: DayEntry, d: date):
     db.commit()
-    db.refresh(player)
-    today = date.today()
-    days = days_for(settings, player, today)
-    stats = scoring.player_stats(settings, days, today)
-    return {"day": scoring.compute_day(settings, entry, d), "stats": stats}
+    db.refresh(membership)
+    return {
+        "day": scoring.compute_day(settings, entry, d),
+        "stats": scoring.player_stats(
+            settings,
+            scoring.build_days(settings, {e.date: e for e in membership.days}, date.today()),
+            date.today(),
+        ),
+    }
 
 
-@app.post("/api/day/{player_id}/toggle")
-def toggle(player_id: int, req: ToggleRequest, db: Session = Depends(get_db)):
-    settings = get_settings(db)
-    player = get_player(db, player_id)
+@app.post("/api/groups/{gid}/day/toggle")
+def toggle(gid: int, req: ToggleRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    membership = get_membership(db, user, gid)
+    s = get_group_settings(db, gid)
     d = parse_date(req.date)
-    entry = get_or_create_entry(db, player, d)
+    entry = get_or_create_entry(db, membership, d)
 
     if req.type == "habit":
         if not req.habit_key:
@@ -235,66 +383,70 @@ def toggle(player_id: int, req: ToggleRequest, db: Session = Depends(get_db)):
     elif req.type == "surprise":
         entry.surprise_done = not entry.surprise_done
 
-    return _day_result(db, settings, player, entry, d)
+    return _day_result(db, s, membership, entry, d)
 
 
-@app.post("/api/day/{player_id}/mood")
-def set_mood(player_id: int, req: MoodRequest, db: Session = Depends(get_db)):
-    settings = get_settings(db)
-    player = get_player(db, player_id)
+@app.post("/api/groups/{gid}/day/mood")
+def set_mood(gid: int, req: MoodRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    membership = get_membership(db, user, gid)
+    s = get_group_settings(db, gid)
     valid = {m["key"] for m in MOODS}
     if req.mood is not None and req.mood not in valid:
         raise HTTPException(400, "Humor inválido.")
     d = parse_date(req.date)
-    entry = get_or_create_entry(db, player, d)
+    entry = get_or_create_entry(db, membership, d)
     entry.mood = req.mood
-    return _day_result(db, settings, player, entry, d)
+    return _day_result(db, s, membership, entry, d)
 
 
-@app.post("/api/day/{player_id}/proof")
-def set_proof(player_id: int, req: ProofRequest, db: Session = Depends(get_db)):
+@app.post("/api/groups/{gid}/day/proof")
+def set_proof(gid: int, req: ProofRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     validate_image(req.image)
-    settings = get_settings(db)
-    player = get_player(db, player_id)
+    membership = get_membership(db, user, gid)
+    s = get_group_settings(db, gid)
     d = parse_date(req.date)
-    entry = get_or_create_entry(db, player, d)
+    entry = get_or_create_entry(db, membership, d)
     if req.type == "daily":
         entry.daily_proof = req.image
     else:
         entry.surprise_proof = req.image
-    return _day_result(db, settings, player, entry, d)
+    return _day_result(db, s, membership, entry, d)
 
 
-@app.get("/api/messages")
-def list_messages(after_id: int = 0, limit: int = 200, db: Session = Depends(get_db)):
-    players_by_id = {p.id: p for p in db.query(Player).all()}
-    q = db.query(Message)
+# --- rotas: grupo (chat) ---------------------------------------------------
+@app.get("/api/groups/{gid}/messages")
+def list_messages(gid: int, after_id: int = 0, limit: int = 200, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    get_membership(db, user, gid)
+    members_by_id = {m.id: m for m in group_members(db, gid)}
+    q = db.query(Message).filter(Message.group_id == gid)
     if after_id:
         q = q.filter(Message.id > after_id)
     rows = q.order_by(Message.id.asc()).limit(min(limit, 500)).all()
-    return {"messages": [serialize_message(m, players_by_id) for m in rows]}
+    return {"messages": [serialize_message(m, members_by_id) for m in rows]}
 
 
-@app.post("/api/messages")
-def create_message(payload: MessageCreate, db: Session = Depends(get_db)):
+@app.post("/api/groups/{gid}/messages")
+def create_message(gid: int, payload: MessageCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     validate_image(payload.image)
-    player = get_player(db, payload.player_id)
+    membership = get_membership(db, user, gid)
     if not (payload.text or "").strip() and not payload.image:
         raise HTTPException(400, "Mensagem vazia.")
-    m = Message(player_id=player.id, text=(payload.text or "").strip(), image=payload.image)
+    m = Message(group_id=gid, membership_id=membership.id, text=(payload.text or "").strip(), image=payload.image)
     db.add(m)
     db.commit()
     db.refresh(m)
-    return serialize_message(m, {player.id: player})
+    return serialize_message(m, {membership.id: membership})
 
 
-@app.get("/api/history/{player_id}")
-def history(player_id: int, db: Session = Depends(get_db)):
-    settings = get_settings(db)
-    player = get_player(db, player_id)
+# --- rotas: grupo (histórico/conquistas/ranking) ---------------------------
+@app.get("/api/groups/{gid}/history/{mid}")
+def history(gid: int, mid: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    get_membership(db, user, gid)
+    membership = get_group_member(db, gid, mid)
+    s = get_group_settings(db, gid)
     today = date.today()
-    days = days_for(settings, player, today)
-    stats = scoring.player_stats(settings, days, today)
+    days = scoring.build_days(s, {e.date: e for e in membership.days}, today)
+    stats = scoring.player_stats(s, days, today)
     calendar = [
         {
             "date": cd["date"],
@@ -311,37 +463,38 @@ def history(player_id: int, db: Session = Depends(get_db)):
     return {"stats": stats, "calendar": calendar}
 
 
-@app.get("/api/achievements/{player_id}")
-def achievements(player_id: int, db: Session = Depends(get_db)):
-    settings = get_settings(db)
-    player = get_player(db, player_id)
+@app.get("/api/groups/{gid}/achievements/{mid}")
+def achievements(gid: int, mid: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    get_membership(db, user, gid)
+    membership = get_group_member(db, gid, mid)
+    s = get_group_settings(db, gid)
     today = date.today()
-    players = db.query(Player).order_by(Player.id).all()
-    days = days_for(settings, player, today)
-    stats = scoring.player_stats(settings, days, today)
-    casal = casal_perfect_days(settings, players, today)
+    days = scoring.build_days(s, {e.date: e for e in membership.days}, today)
+    stats = scoring.player_stats(s, days, today)
+    casal = casal_perfect_days(s, group_members(db, gid), today)
     return {"achievements": scoring.achievements_for(days, stats, casal)}
 
 
-@app.get("/api/ranking")
-def ranking(db: Session = Depends(get_db)):
-    settings = get_settings(db)
+@app.get("/api/groups/{gid}/ranking")
+def ranking(gid: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    get_membership(db, user, gid)
+    s = get_group_settings(db, gid)
     today = date.today()
-    players = db.query(Player).order_by(Player.id).all()
-    rows = [player_payload(settings, p, today) for p in players]
+    members = group_members(db, gid)
+    rows = [member_payload(s, m, today) for m in members]
     rows.sort(key=lambda r: r["stats"]["total"], reverse=True)
-    return {"ranking": rows, "casal_perfect_days": casal_perfect_days(settings, players, today)}
+    return {"ranking": rows, "casal_perfect_days": casal_perfect_days(s, members, today)}
 
 
-@app.get("/api/state")
-def state(db: Session = Depends(get_db)):
+@app.get("/api/groups/{gid}/state")
+def state(gid: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Payload agregado que abastece a tela inicial em uma única chamada."""
-    settings = get_settings(db)
+    membership = get_membership(db, user, gid)
+    s = get_group_settings(db, gid)
     today = date.today()
-    players = db.query(Player).order_by(Player.id).all()
-    player_rows = [player_payload(settings, p, today) for p in players]
+    members = group_members(db, gid)
+    player_rows = [member_payload(s, m, today) for m in members]
 
-    # incentivo/lembrete contextual por jogador (compara com o melhor rival)
     for row in player_rows:
         others = [r for r in player_rows if r["id"] != row["id"]]
         partner = max(others, key=lambda r: r["stats"]["total"]) if others else None
@@ -358,16 +511,18 @@ def state(db: Session = Depends(get_db)):
 
     return {
         "date": today.isoformat(),
-        "day_number": scoring.day_number(settings, today),
-        "duration_days": settings.duration_days,
-        "spiritual_enabled": settings.spiritual_enabled,
-        "daily": scoring.daily_challenge(settings, today),
-        "surprise": scoring.surprise_challenge(settings, today),
+        "group": {"id": gid, "name": membership.group.name, "invite_code": membership.group.invite_code, "role": membership.role},
+        "me_id": membership.id,
+        "day_number": scoring.day_number(s, today),
+        "duration_days": s.duration_days,
+        "spiritual_enabled": s.spiritual_enabled,
+        "daily": scoring.daily_challenge(s, today),
+        "surprise": scoring.surprise_challenge(s, today),
         "motd": scoring.motd(today),
         "moods": MOODS,
         "players": player_rows,
         "leaderboard": leaderboard,
-        "casal_perfect_days": casal_perfect_days(settings, players, today),
+        "casal_perfect_days": casal_perfect_days(s, members, today),
         "category_emoji": CATEGORY_EMOJI,
         "surprise_pool_size": len(SURPRISE_POOL),
     }
@@ -402,4 +557,4 @@ else:
 
     @app.get("/")
     def root():
-        return {"app": "Questly", "version": "0.2.0", "docs": "/docs"}
+        return {"app": "Questly", "version": "0.3.0", "docs": "/docs"}

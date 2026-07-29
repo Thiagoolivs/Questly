@@ -1,55 +1,63 @@
 import { useState, useEffect } from 'react'
 import { useApp } from '../store.jsx'
-import { api } from '../api.js'
-import PlayerSwitch from '../components/PlayerSwitch.jsx'
 
 const AVATARS = ['🦊', '🐨', '🐼', '🦁', '🐯', '🐸', '🐵', '🦉', '🔥', '⚡', '🌟', '💜']
 
 export default function Perfil() {
-  const { me, playerId, refresh, loading } = useApp()
+  const { user, me, group, groups, selectGroup, updateUser, logout, loading } = useApp()
   const [form, setForm] = useState(null)
   const [saved, setSaved] = useState(false)
+  const [copied, setCopied] = useState(false)
 
   useEffect(() => {
-    if (me)
+    if (user)
       setForm({
-        name: me.name,
-        avatar: me.avatar,
-        objetivo: me.objetivo || '',
-        peso: me.peso ?? '',
+        name: user.name,
+        avatar: user.avatar,
+        objetivo: user.objetivo || '',
+        peso: user.peso ?? '',
       })
-  }, [me?.id, me?.name, me?.avatar, me?.objetivo, me?.peso])
+  }, [user?.id, user?.name, user?.avatar, user?.objetivo, user?.peso])
 
-  if (loading || !me || !form) return <div className="screen center muted">Carregando…</div>
+  if (loading || !user || !form) return <div className="screen center muted">Carregando…</div>
 
   async function save() {
-    await api.updatePlayer(playerId, {
+    await updateUser({
       name: form.name,
       avatar: form.avatar,
       objetivo: form.objetivo,
       peso: form.peso === '' ? null : Number(form.peso),
     })
-    await refresh()
     setSaved(true)
     setTimeout(() => setSaved(false), 1800)
   }
 
-  const s = me.stats
-  const stats = [
-    { label: 'Dias concluídos', value: s.completed_days, emoji: '✅' },
-    { label: 'Sequência atual', value: s.streak, emoji: '🔥' },
-    { label: 'Melhor sequência', value: s.best_streak, emoji: '🏅' },
-    { label: 'Dias perfeitos', value: s.perfect_days, emoji: '⭐' },
-    { label: 'Pontos totais', value: s.total, emoji: '💎' },
-    { label: 'Conclusão', value: s.completion_pct + '%', emoji: '📈' },
-  ]
+  function copyCode() {
+    if (!group?.invite_code) return
+    navigator.clipboard?.writeText(group.invite_code).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    })
+  }
+
+  const s = me?.stats
+  const stats = s
+    ? [
+        { label: 'Dias concluídos', value: s.completed_days, emoji: '✅' },
+        { label: 'Sequência atual', value: s.streak, emoji: '🔥' },
+        { label: 'Melhor sequência', value: s.best_streak, emoji: '🏅' },
+        { label: 'Dias perfeitos', value: s.perfect_days, emoji: '⭐' },
+        { label: 'Pontos totais', value: s.total, emoji: '💎' },
+        { label: 'Conclusão', value: s.completion_pct + '%', emoji: '📈' },
+      ]
+    : []
 
   return (
     <div className="screen">
       <header className="topbar">
         <div className="brand"><span className="brand-mark">👤</span> Perfil</div>
+        <div className="muted small">{user.email}</div>
       </header>
-      <PlayerSwitch />
 
       <section className="card center">
         <div className="avatar-big">{form.avatar}</div>
@@ -93,18 +101,66 @@ export default function Perfil() {
         </button>
       </section>
 
+      {/* Grupo atual + convite */}
       <section className="card">
-        <div className="card-title">Estatísticas</div>
-        <div className="stat-grid">
-          {stats.map((st) => (
-            <div className="stat-box" key={st.label}>
-              <div className="stat-emoji">{st.emoji}</div>
-              <div className="stat-value">{st.value}</div>
-              <div className="muted xsmall">{st.label}</div>
-            </div>
-          ))}
+        <div className="card-title">👥 Grupo</div>
+        <div className="row between">
+          <div>
+            <div className="group-name">{group?.name}</div>
+            <div className="muted xsmall">{group?.member_count ?? '—'} membro(s)</div>
+          </div>
         </div>
+        <div className="invite-box">
+          <div>
+            <div className="muted xsmall">Código de convite</div>
+            <div className="invite-code">{group?.invite_code}</div>
+          </div>
+          <button className="btn ghost small-btn" onClick={copyCode}>
+            {copied ? '✓ Copiado' : '📋 Copiar'}
+          </button>
+        </div>
+        <p className="muted xsmall">Compartilhe esse código para alguém entrar no grupo.</p>
+
+        {groups.length > 1 && (
+          <div className="group-list">
+            {groups.map((g) => (
+              <button
+                key={g.id}
+                className={'group-row ' + (g.id === group?.id ? 'active' : '')}
+                onClick={() => selectGroup(g.id)}
+              >
+                <span className="group-emoji">👥</span>
+                <span className="group-main">
+                  <span className="group-name">{g.name}</span>
+                  <span className="muted xsmall">{g.member_count} membro(s)</span>
+                </span>
+                <span className="group-go">{g.id === group?.id ? '✓' : '→'}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        <button className="btn ghost full" onClick={() => selectGroup(null)}>
+          Criar / entrar em outro grupo
+        </button>
       </section>
+
+      {stats.length > 0 && (
+        <section className="card">
+          <div className="card-title">Estatísticas</div>
+          <div className="stat-grid">
+            {stats.map((st) => (
+              <div className="stat-box" key={st.label}>
+                <div className="stat-emoji">{st.emoji}</div>
+                <div className="stat-value">{st.value}</div>
+                <div className="muted xsmall">{st.label}</div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <button className="btn full logout-btn" onClick={logout}>Sair da conta</button>
     </div>
   )
 }

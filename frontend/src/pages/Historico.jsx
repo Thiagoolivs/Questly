@@ -6,15 +6,15 @@ import PlayerSwitch from '../components/PlayerSwitch.jsx'
 const WEEKDAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 
 export default function Historico() {
-  const { playerId } = useApp()
+  const { groupId, viewId } = useApp()
   const [data, setData] = useState(null)
   const [err, setErr] = useState(null)
 
   useEffect(() => {
-    if (!playerId) return
+    if (!groupId || !viewId) return
     setData(null)
-    api.history(playerId).then(setData).catch((e) => setErr(e.message))
-  }, [playerId])
+    api.history(groupId, viewId).then(setData).catch((e) => setErr(e.message))
+  }, [groupId, viewId])
 
   if (err) return <div className="screen center error">{err}</div>
   if (!data) return <div className="screen center muted">Carregando…</div>
