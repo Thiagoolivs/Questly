@@ -537,11 +537,11 @@ def set_mood(gid: int, req: MoodRequest, user: User = Depends(get_current_user),
     membership = get_membership(db, user, gid)
     s = get_group_settings(db, gid)
     valid = {m["key"] for m in MOODS}
-    if req.mood is not None and req.mood not in valid:
-        raise HTTPException(400, "Humor inválido.")
+    moods = [m for m in dict.fromkeys(req.moods) if m in valid]  # únicos e válidos
     d = parse_date(req.date)
     entry = get_or_create_entry(db, membership, d)
-    entry.mood = req.mood
+    entry.moods = moods
+    entry.mood_note = (req.note or "").strip() or None
     return _day_result(db, s, membership, entry, d)
 
 

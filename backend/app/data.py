@@ -201,12 +201,19 @@ JOINT_SUGGESTIONS = [
     {"emoji": "🌅", "label": "Ver o nascer/pôr do sol juntos"},
 ]
 
-# --- Status de humor -------------------------------------------------------
+# --- Status de humor / emoções (múltipla escolha) --------------------------
 MOODS = [
     {"key": "otimo", "emoji": "😄", "label": "Ótimo"},
-    {"key": "bem", "emoji": "🙂", "label": "Bem"},
+    {"key": "feliz", "emoji": "😊", "label": "Feliz"},
+    {"key": "grato", "emoji": "🙏", "label": "Grato"},
+    {"key": "calmo", "emoji": "😌", "label": "Calmo"},
+    {"key": "motivado", "emoji": "🔥", "label": "Motivado"},
+    {"key": "produtivo", "emoji": "⚡", "label": "Produtivo"},
     {"key": "neutro", "emoji": "😐", "label": "Neutro"},
-    {"key": "baixo", "emoji": "😕", "label": "Baixo"},
+    {"key": "cansado", "emoji": "🥱", "label": "Cansado"},
+    {"key": "ansioso", "emoji": "😰", "label": "Ansioso"},
+    {"key": "estressado", "emoji": "😤", "label": "Estressado"},
+    {"key": "triste", "emoji": "😔", "label": "Triste"},
     {"key": "dificil", "emoji": "😫", "label": "Difícil"},
 ]
 

@@ -21,6 +21,8 @@ _NEW_COLUMNS = {
         "challenge_proofs": "JSON",
         "challenge_rerolls": "JSON",
         "challenge_together": "JSON",
+        "moods": "JSON",
+        "mood_note": "TEXT",
     },
 }
 

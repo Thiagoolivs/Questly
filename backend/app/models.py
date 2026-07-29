@@ -98,7 +98,9 @@ class DayEntry(Base):
     challenge_rerolls: Mapped[dict] = mapped_column(JSON, default=dict)
     # Desafios feitos em dupla: {categoria: true} — rende bônus "juntos".
     challenge_together: Mapped[dict] = mapped_column(JSON, default=dict)
-    mood: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    # Humor do dia: lista de emoções nomeadas + nota livre opcional.
+    moods: Mapped[list] = mapped_column(JSON, default=list)
+    mood_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     membership: Mapped["Membership"] = relationship(back_populates="days")
 

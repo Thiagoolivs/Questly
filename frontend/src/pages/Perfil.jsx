@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import { useApp } from '../store.jsx'
 import { pickImage, fileToCompressedDataURL } from '../utils/image.js'
 import { getPushState, enablePush, disablePush } from '../utils/push.js'
@@ -207,6 +208,9 @@ export default function Perfil() {
         <button className="btn ghost full" onClick={() => selectGroup(null)}>
           Criar / entrar em outro grupo
         </button>
+        <Link to="/config" className="btn ghost full config-link">
+          ⚙️ Configurações do grupo
+        </Link>
       </section>
 
       {/* Notificações push */}
