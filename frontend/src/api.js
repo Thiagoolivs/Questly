@@ -1,5 +1,7 @@
-// Cliente HTTP do Questly. A URL da API vem de VITE_API_URL (padrão: localhost:8000).
-const BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+// Cliente HTTP do Questly. Em produção o backend serve o próprio frontend, então
+// a API fica na mesma origem (BASE vazio → caminhos relativos /api/...). Em dev,
+// o padrão aponta para o backend local. VITE_API_URL sobrescreve quando definido.
+const BASE = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : '')
 
 async function req(path, options = {}) {
   const res = await fetch(BASE + path, {
