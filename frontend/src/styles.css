@@ -532,3 +532,27 @@ input[type='range'] { width: 100%; accent-color: var(--accent); height: 24px; }
 .feed-emoji { font-size: 18px; width: 24px; text-align: center; flex-shrink: 0; }
 .feed-text { flex: 1; font-size: 0.9rem; }
 .feed-time { flex-shrink: 0; }
+
+/* Radar ------------------------------------------------------------------- */
+.radar { width: 100%; max-width: 280px; }
+.radar-grid { fill: none; stroke: var(--border-strong); stroke-width: 1; }
+.radar-axis { stroke: var(--border); stroke-width: 1; }
+.radar-label { font-size: 14px; }
+.radar-legend { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; margin-top: 8px; font-size: 13px; }
+.radar-legend-item { display: inline-flex; align-items: center; gap: 6px; }
+.radar-dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+
+/* Retrospectiva + Mural --------------------------------------------------- */
+.retro { display: flex; flex-wrap: wrap; gap: 10px; }
+.retro-stat {
+  flex: 1; min-width: 70px; display: flex; flex-direction: column; align-items: center; gap: 2px;
+  background: var(--card2); border: 1px solid var(--border); border-radius: 10px; padding: 10px 6px;
+}
+.retro-stat b { font-size: 18px; }
+.mural-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.mural-cell { position: relative; aspect-ratio: 1; border-radius: 10px; overflow: hidden; border: 1px solid var(--border); }
+.mural-cell img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.mural-tag { position: absolute; bottom: 4px; right: 4px; font-size: 14px; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.6)); }
+.lightbox-inner { max-width: 92vw; max-height: 88vh; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.lightbox-inner img { max-width: 92vw; max-height: 78vh; border-radius: 10px; object-fit: contain; }
+.lightbox-cap { color: #e6e8ec; font-size: 13px; text-align: center; }

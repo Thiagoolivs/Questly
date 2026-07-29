@@ -1,13 +1,16 @@
 import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import { useApp } from '../store.jsx'
 import { api } from '../api.js'
 import PlayerSwitch from '../components/PlayerSwitch.jsx'
+import RadarChart, { RADAR_COLORS } from '../components/RadarChart.jsx'
 
 const WEEKDAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 
 export default function Historico() {
   const { groupId, viewId } = useApp()
   const [data, setData] = useState(null)
+  const [radar, setRadar] = useState(null)
   const [err, setErr] = useState(null)
 
   useEffect(() => {
@@ -15,6 +18,11 @@ export default function Historico() {
     setData(null)
     api.history(groupId, viewId).then(setData).catch((e) => setErr(e.message))
   }, [groupId, viewId])
+
+  useEffect(() => {
+    if (!groupId) return
+    api.radar(groupId).then(setRadar).catch(() => {})
+  }, [groupId])
 
   if (err) return <div className="screen center error">{err}</div>
   if (!data) return <div className="screen center muted">Carregando…</div>
@@ -37,6 +45,24 @@ export default function Historico() {
         <div className="brand"><span className="brand-mark">📅</span> Histórico</div>
       </header>
       <PlayerSwitch />
+
+      <Link to="/mural" className="btn ghost full config-link">🖼️ Mural de fotos &amp; retrospectiva</Link>
+
+      {/* Radar por área */}
+      {radar && radar.members.length > 0 && (
+        <section className="card center">
+          <div className="card-title self-start">Radar por área</div>
+          <RadarChart categories={radar.categories} emojis={radar.emojis} members={radar.members} />
+          <div className="radar-legend">
+            {radar.members.map((m, i) => (
+              <span className="radar-legend-item" key={m.id}>
+                <i className="radar-dot" style={{ background: RADAR_COLORS[i % RADAR_COLORS.length] }} />
+                {m.name}
+              </span>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className="card">
         <div className="stat-grid four">

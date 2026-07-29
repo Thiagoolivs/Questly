@@ -83,4 +83,6 @@ export const api = {
   messages: (g, afterId = 0) => req(`/api/groups/${g}/messages${afterId ? `?after_id=${afterId}` : ''}`),
   sendMessage: (g, b) => req(`/api/groups/${g}/messages`, { method: 'POST', body: b }),
   activities: (g) => req(`/api/groups/${g}/activities`),
+  radar: (g) => req(`/api/groups/${g}/radar`),
+  gallery: (g) => req(`/api/groups/${g}/gallery`),
 }
