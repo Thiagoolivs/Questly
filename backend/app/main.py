@@ -1,8 +1,11 @@
 """API do Questly (FastAPI)."""
+import os
 from datetime import date
+from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from . import scoring
@@ -118,11 +121,6 @@ def serialize_message(m: Message, players_by_id: dict) -> dict:
 
 
 # --- rotas -----------------------------------------------------------------
-@app.get("/")
-def root():
-    return {"app": "Questly", "version": "0.2.0", "docs": "/docs"}
-
-
 @app.get("/api/health")
 def health():
     return {"status": "ok"}
@@ -373,3 +371,35 @@ def state(db: Session = Depends(get_db)):
         "category_emoji": CATEGORY_EMOJI,
         "surprise_pool_size": len(SURPRISE_POOL),
     }
+
+
+# --- frontend estático (SPA) -----------------------------------------------
+# Em produção o backend também serve o frontend já buildado (dist), então tudo
+# roda num único serviço e numa única porta ($PORT): sem CORS, sem VITE_API_URL
+# e sem 502 por descasamento de porta. Se o dist não existir (ex.: backend
+# rodando sozinho em dev), a API segue funcionando normalmente.
+_dist_env = os.getenv("FRONTEND_DIST")
+FRONTEND_DIST = (
+    Path(_dist_env)
+    if _dist_env
+    else Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
+)
+
+if FRONTEND_DIST.is_dir():
+    _dist_root = FRONTEND_DIST.resolve()
+
+    @app.get("/{full_path:path}")
+    def spa(full_path: str):
+        # Rotas de API não resolvidas não devem cair no index.html.
+        if full_path.startswith("api"):
+            raise HTTPException(404, "Not Found")
+        candidate = (_dist_root / full_path).resolve()
+        if full_path and candidate.is_file() and _dist_root in candidate.parents:
+            return FileResponse(candidate)
+        return FileResponse(_dist_root / "index.html")
+
+else:
+
+    @app.get("/")
+    def root():
+        return {"app": "Questly", "version": "0.2.0", "docs": "/docs"}
