@@ -4,6 +4,7 @@ import { useApp } from '../store.jsx'
 import { pickImage, fileToCompressedDataURL } from '../utils/image.js'
 import { getPushState, enablePush, disablePush } from '../utils/push.js'
 import Icon from '../components/Icon.jsx'
+import Avatar from '../components/Avatar.jsx'
 
 const AVATARS = ['🦊', '🐨', '🐼', '🦁', '🐯', '🐸', '🐵', '🦉', '🔥', '⚡', '🌟', '💜']
 
@@ -110,7 +111,7 @@ export default function Perfil() {
 
       <section className="card center">
         <div className="avatar-big">
-          {form.photo ? <img className="avatar-big-photo" src={form.photo} alt="foto de perfil" /> : form.avatar}
+          <Avatar photo={form.photo} avatar={form.avatar} name={form.name} size={104} />
         </div>
         <div className="photo-actions">
           <button className="btn ghost small-btn icon-btn" disabled={photoBusy} onClick={changePhoto}>
@@ -126,6 +127,13 @@ export default function Perfil() {
           <>
             <div className="muted xsmall" style={{ marginTop: 4 }}>ou escolha um emoji</div>
             <div className="avatar-picker">
+              <button
+                className={'avatar-opt mono-opt ' + (!form.avatar ? 'active' : '')}
+                title="Monograma (inicial)"
+                onClick={() => setForm({ ...form, avatar: '' })}
+              >
+                {(form.name || '?').charAt(0).toUpperCase()}
+              </button>
               {AVATARS.map((a) => (
                 <button
                   key={a}

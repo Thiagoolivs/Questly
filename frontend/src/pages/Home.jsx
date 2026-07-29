@@ -5,7 +5,8 @@ import { pickImage, fileToCompressedDataURL } from '../utils/image.js'
 import ProgressRing from '../components/ProgressRing.jsx'
 import Avatar from '../components/Avatar.jsx'
 import AreaRings from '../components/AreaRings.jsx'
-import Icon, { categoryIconName } from '../components/Icon.jsx'
+import Icon, { categoryIconName, moodIconName } from '../components/Icon.jsx'
+import IconPicker from '../components/IconPicker.jsx'
 
 const WEEKDAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 
@@ -21,13 +22,13 @@ export default function Home() {
   const { state, me, groupId, refresh, loading, error } = useApp()
   const [busy, setBusy] = useState(false)
   const [zoom, setZoom] = useState(null)
-  const [jointForm, setJointForm] = useState({ emoji: '💞', label: '' })
+  const [jointForm, setJointForm] = useState({ emoji: '💞', icon: null, label: '' })
   const [jointPhoto, setJointPhoto] = useState(null)
   const [moodNote, setMoodNote] = useState('')
   const [showGoalForm, setShowGoalForm] = useState(false)
-  const [goalForm, setGoalForm] = useState({ emoji: '🎯', title: '', duration_days: 30 })
+  const [goalForm, setGoalForm] = useState({ emoji: '🎯', icon: null, title: '', duration_days: 30 })
   const [showTaskForm, setShowTaskForm] = useState(false)
-  const [taskForm, setTaskForm] = useState({ emoji: '🗓️', title: '', kind: 'once', date: '', weekdays: [] })
+  const [taskForm, setTaskForm] = useState({ emoji: '🗓️', icon: null, title: '', kind: 'once', date: '', weekdays: [] })
 
   useEffect(() => {
     setMoodNote(me?.today?.mood_note || '')
@@ -107,9 +108,10 @@ export default function Home() {
       await api.createGoal(groupId, {
         title: goalForm.title.trim(),
         emoji: goalForm.emoji || '🎯',
+        icon: goalForm.icon,
         duration_days: Number(goalForm.duration_days) || 30,
       })
-      setGoalForm({ emoji: '🎯', title: '', duration_days: 30 })
+      setGoalForm({ emoji: '🎯', icon: null, title: '', duration_days: 30 })
       setShowGoalForm(false)
     })
   }
@@ -131,11 +133,12 @@ export default function Home() {
       await api.createTask(groupId, {
         title: taskForm.title.trim(),
         emoji: taskForm.emoji || '🗓️',
+        icon: taskForm.icon,
         kind: taskForm.kind,
         date: taskForm.kind === 'once' ? taskForm.date : null,
         weekdays: taskForm.kind === 'weekly' ? taskForm.weekdays : [],
       })
-      setTaskForm({ emoji: '🗓️', title: '', kind: 'once', date: '', weekdays: [] })
+      setTaskForm({ emoji: '🗓️', icon: null, title: '', kind: 'once', date: '', weekdays: [] })
       setShowTaskForm(false)
     })
   }
@@ -159,9 +162,10 @@ export default function Home() {
         date: state.date,
         label: jointForm.label.trim(),
         emoji: jointForm.emoji || '💞',
+        icon: jointForm.icon,
         image: jointPhoto,
       })
-      setJointForm({ emoji: '💞', label: '' })
+      setJointForm({ emoji: '💞', icon: null, label: '' })
       setJointPhoto(null)
     })
   }
@@ -226,12 +230,10 @@ export default function Home() {
         <section className="card">
           <div className="card-title">Nova meta</div>
           <div className="add-habit">
-            <input
-              className="add-habit-emoji"
-              value={goalForm.emoji}
-              maxLength={2}
-              onChange={(e) => setGoalForm({ ...goalForm, emoji: e.target.value })}
-              aria-label="emoji"
+            <IconPicker
+              emoji={goalForm.emoji}
+              icon={goalForm.icon}
+              onPick={({ emoji, icon }) => setGoalForm({ ...goalForm, emoji: emoji || '🎯', icon })}
             />
             <input
               className="add-habit-label"
@@ -292,12 +294,10 @@ export default function Home() {
         <section className="card">
           <div className="card-title">Agendar tarefa</div>
           <div className="add-habit">
-            <input
-              className="add-habit-emoji"
-              value={taskForm.emoji}
-              maxLength={2}
-              onChange={(e) => setTaskForm({ ...taskForm, emoji: e.target.value })}
-              aria-label="emoji"
+            <IconPicker
+              emoji={taskForm.emoji}
+              icon={taskForm.icon}
+              onPick={({ emoji, icon }) => setTaskForm({ ...taskForm, emoji: emoji || '🗓️', icon })}
             />
             <input
               className="add-habit-label"
@@ -354,10 +354,10 @@ export default function Home() {
         {state.leaderboard.map((p, i) => (
           <div className="rank-row" key={p.id}>
             <div className="rank-pos">{i + 1}</div>
-            <div className="rank-avatar"><Avatar photo={p.photo} avatar={p.avatar} size={34} /></div>
+            <div className="rank-avatar"><Avatar photo={p.photo} avatar={p.avatar} name={p.name} size={34} /></div>
             <div className="rank-main">
               <div className="rank-name">
-                {p.name} {p.today?.mood && <span className="rank-mood">{moodEmoji(p.today.mood)}</span>}
+                {p.name} {p.today?.mood && <span className="rank-mood"><Icon name={moodIconName(p.today.mood)} size={13} /></span>}
               </div>
               <div className="bar">
                 <div className="bar-fill" style={{ width: `${p.stats.possible ? (p.stats.total / p.stats.possible) * 100 : 0}%` }} />
@@ -402,7 +402,7 @@ export default function Home() {
               disabled={busy}
               onClick={() => toggleMood(m.key)}
             >
-              <span className="mood-emoji">{m.emoji}</span>
+              <span className="mood-emoji"><Icon name={moodIconName(m.key)} size={20} /></span>
               <span className="mood-label">{m.label}</span>
             </button>
           ))}
@@ -501,7 +501,7 @@ export default function Home() {
                 {a.image ? (
                   <img className="joint-thumb" src={a.image} alt="" onClick={() => setZoom(a.image)} />
                 ) : (
-                  <span className="joint-emoji">{a.emoji}</span>
+                  <span className="joint-emoji">{a.icon ? <Icon name={a.icon} size={18} /> : a.emoji}</span>
                 )}
                 <span className="joint-main">
                   <span className="joint-label">{a.label}</span>
@@ -528,12 +528,10 @@ export default function Home() {
         )}
 
         <div className="add-habit">
-          <input
-            className="add-habit-emoji"
-            value={jointForm.emoji}
-            maxLength={2}
-            onChange={(e) => setJointForm({ ...jointForm, emoji: e.target.value })}
-            aria-label="emoji"
+          <IconPicker
+            emoji={jointForm.emoji}
+            icon={jointForm.icon}
+            onPick={({ emoji, icon }) => setJointForm({ ...jointForm, emoji: emoji || '💞', icon })}
           />
           <input
             className="add-habit-label"
@@ -568,7 +566,7 @@ export default function Home() {
             return (
               <div key={h.key} className={'habit-row ' + (done ? 'done' : '')}>
                 <button className="habit habit-toggle" disabled={busy} onClick={() => toggleHabit(h.key)}>
-                  <span className="habit-emoji">{h.emoji}</span>
+                  <span className="habit-emoji">{h.icon ? <Icon name={h.icon} size={18} /> : h.emoji}</span>
                   <span className="habit-label">{h.label}</span>
                   {proof && <span className="habit-bonus">+2</span>}
                   <span className={'check ' + (done ? 'on' : '')}>{done ? <Icon name="check" size={14} /> : ''}</span>

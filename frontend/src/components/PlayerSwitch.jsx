@@ -17,7 +17,7 @@ export default function PlayerSwitch() {
           className={'switch-btn' + (p.id === viewId ? ' active' : '')}
           onClick={() => setViewId(p.id)}
         >
-          <span className="switch-avatar"><Avatar photo={p.photo} avatar={p.avatar} size={22} /></span>
+          <span className="switch-avatar"><Avatar photo={p.photo} avatar={p.avatar} name={p.name} size={22} /></span>
           <span className="switch-name">{p.name}</span>
         </button>
       ))}

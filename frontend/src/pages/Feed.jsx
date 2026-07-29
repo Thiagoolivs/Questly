@@ -49,7 +49,7 @@ export default function Feed() {
           {items.map((a) => (
             <div className="feed-row card" key={a.id}>
               <div className="feed-av">
-                <Avatar photo={a.photo} avatar={a.avatar} size={34} />
+                <Avatar photo={a.photo} avatar={a.avatar} name={a.author} size={34} />
               </div>
               <div className="feed-body">
                 <div className="feed-line">

@@ -1,15 +1,12 @@
 import { useState } from 'react'
 import { useApp } from '../store.jsx'
 
-const AVATARS = ['🦊', '🐨', '🐼', '🦁', '🐯', '🐸', '🐵', '🦉', '🔥', '⚡', '🌟', '💜']
-
 export default function Auth() {
   const { login, register } = useApp()
   const [mode, setMode] = useState('login') // login | signup
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [name, setName] = useState('')
-  const [avatar, setAvatar] = useState('🦊')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(null)
 
@@ -22,7 +19,7 @@ export default function Auth() {
       if (mode === 'login') {
         await login(email.trim(), password)
       } else {
-        await register({ email: email.trim(), password, name: name.trim(), avatar })
+        await register({ email: email.trim(), password, name: name.trim() })
       }
     } catch (e) {
       setErr(e.message)
@@ -58,27 +55,10 @@ export default function Auth() {
 
         <form onSubmit={submit}>
           {mode === 'signup' && (
-            <>
-              <label className="field">
-                <span>Nome</span>
-                <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Como te chamam" required />
-              </label>
-              <div className="field">
-                <span>Avatar</span>
-                <div className="avatar-picker">
-                  {AVATARS.map((a) => (
-                    <button
-                      key={a}
-                      type="button"
-                      className={'avatar-opt ' + (a === avatar ? 'active' : '')}
-                      onClick={() => setAvatar(a)}
-                    >
-                      {a}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </>
+            <label className="field">
+              <span>Nome</span>
+              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Como te chamam" required />
+            </label>
           )}
           <label className="field">
             <span>E-mail</span>

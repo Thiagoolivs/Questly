@@ -247,6 +247,7 @@ class JointActivity(Base):
     date: Mapped[date] = mapped_column(Date, index=True)
     label: Mapped[str] = mapped_column(String(120))
     emoji: Mapped[str] = mapped_column(String(8), default="💞")
+    icon: Mapped[Optional[str]] = mapped_column(String(24), nullable=True)
     points: Mapped[int] = mapped_column(Integer, default=20)
     image: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # comprovação opcional
     created_by: Mapped[int] = mapped_column(ForeignKey("memberships.id"))

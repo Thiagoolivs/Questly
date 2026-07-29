@@ -414,7 +414,7 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)):
         email=email,
         password_hash=hash_password(payload.password),
         name=payload.name.strip(),
-        avatar=payload.avatar or "🎮",
+        avatar=payload.avatar or "",
     )
     db.add(user)
     db.commit()
@@ -712,6 +712,7 @@ def serialize_joint(a: JointActivity, members_by_id: dict) -> dict:
         "date": a.date.isoformat(),
         "label": a.label,
         "emoji": a.emoji,
+        "icon": a.icon,
         "points": a.points,
         "image": a.image,
         "created_by": a.created_by,
@@ -748,6 +749,7 @@ def create_joint(gid: int, payload: JointActivityCreate, user: User = Depends(ge
         date=d,
         label=payload.label.strip(),
         emoji=(payload.emoji or "💞").strip() or "💞",
+        icon=payload.icon,
         points=JOINT_ACTIVITY_POINTS,
         image=payload.image,
         created_by=membership.id,

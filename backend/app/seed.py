@@ -33,6 +33,9 @@ _NEW_COLUMNS = {
     "task_completions": {
         "image": "TEXT",
     },
+    "joint_activities": {
+        "icon": "VARCHAR(24)",
+    },
 }
 
 # Colunas do modelo antigo de desafio (1 diário + surpresa), agora obsoletas.
