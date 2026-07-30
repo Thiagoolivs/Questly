@@ -16,6 +16,16 @@ from .database import Base, engine
 _NEW_COLUMNS = {
     "users": {
         "photo": "TEXT",
+        "altura_cm": "FLOAT",
+        "sexo": "VARCHAR(1)",
+        "idade": "INTEGER",
+        "nivel_atividade": "VARCHAR(20)",
+        "objetivo_tipo": "VARCHAR(10)",
+        "meta_kcal": "INTEGER",
+        "meta_proteina_g": "INTEGER",
+        "meta_carbo_g": "INTEGER",
+        "meta_gordura_g": "INTEGER",
+        "meta_agua_l": "FLOAT",
     },
     "day_entries": {
         "challenge_proofs": "JSON",

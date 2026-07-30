@@ -131,7 +131,11 @@ export default function Home() {
   }
 
   // --- Alimentação (contador de calorias por foto) ---
-  const nutrition = state.nutrition || { calories: 0, protein_g: 0, calories_goal: 2000, protein_goal_g: 120, meals: [] }
+  const nutrition = state.nutrition || {
+    calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0,
+    calories_goal: 2000, protein_goal_g: 120, carbs_goal_g: 250, fat_goal_g: 56, water_goal_l: 2.5,
+    meals: [],
+  }
   const meals = nutrition.meals || []
   const kcalPct = Math.min(100, Math.round((nutrition.calories / (nutrition.calories_goal || 1)) * 100))
   const protPct = Math.min(100, Math.round((nutrition.protein_g / (nutrition.protein_goal_g || 1)) * 100))
@@ -306,7 +310,7 @@ export default function Home() {
             <div className="nutri-bar"><div className="nutri-fill prot" style={{ width: protPct + '%' }} /></div>
           </div>
           <div className="muted xsmall nutri-macros">
-            Carbo {nutrition.carbs_g}g · Gordura {nutrition.fat_g}g
+            Carbo {nutrition.carbs_g}/{nutrition.carbs_goal_g}g · Gordura {nutrition.fat_g}/{nutrition.fat_goal_g}g · Meta de água {nutrition.water_goal_l}L
           </div>
         </div>
 

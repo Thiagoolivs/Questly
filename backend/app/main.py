@@ -14,6 +14,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from . import ai
+from . import nutrition
 from . import scoring
 from .auth import (
     create_token,
@@ -237,6 +238,17 @@ def user_public(u: User) -> dict:
         "photo": u.photo,
         "objetivo": u.objetivo,
         "peso": u.peso,
+        "altura_cm": u.altura_cm,
+        "sexo": u.sexo,
+        "idade": u.idade,
+        "nivel_atividade": u.nivel_atividade,
+        "objetivo_tipo": u.objetivo_tipo,
+        "meta_kcal": u.meta_kcal,
+        "meta_proteina_g": u.meta_proteina_g,
+        "meta_carbo_g": u.meta_carbo_g,
+        "meta_gordura_g": u.meta_gordura_g,
+        "meta_agua_l": u.meta_agua_l,
+        "nutrition_targets": nutrition.compute_targets(u),
     }
 
 
@@ -543,6 +555,14 @@ def update_me(payload: UserUpdate, user: User = Depends(get_current_user), db: S
     data = payload.model_dump(exclude_unset=True)
     if "photo" in data:
         validate_image(data["photo"])
+    # Normaliza os campos de perfil (valores fora do conjunto viram None).
+    if "sexo" in data:
+        sx = (data["sexo"] or "").upper()
+        data["sexo"] = sx if sx in ("M", "F") else None
+    if "nivel_atividade" in data and data["nivel_atividade"] not in nutrition.ACTIVITY_FACTORS:
+        data["nivel_atividade"] = None
+    if "objetivo_tipo" in data and data["objetivo_tipo"] not in ("perder", "manter", "ganhar"):
+        data["objetivo_tipo"] = None
     for field, value in data.items():
         setattr(user, field, value)
     db.commit()
@@ -1195,18 +1215,24 @@ def meals_of(db: Session, gid: int, membership_id: int, d: date) -> list[Meal]:
     )
 
 
-def nutrition_payload(db: Session, gid: int, membership_id: int, d: date, s: Settings) -> dict:
-    rows = meals_of(db, gid, membership_id, d)
+def nutrition_payload(db: Session, gid: int, membership: Membership, d: date, s: Settings) -> dict:
+    rows = meals_of(db, gid, membership.id, d)
+    t = nutrition.compute_targets(membership.user, s)
+    tg = t["targets"]
     return {
         "date": d.isoformat(),
         "calories": sum(m.calories for m in rows),
         "protein_g": sum(m.protein_g for m in rows),
         "carbs_g": sum(m.carbs_g for m in rows),
         "fat_g": sum(m.fat_g for m in rows),
-        "calories_goal": s.calories_goal,
-        "protein_goal_g": s.protein_goal_g,
+        "calories_goal": tg["kcal"],
+        "protein_goal_g": tg["protein_g"],
+        "carbs_goal_g": tg["carbs_g"],
+        "fat_goal_g": tg["fat_g"],
+        "water_goal_l": tg["water_l"],
         "count": len(rows),
         "meals": [serialize_meal(m) for m in rows],
+        "targets": t,
     }
 
 
@@ -1224,7 +1250,7 @@ def list_meals(gid: int, day: str | None = None, user: User = Depends(get_curren
     me = get_membership(db, user, gid)
     s = get_group_settings(db, gid)
     d = parse_date(day, today_of(s))
-    return nutrition_payload(db, gid, me.id, d, s)
+    return nutrition_payload(db, gid, me, d, s)
 
 
 @app.post("/api/groups/{gid}/meals")
@@ -1257,7 +1283,7 @@ def create_meal(gid: int, payload: MealCreate, user: User = Depends(get_current_
     db.add(meal)
     db.commit()
     db.refresh(meal)
-    return {"meal": serialize_meal(meal), "nutrition": nutrition_payload(db, gid, me.id, d, s)}
+    return {"meal": serialize_meal(meal), "nutrition": nutrition_payload(db, gid, me, d, s)}
 
 
 @app.patch("/api/groups/{gid}/meals/{meal_id}")
@@ -1271,7 +1297,7 @@ def update_meal(gid: int, meal_id: int, payload: MealUpdate, user: User = Depend
     if data:
         meal.ai_confidence = None  # ajustado à mão → não é mais estimativa pura
     db.commit()
-    return {"meal": serialize_meal(meal), "nutrition": nutrition_payload(db, gid, me.id, meal.date, s)}
+    return {"meal": serialize_meal(meal), "nutrition": nutrition_payload(db, gid, me, meal.date, s)}
 
 
 @app.delete("/api/groups/{gid}/meals/{meal_id}")
@@ -1282,7 +1308,7 @@ def delete_meal(gid: int, meal_id: int, user: User = Depends(get_current_user), 
     d = meal.date
     db.delete(meal)
     db.commit()
-    return {"ok": True, "nutrition": nutrition_payload(db, gid, me.id, d, s)}
+    return {"ok": True, "nutrition": nutrition_payload(db, gid, me, d, s)}
 
 
 # --- rotas: grupo (chat) ---------------------------------------------------
@@ -1576,7 +1602,7 @@ def state(gid: int, user: User = Depends(get_current_user), db: Session = Depend
         "activities": [serialize_activity(a, members_by_id) for a in recent_activities],
         "goals": [serialize_goal(db, g, members, membership, today) for g in active_goals(db, gid)],
         "tasks": [serialize_task(db, t, members, membership, today) for t in tasks_due(db, gid, today)],
-        "nutrition": nutrition_payload(db, gid, membership.id, today, s),
+        "nutrition": nutrition_payload(db, gid, membership, today, s),
         "ai_enabled": ai.ai_enabled(),
     }
 

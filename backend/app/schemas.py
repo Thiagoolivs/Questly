@@ -22,7 +22,19 @@ class UserUpdate(BaseModel):
     avatar: Optional[str] = Field(None, max_length=8)
     photo: Optional[str] = None  # data URL base64; None remove a foto
     objetivo: Optional[str] = Field(None, max_length=200)
-    peso: Optional[float] = None
+    peso: Optional[float] = Field(None, ge=0, le=500)
+    # Perfil de nutrição (tudo opcional; None limpa o campo)
+    altura_cm: Optional[float] = Field(None, ge=0, le=260)
+    sexo: Optional[str] = Field(None, max_length=1)  # 'M' | 'F' | ''
+    idade: Optional[int] = Field(None, ge=0, le=120)
+    nivel_atividade: Optional[str] = Field(None, max_length=20)
+    objetivo_tipo: Optional[str] = Field(None, max_length=10)  # perder|manter|ganhar
+    # Ajustes manuais das metas (None = volta para a estimativa automática)
+    meta_kcal: Optional[int] = Field(None, ge=0, le=10000)
+    meta_proteina_g: Optional[int] = Field(None, ge=0, le=600)
+    meta_carbo_g: Optional[int] = Field(None, ge=0, le=1200)
+    meta_gordura_g: Optional[int] = Field(None, ge=0, le=600)
+    meta_agua_l: Optional[float] = Field(None, ge=0, le=15)
 
 
 # --- grupos ----------------------------------------------------------------

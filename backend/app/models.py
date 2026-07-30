@@ -37,6 +37,18 @@ class User(Base):
     photo: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # data URL base64 (opcional)
     objetivo: Mapped[str] = mapped_column(String(200), default="")
     peso: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    # Perfil para estimar metas de nutrição (tudo opcional).
+    altura_cm: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    sexo: Mapped[Optional[str]] = mapped_column(String(1), nullable=True)  # 'M' | 'F'
+    idade: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    nivel_atividade: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    objetivo_tipo: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)  # perder|manter|ganhar
+    # Ajustes manuais das metas (sobrescrevem a estimativa quando definidos).
+    meta_kcal: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    meta_proteina_g: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    meta_carbo_g: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    meta_gordura_g: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    meta_agua_l: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     memberships: Mapped[list["Membership"]] = relationship(
