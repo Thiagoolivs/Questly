@@ -14,11 +14,24 @@ import os
 
 from .data import CATEGORY_ORDER, DIFFICULTIES, DIFFICULTY_LABEL
 
-# Modelo padrão da Groq (bom para JSON e itens curtos/criativos).
-DEFAULT_MODEL = os.getenv("QUESTLY_AI_MODEL", "llama-3.3-70b-versatile")
-# Modelo com visão (para o contador de calorias por foto).
-VISION_MODEL = os.getenv("QUESTLY_VISION_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct")
+# A Groq roda os modelos abertos e ROTACIONA/descontinua com frequência, então
+# em vez de fixar um ID (que quebra na próxima rotação) mantemos uma lista de
+# candidatos e escolhemos, em runtime, o primeiro que estiver disponível na conta
+# (via /models). As variáveis QUESTLY_AI_MODEL / QUESTLY_VISION_MODEL forçam um ID.
+TEXT_MODELS = [
+    "qwen/qwen3.6-27b",
+    "llama-3.3-70b-versatile",
+    "llama-3.1-8b-instant",
+    "openai/gpt-oss-20b",
+]
+VISION_MODELS = [
+    "qwen/qwen3.6-27b",
+    "meta-llama/llama-4-maverick-17b-128e-instruct",
+    "meta-llama/llama-4-scout-17b-16e-instruct",
+]
 MAX_TEXT_LEN = 160
+
+_avail_cache: "set[str] | None" = None
 
 
 def ai_enabled() -> bool:
@@ -29,6 +42,29 @@ def ai_enabled() -> bool:
     except Exception:
         return False
     return True
+
+
+def _available_model_ids(client) -> set:
+    """IDs de modelos disponíveis na conta (cacheado por processo)."""
+    global _avail_cache
+    if _avail_cache is None:
+        try:
+            _avail_cache = {m.id for m in client.models.list().data}
+        except Exception:
+            _avail_cache = set()
+    return _avail_cache
+
+
+def _pick_model(client, override_env: str, candidates: list) -> str:
+    """Escolhe o 1º candidato disponível na conta; respeita o override por env."""
+    override = os.getenv(override_env)
+    if override:
+        return override
+    avail = _available_model_ids(client)
+    for c in candidates:
+        if c in avail:
+            return c
+    return candidates[0]  # último recurso: deixa a API reportar se não existir
 
 
 def _prompt(categories: list[str], per_diff: int, context: str | None) -> str:
@@ -106,7 +142,7 @@ def generate_challenge_pool(categories: list[str], per_diff: int = 6, context: s
 
     client = groq.Groq()  # lê GROQ_API_KEY do ambiente
     resp = client.chat.completions.create(
-        model=DEFAULT_MODEL,
+        model=_pick_model(client, "QUESTLY_AI_MODEL", TEXT_MODELS),
         max_tokens=4096,
         temperature=0.9,
         response_format={"type": "json_object"},
@@ -167,7 +203,7 @@ def estimate_meal(image_data_url: str) -> dict:
 
     client = groq.Groq()
     resp = client.chat.completions.create(
-        model=VISION_MODEL,
+        model=_pick_model(client, "QUESTLY_VISION_MODEL", VISION_MODELS),
         max_tokens=500,
         temperature=0.2,
         messages=[
