@@ -304,6 +304,26 @@ input[type='range'] { width: 100%; accent-color: var(--accent); height: 24px; }
 .config-link { text-align: center; }
 .rank-mood { font-size: 14px; }
 
+/* Alimentação (contador de calorias) ------------------------------------- */
+.nutri-goals { display: flex; flex-direction: column; gap: 10px; margin-bottom: 4px; }
+.nutri-metric-top { display: flex; justify-content: space-between; align-items: center; font-size: 13px; margin-bottom: 5px; }
+.nutri-bar { height: 8px; border-radius: 999px; background: var(--card2); border: 1px solid var(--border); overflow: hidden; }
+.nutri-fill { height: 100%; border-radius: 999px; transition: width .3s ease; }
+.nutri-fill.kcal { background: var(--accent); }
+.nutri-fill.prot { background: var(--green, #34c759); }
+.nutri-macros { margin-top: 2px; }
+.meal-list { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; }
+.meal-row { display: flex; align-items: center; gap: 10px; padding: 8px; background: var(--card2); border: 1px solid var(--border); border-radius: 12px; }
+.meal-thumb { width: 46px; height: 46px; object-fit: cover; border-radius: 10px; border: 1px solid var(--border); cursor: pointer; flex-shrink: 0; }
+.meal-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.meal-label { font-size: 14px; font-weight: 600; }
+.meal-conf { font-weight: 400; text-transform: capitalize; }
+.meal-edit { display: flex; flex-direction: column; gap: 8px; padding: 10px; background: var(--card2); border: 1px solid var(--border); border-radius: 12px; }
+.meal-edit-label { width: 100%; }
+.meal-edit-nums { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.meal-edit-nums label { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--muted); text-align: center; }
+.meal-edit-nums input { width: 100%; text-align: center; }
+
 /* Comprovação (proof) ---------------------------------------------------- */
 .proof { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 2px; }
 .proof-thumb {

@@ -32,6 +32,7 @@ from .models import (
     GoalCheckin,
     Group,
     JointActivity,
+    Meal,
     Membership,
     Message,
     PushSubscription,
@@ -48,6 +49,8 @@ from .schemas import (
     GroupJoin,
     HabitPhotoRequest,
     JointActivityCreate,
+    MealCreate,
+    MealUpdate,
     TaskCompleteRequest,
     TaskCreate,
     LoginRequest,
@@ -1167,6 +1170,121 @@ def delete_task(gid: int, task_id: int, user: User = Depends(get_current_user), 
     return {"ok": True}
 
 
+# --- rotas: grupo (contador de calorias por foto) --------------------------
+def serialize_meal(m: Meal) -> dict:
+    return {
+        "id": m.id,
+        "membership_id": m.membership_id,
+        "date": m.date.isoformat(),
+        "label": m.label,
+        "calories": m.calories,
+        "protein_g": m.protein_g,
+        "carbs_g": m.carbs_g,
+        "fat_g": m.fat_g,
+        "image": m.image,
+        "confidence": m.ai_confidence,
+    }
+
+
+def meals_of(db: Session, gid: int, membership_id: int, d: date) -> list[Meal]:
+    return (
+        db.query(Meal)
+        .filter(Meal.group_id == gid, Meal.membership_id == membership_id, Meal.date == d)
+        .order_by(Meal.id)
+        .all()
+    )
+
+
+def nutrition_payload(db: Session, gid: int, membership_id: int, d: date, s: Settings) -> dict:
+    rows = meals_of(db, gid, membership_id, d)
+    return {
+        "date": d.isoformat(),
+        "calories": sum(m.calories for m in rows),
+        "protein_g": sum(m.protein_g for m in rows),
+        "carbs_g": sum(m.carbs_g for m in rows),
+        "fat_g": sum(m.fat_g for m in rows),
+        "calories_goal": s.calories_goal,
+        "protein_goal_g": s.protein_goal_g,
+        "count": len(rows),
+        "meals": [serialize_meal(m) for m in rows],
+    }
+
+
+def get_own_meal(db: Session, gid: int, meal_id: int, me: Membership) -> Meal:
+    m = db.get(Meal, meal_id)
+    if m is None or m.group_id != gid:
+        raise HTTPException(404, "Refeição não encontrada.")
+    if m.membership_id != me.id:
+        raise HTTPException(403, "Você só pode alterar as suas refeições.")
+    return m
+
+
+@app.get("/api/groups/{gid}/meals")
+def list_meals(gid: int, day: str | None = None, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    me = get_membership(db, user, gid)
+    s = get_group_settings(db, gid)
+    d = parse_date(day, today_of(s))
+    return nutrition_payload(db, gid, me.id, d, s)
+
+
+@app.post("/api/groups/{gid}/meals")
+def create_meal(gid: int, payload: MealCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Analisa a foto da refeição por IA e registra a estimativa (ajustável depois)."""
+    validate_image(payload.image)
+    me = get_membership(db, user, gid)
+    s = get_group_settings(db, gid)
+    today = today_of(s)
+    d = parse_date(payload.date, today)
+    ensure_today(d, today)
+    if not ai.ai_enabled():
+        raise HTTPException(503, "Contador por IA indisponível (configure GROQ_API_KEY no servidor).")
+    try:
+        est = ai.estimate_meal(payload.image)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f"Falha ao analisar a foto: {e}")
+    meal = Meal(
+        group_id=gid,
+        membership_id=me.id,
+        date=d,
+        label=est["label"],
+        calories=est["calories"],
+        protein_g=est["protein_g"],
+        carbs_g=est["carbs_g"],
+        fat_g=est["fat_g"],
+        image=payload.image,
+        ai_confidence=est.get("confidence"),
+    )
+    db.add(meal)
+    db.commit()
+    db.refresh(meal)
+    return {"meal": serialize_meal(meal), "nutrition": nutrition_payload(db, gid, me.id, d, s)}
+
+
+@app.patch("/api/groups/{gid}/meals/{meal_id}")
+def update_meal(gid: int, meal_id: int, payload: MealUpdate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    me = get_membership(db, user, gid)
+    s = get_group_settings(db, gid)
+    meal = get_own_meal(db, gid, meal_id, me)
+    data = payload.model_dump(exclude_unset=True)
+    for field, value in data.items():
+        setattr(meal, field, value)
+    if data:
+        meal.ai_confidence = None  # ajustado à mão → não é mais estimativa pura
+    db.commit()
+    return {"meal": serialize_meal(meal), "nutrition": nutrition_payload(db, gid, me.id, meal.date, s)}
+
+
+@app.delete("/api/groups/{gid}/meals/{meal_id}")
+def delete_meal(gid: int, meal_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    me = get_membership(db, user, gid)
+    s = get_group_settings(db, gid)
+    meal = get_own_meal(db, gid, meal_id, me)
+    d = meal.date
+    db.delete(meal)
+    db.commit()
+    return {"ok": True, "nutrition": nutrition_payload(db, gid, me.id, d, s)}
+
+
 # --- rotas: grupo (chat) ---------------------------------------------------
 @app.get("/api/groups/{gid}/messages")
 def list_messages(gid: int, after_id: int = 0, limit: int = 200, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -1458,6 +1576,8 @@ def state(gid: int, user: User = Depends(get_current_user), db: Session = Depend
         "activities": [serialize_activity(a, members_by_id) for a in recent_activities],
         "goals": [serialize_goal(db, g, members, membership, today) for g in active_goals(db, gid)],
         "tasks": [serialize_task(db, t, members, membership, today) for t in tasks_due(db, gid, today)],
+        "nutrition": nutrition_payload(db, gid, membership.id, today, s),
+        "ai_enabled": ai.ai_enabled(),
     }
 
 

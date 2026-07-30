@@ -99,6 +99,19 @@ class TaskCompleteRequest(BaseModel):
     image: Optional[str] = None  # foto-prova opcional
 
 
+class MealCreate(BaseModel):
+    date: str
+    image: str  # data URL (base64) da foto — a IA estima os valores
+
+
+class MealUpdate(BaseModel):
+    label: Optional[str] = Field(None, min_length=1, max_length=120)
+    calories: Optional[int] = Field(None, ge=0, le=6000)
+    protein_g: Optional[int] = Field(None, ge=0, le=600)
+    carbs_g: Optional[int] = Field(None, ge=0, le=600)
+    fat_g: Optional[int] = Field(None, ge=0, le=600)
+
+
 class PushKeys(BaseModel):
     p256dh: str
     auth: str
