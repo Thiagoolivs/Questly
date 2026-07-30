@@ -16,6 +16,8 @@ from .data import CATEGORY_ORDER, DIFFICULTIES, DIFFICULTY_LABEL
 
 # Modelo padrão da Groq (bom para JSON e itens curtos/criativos).
 DEFAULT_MODEL = os.getenv("QUESTLY_AI_MODEL", "llama-3.3-70b-versatile")
+# Modelo com visão (para o contador de calorias por foto).
+VISION_MODEL = os.getenv("QUESTLY_VISION_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct")
 MAX_TEXT_LEN = 160
 
 
@@ -118,3 +120,65 @@ def generate_challenge_pool(categories: list[str], per_diff: int = 6, context: s
     if not pool:
         raise ValueError("A IA não retornou desafios válidos.")
     return pool
+
+
+# --- Contador de calorias por foto -----------------------------------------
+_MEAL_PROMPT = (
+    "Você analisa a FOTO de uma refeição e estima os valores nutricionais da "
+    "porção visível, em português do Brasil. Seja realista com o tamanho da porção.\n\n"
+    "Responda APENAS com um objeto JSON, sem texto fora do JSON:\n"
+    '{\"label\": \"nome curto do prato\", \"calories\": inteiro_kcal, '
+    '\"protein_g\": inteiro, \"carbs_g\": inteiro, \"fat_g\": inteiro, '
+    '\"confidence\": \"baixa|media|alta\"}\n'
+    "Se a imagem não for comida, retorne calories 0 e label \"—\"."
+)
+
+
+def _clamp_int(v, lo: int, hi: int) -> int:
+    try:
+        return max(lo, min(hi, int(round(float(v)))))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _clean_meal(data: dict) -> dict:
+    label = str(data.get("label") or "Refeição").strip()[:120] or "Refeição"
+    conf = str(data.get("confidence") or "").strip().lower()
+    if conf not in ("baixa", "media", "média", "alta"):
+        conf = None
+    elif conf == "média":
+        conf = "media"
+    return {
+        "label": label,
+        "calories": _clamp_int(data.get("calories"), 0, 6000),
+        "protein_g": _clamp_int(data.get("protein_g"), 0, 600),
+        "carbs_g": _clamp_int(data.get("carbs_g"), 0, 600),
+        "fat_g": _clamp_int(data.get("fat_g"), 0, 600),
+        "confidence": conf,
+    }
+
+
+def estimate_meal(image_data_url: str) -> dict:
+    """Estima ``{label, calories, protein_g, carbs_g, fat_g, confidence}`` da foto.
+
+    Levanta exceção em erro. Só chame se ``ai_enabled()`` for True.
+    """
+    import groq
+
+    client = groq.Groq()
+    resp = client.chat.completions.create(
+        model=VISION_MODEL,
+        max_tokens=500,
+        temperature=0.2,
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": _MEAL_PROMPT},
+                    {"type": "image_url", "image_url": {"url": image_data_url}},
+                ],
+            }
+        ],
+    )
+    content = resp.choices[0].message.content or ""
+    return _clean_meal(_extract_json(content))

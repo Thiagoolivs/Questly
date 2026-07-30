@@ -95,4 +95,8 @@ export const api = {
   createTask: (g, b) => req(`/api/groups/${g}/tasks`, { method: 'POST', body: b }),
   completeTask: (g, id, b) => req(`/api/groups/${g}/tasks/${id}/complete`, { method: 'POST', body: b }),
   deleteTask: (g, id) => req(`/api/groups/${g}/tasks/${id}`, { method: 'DELETE' }),
+  meals: (g, day) => req(`/api/groups/${g}/meals${qs(day)}`),
+  addMeal: (g, b) => req(`/api/groups/${g}/meals`, { method: 'POST', body: b }),
+  updateMeal: (g, id, b) => req(`/api/groups/${g}/meals/${id}`, { method: 'PATCH', body: b }),
+  deleteMeal: (g, id) => req(`/api/groups/${g}/meals/${id}`, { method: 'DELETE' }),
 }

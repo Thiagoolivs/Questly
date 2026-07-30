@@ -25,6 +25,8 @@ export default function Home() {
   const [moodNote, setMoodNote] = useState('')
   const [showGoalForm, setShowGoalForm] = useState(false)
   const [goalForm, setGoalForm] = useState({ emoji: '🎯', icon: null, title: '', duration_days: 30 })
+  const [mealBusy, setMealBusy] = useState(false)
+  const [editMeal, setEditMeal] = useState(null)
 
   useEffect(() => {
     setMoodNote(me?.today?.mood_note || '')
@@ -126,6 +128,44 @@ export default function Home() {
     if (!f) return
     const image = await fileToCompressedDataURL(f)
     await run(() => api.completeTask(groupId, id, { date: state.date, image }))
+  }
+
+  // --- Alimentação (contador de calorias por foto) ---
+  const nutrition = state.nutrition || { calories: 0, protein_g: 0, calories_goal: 2000, protein_goal_g: 120, meals: [] }
+  const meals = nutrition.meals || []
+  const kcalPct = Math.min(100, Math.round((nutrition.calories / (nutrition.calories_goal || 1)) * 100))
+  const protPct = Math.min(100, Math.round((nutrition.protein_g / (nutrition.protein_goal_g || 1)) * 100))
+  async function addMealPhoto() {
+    const f = await pickImage()
+    if (!f || mealBusy) return
+    const image = await fileToCompressedDataURL(f)
+    setMealBusy(true)
+    try {
+      await api.addMeal(groupId, { date: state.date, image })
+      await refresh()
+    } catch (e) {
+      alert('Erro ao analisar a foto: ' + e.message)
+    } finally {
+      setMealBusy(false)
+    }
+  }
+  const removeMeal = (id) => {
+    if (!window.confirm('Remover esta refeição da contagem?')) return
+    run(() => api.deleteMeal(groupId, id))
+  }
+  async function saveMealEdit() {
+    const e = editMeal
+    setEditMeal(null)
+    if (!e) return
+    await run(() =>
+      api.updateMeal(groupId, e.id, {
+        label: (e.label || '').trim() || 'Refeição',
+        calories: Number(e.calories) || 0,
+        protein_g: Number(e.protein_g) || 0,
+        carbs_g: Number(e.carbs_g) || 0,
+        fat_g: Number(e.fat_g) || 0,
+      }),
+    )
   }
 
   const joint = state.joint || { points_each: 20, activities: [], suggestions: [] }
@@ -246,6 +286,88 @@ export default function Home() {
           <Icon name="plus" size={15} /> Nova meta
         </button>
       )}
+
+      {/* Alimentação de hoje (contador de calorias por foto) */}
+      <section className="card">
+        <div className="card-title">Alimentação de hoje</div>
+        <div className="nutri-goals">
+          <div className="nutri-metric">
+            <div className="nutri-metric-top">
+              <span><Icon name="flame" size={14} /> Calorias</span>
+              <span className="muted small">{nutrition.calories} / {nutrition.calories_goal} kcal</span>
+            </div>
+            <div className="nutri-bar"><div className="nutri-fill kcal" style={{ width: kcalPct + '%' }} /></div>
+          </div>
+          <div className="nutri-metric">
+            <div className="nutri-metric-top">
+              <span>🥩 Proteína</span>
+              <span className="muted small">{nutrition.protein_g} / {nutrition.protein_goal_g} g</span>
+            </div>
+            <div className="nutri-bar"><div className="nutri-fill prot" style={{ width: protPct + '%' }} /></div>
+          </div>
+          <div className="muted xsmall nutri-macros">
+            Carbo {nutrition.carbs_g}g · Gordura {nutrition.fat_g}g
+          </div>
+        </div>
+
+        {meals.length > 0 && (
+          <div className="meal-list">
+            {meals.map((mm) =>
+              editMeal && editMeal.id === mm.id ? (
+                <div className="meal-edit" key={mm.id}>
+                  <input className="meal-edit-label" value={editMeal.label}
+                    onChange={(e) => setEditMeal({ ...editMeal, label: e.target.value })} />
+                  <div className="meal-edit-nums">
+                    <label>kcal<input type="number" value={editMeal.calories}
+                      onChange={(e) => setEditMeal({ ...editMeal, calories: e.target.value })} /></label>
+                    <label>Prot<input type="number" value={editMeal.protein_g}
+                      onChange={(e) => setEditMeal({ ...editMeal, protein_g: e.target.value })} /></label>
+                    <label>Carb<input type="number" value={editMeal.carbs_g}
+                      onChange={(e) => setEditMeal({ ...editMeal, carbs_g: e.target.value })} /></label>
+                    <label>Gord<input type="number" value={editMeal.fat_g}
+                      onChange={(e) => setEditMeal({ ...editMeal, fat_g: e.target.value })} /></label>
+                  </div>
+                  <div className="row" style={{ gap: 8 }}>
+                    <button className="btn ghost full" onClick={() => setEditMeal(null)}>Cancelar</button>
+                    <button className="btn full btn-primary" disabled={busy} onClick={saveMealEdit}>Salvar</button>
+                  </div>
+                </div>
+              ) : (
+                <div className="meal-row" key={mm.id}>
+                  {mm.image && <img className="meal-thumb" src={mm.image} alt="" onClick={() => setZoom(mm.image)} />}
+                  <div className="meal-info">
+                    <span className="meal-label">
+                      {mm.label}
+                      {mm.confidence && <span className="meal-conf muted xsmall"> · ≈{mm.confidence}</span>}
+                    </span>
+                    <span className="muted xsmall">{mm.calories} kcal · {mm.protein_g}g P · {mm.carbs_g}g C · {mm.fat_g}g G</span>
+                  </div>
+                  <button className="habit-cam" title="Ajustar" disabled={busy}
+                    onClick={() => setEditMeal({ id: mm.id, label: mm.label, calories: mm.calories, protein_g: mm.protein_g, carbs_g: mm.carbs_g, fat_g: mm.fat_g })}>
+                    <Icon name="pencil" size={15} />
+                  </button>
+                  <button className="habit-cam" title="Remover" disabled={busy} onClick={() => removeMeal(mm.id)}>
+                    <Icon name="x" size={15} />
+                  </button>
+                </div>
+              ),
+            )}
+          </div>
+        )}
+
+        {state.ai_enabled ? (
+          <button className="btn ghost full icon-btn new-goal-btn" disabled={mealBusy} onClick={addMealPhoto}>
+            <Icon name="camera" size={15} /> {mealBusy ? 'Analisando a foto…' : 'Foto da refeição'}
+          </button>
+        ) : (
+          <div className="muted xsmall" style={{ marginTop: 8 }}>
+            Contador por IA inativo — configure <code>GROQ_API_KEY</code> no servidor para estimar calorias pela foto.
+          </div>
+        )}
+        <p className="muted xsmall proof-note" style={{ marginTop: 8 }}>
+          Estimativa por IA — confira e ajuste os valores se precisar.
+        </p>
+      </section>
 
       {/* Tarefas de hoje */}
       {tasks.length > 0 && (

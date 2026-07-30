@@ -257,3 +257,22 @@ class JointActivity(Base):
     image: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # comprovação opcional
     created_by: Mapped[int] = mapped_column(ForeignKey("memberships.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
+class Meal(Base):
+    """Refeição registrada por foto — a IA estima calorias e macros (ajustável)."""
+
+    __tablename__ = "meals"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    group_id: Mapped[int] = mapped_column(ForeignKey("groups.id"), index=True)
+    membership_id: Mapped[int] = mapped_column(ForeignKey("memberships.id"), index=True)
+    date: Mapped[date] = mapped_column(Date, index=True)
+    label: Mapped[str] = mapped_column(String(120), default="Refeição")
+    calories: Mapped[int] = mapped_column(Integer, default=0)
+    protein_g: Mapped[int] = mapped_column(Integer, default=0)
+    carbs_g: Mapped[int] = mapped_column(Integer, default=0)
+    fat_g: Mapped[int] = mapped_column(Integer, default=0)
+    image: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # foto (data URL)
+    ai_confidence: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)  # baixa|media|alta
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
