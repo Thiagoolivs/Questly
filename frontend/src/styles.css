@@ -312,7 +312,10 @@ input[type='range'] { width: 100%; accent-color: var(--accent); height: 24px; }
 .nutri-fill.kcal { background: var(--accent); }
 .nutri-fill.prot { background: var(--green, #34c759); }
 .nutri-macros { margin-top: 2px; }
-.nutri-form { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.nutri-form { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; align-items: end; margin-bottom: 4px; }
+.nutri-form .field { min-width: 0; gap: 5px; }
+.nutri-form .field > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nutri-form .field input { width: 100%; min-width: 0; padding: 12px 10px; }
 .nutri-imc { margin-top: 8px; padding: 8px 10px; background: var(--card2); border: 1px solid var(--border); border-radius: 10px; }
 .nutri-targets-edit { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
 .nutri-target-row input { max-width: 110px; text-align: right; }
