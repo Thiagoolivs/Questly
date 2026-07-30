@@ -7,11 +7,22 @@ import Icon from '../components/Icon.jsx'
 import Avatar from '../components/Avatar.jsx'
 
 const AVATARS = ['🦊', '🐨', '🐼', '🦁', '🐯', '🐸', '🐵', '🦉', '🔥', '⚡', '🌟', '💜']
+const ATIVIDADES = [
+  ['sedentario', 'Sedentário'],
+  ['leve', 'Leve'],
+  ['moderado', 'Moderado'],
+  ['intenso', 'Intenso'],
+  ['muito_intenso', 'Muito intenso'],
+]
+const OBJETIVOS = [['perder', 'Perder peso'], ['manter', 'Manter'], ['ganhar', 'Ganhar massa']]
+const BMI_LABEL = { abaixo: 'abaixo do peso', normal: 'peso normal', sobrepeso: 'sobrepeso', obesidade: 'obesidade' }
+const numOrNull = (v) => (v === '' || v === null || v === undefined ? null : Number(v))
 
 export default function Perfil() {
   const { user, me, group, groups, selectGroup, updateUser, logout, loading } = useApp()
   const [form, setForm] = useState(null)
   const [saved, setSaved] = useState(false)
+  const [savedN, setSavedN] = useState(false)
   const [copied, setCopied] = useState(false)
   const [photoBusy, setPhotoBusy] = useState(false)
   const [pushState, setPushState] = useState('off')
@@ -41,6 +52,16 @@ export default function Perfil() {
         photo: user.photo || null,
         objetivo: user.objetivo || '',
         peso: user.peso ?? '',
+        altura_cm: user.altura_cm ?? '',
+        sexo: user.sexo ?? '',
+        idade: user.idade ?? '',
+        nivel_atividade: user.nivel_atividade ?? '',
+        objetivo_tipo: user.objetivo_tipo ?? '',
+        meta_kcal: user.meta_kcal ?? '',
+        meta_proteina_g: user.meta_proteina_g ?? '',
+        meta_carbo_g: user.meta_carbo_g ?? '',
+        meta_gordura_g: user.meta_gordura_g ?? '',
+        meta_agua_l: user.meta_agua_l ?? '',
       })
   }, [user?.id, user?.name, user?.avatar, user?.photo, user?.objetivo, user?.peso])
 
@@ -76,10 +97,27 @@ export default function Perfil() {
       name: form.name,
       avatar: form.avatar,
       objetivo: form.objetivo,
-      peso: form.peso === '' ? null : Number(form.peso),
     })
     setSaved(true)
     setTimeout(() => setSaved(false), 1800)
+  }
+
+  async function saveNutrition() {
+    await updateUser({
+      peso: numOrNull(form.peso),
+      altura_cm: numOrNull(form.altura_cm),
+      sexo: form.sexo || null,
+      idade: numOrNull(form.idade),
+      nivel_atividade: form.nivel_atividade || null,
+      objetivo_tipo: form.objetivo_tipo || null,
+      meta_kcal: numOrNull(form.meta_kcal),
+      meta_proteina_g: numOrNull(form.meta_proteina_g),
+      meta_carbo_g: numOrNull(form.meta_carbo_g),
+      meta_gordura_g: numOrNull(form.meta_gordura_g),
+      meta_agua_l: numOrNull(form.meta_agua_l),
+    })
+    setSavedN(true)
+    setTimeout(() => setSavedN(false), 1800)
   }
 
   function copyCode() {
@@ -161,19 +199,13 @@ export default function Perfil() {
             onChange={(e) => setForm({ ...form, objetivo: e.target.value })}
           />
         </label>
-        <label className="field">
-          <span>Peso (kg) — opcional</span>
-          <input
-            type="number"
-            inputMode="decimal"
-            value={form.peso}
-            onChange={(e) => setForm({ ...form, peso: e.target.value })}
-          />
-        </label>
         <button className="btn full btn-primary" onClick={save}>
           {saved ? '✓ Salvo!' : 'Salvar perfil'}
         </button>
       </section>
+
+      {/* Metas de nutrição (estimativa por perfil, ajustável) */}
+      <NutritionCard form={form} setForm={setForm} nt={user.nutrition_targets} onSave={saveNutrition} saved={savedN} />
 
       {/* Grupo atual + convite */}
       <section className="card">
@@ -264,5 +296,80 @@ export default function Perfil() {
 
       <button className="btn full logout-btn icon-btn" onClick={logout}><Icon name="logout" size={15} /> Sair da conta</button>
     </div>
+  )
+}
+
+function NutritionCard({ form, setForm, nt, onSave, saved }) {
+  const set = (patch) => setForm((f) => ({ ...f, ...patch }))
+  const est = (nt && (nt.auto || nt.targets)) || {}
+  const rows = [
+    ['meta_kcal', 'Calorias', 'kcal', est.kcal],
+    ['meta_proteina_g', 'Proteína', 'g', est.protein_g],
+    ['meta_carbo_g', 'Carboidrato', 'g', est.carbs_g],
+    ['meta_gordura_g', 'Gordura', 'g', est.fat_g],
+    ['meta_agua_l', 'Água', 'L', est.water_l],
+  ]
+  return (
+    <section className="card">
+      <div className="card-title">Metas de nutrição</div>
+      <p className="muted xsmall" style={{ marginTop: -4, marginBottom: 10 }}>
+        Estimativas com base no seu perfil — <b>não substituem um nutricionista</b>. Ajuste os valores como quiser.
+      </p>
+
+      <div className="nutri-form">
+        <label className="field"><span>Peso (kg)</span>
+          <input type="number" inputMode="decimal" value={form.peso} onChange={(e) => set({ peso: e.target.value })} /></label>
+        <label className="field"><span>Altura (cm)</span>
+          <input type="number" inputMode="numeric" value={form.altura_cm} onChange={(e) => set({ altura_cm: e.target.value })} /></label>
+        <label className="field"><span>Idade</span>
+          <input type="number" inputMode="numeric" value={form.idade} onChange={(e) => set({ idade: e.target.value })} /></label>
+      </div>
+
+      <div className="field"><span>Sexo <span className="muted xsmall">(opcional, melhora a estimativa)</span></span>
+        <div className="chips">
+          <button className={'chip ' + (form.sexo === 'M' ? 'active' : '')} onClick={() => set({ sexo: form.sexo === 'M' ? '' : 'M' })}>Masculino</button>
+          <button className={'chip ' + (form.sexo === 'F' ? 'active' : '')} onClick={() => set({ sexo: form.sexo === 'F' ? '' : 'F' })}>Feminino</button>
+        </div>
+      </div>
+
+      <label className="field"><span>Nível de atividade <span className="muted xsmall">(opcional)</span></span>
+        <select value={form.nivel_atividade} onChange={(e) => set({ nivel_atividade: e.target.value })}>
+          <option value="">Não informar</option>
+          {ATIVIDADES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        </select>
+      </label>
+
+      <div className="field"><span>Objetivo</span>
+        <div className="chips">
+          {OBJETIVOS.map(([v, l]) => (
+            <button key={v} className={'chip ' + (form.objetivo_tipo === v ? 'active' : '')}
+              onClick={() => set({ objetivo_tipo: form.objetivo_tipo === v ? '' : v })}>{l}</button>
+          ))}
+        </div>
+      </div>
+
+      {nt?.bmi != null && (
+        <div className="nutri-imc muted small">
+          IMC <b>{nt.bmi}</b> · {BMI_LABEL[nt.bmi_class] || nt.bmi_class}
+          {nt.tdee ? ` · gasto estimado ~${nt.tdee} kcal/dia` : ''}
+        </div>
+      )}
+
+      <div className="muted xsmall" style={{ margin: '12px 0 6px' }}>
+        Metas diárias — deixe em branco para usar a estimativa (mostrada como sugestão):
+      </div>
+      <div className="nutri-targets-edit">
+        {rows.map(([key, label, unit, estv]) => (
+          <label className="field row nutri-target-row" key={key}>
+            <span>{label} <span className="muted xsmall">({unit})</span></span>
+            <input type="number" inputMode="decimal" value={form[key]}
+              placeholder={estv != null ? `~${estv}` : ''}
+              onChange={(e) => set({ [key]: e.target.value })} />
+          </label>
+        ))}
+      </div>
+
+      <button className="btn full btn-primary" onClick={onSave}>{saved ? '✓ Salvo!' : 'Salvar metas'}</button>
+    </section>
   )
 }
