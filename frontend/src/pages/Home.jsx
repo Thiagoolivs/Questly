@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import { useApp } from '../store.jsx'
 import { api } from '../api.js'
 import { pickImage, fileToCompressedDataURL } from '../utils/image.js'
 import ProgressRing from '../components/ProgressRing.jsx'
 import Avatar from '../components/Avatar.jsx'
 import AreaRings from '../components/AreaRings.jsx'
+import Section from '../components/Section.jsx'
 import Icon, { categoryIconName, moodIconName } from '../components/Icon.jsx'
 import IconPicker from '../components/IconPicker.jsx'
 
@@ -118,6 +120,7 @@ export default function Home() {
   }
 
   const tasks = state.tasks || []
+  const tasksDone = tasks.filter((t) => t.checked_today).length
   const toggleTask = (id) => run(() => api.completeTask(groupId, id, { date: state.date }))
   const deleteTask = (id) => {
     if (!window.confirm('Remover esta tarefa agendada? Ela deixa de aparecer para o grupo.')) return
@@ -197,10 +200,6 @@ export default function Home() {
     })
   }
 
-  const someoneLeads =
-    state.leaderboard.length > 1 &&
-    state.leaderboard[0].stats.total > state.leaderboard[1].stats.total
-
   const diffClass = (d) => 'diff-badge diff-' + d
 
   return (
@@ -218,82 +217,150 @@ export default function Home() {
         <div className="streak-chip" title="Sequência atual"><Icon name="flame" size={15} /> {me.stats.streak}</div>
       </header>
 
-      {/* Metas (fixas no topo) */}
-      {goals.map((g) => {
-        const pct = g.duration_days ? Math.min(100, ((g.me?.count || 0) / g.duration_days) * 100) : 0
-        const others = g.members.filter((m) => m.membership_id !== g.me?.membership_id)
-        return (
-          <section className={'card goal-card' + (g.me?.done ? ' goal-done' : '')} key={g.id}>
-            <div className="row between">
-              <div className="goal-title">
-                {g.icon ? <Icon name={g.icon} size={17} /> : <span className="goal-emoji">{g.emoji}</span>} {g.title}
-              </div>
-              <button className="link-btn" disabled={busy} onClick={() => endGoal(g.id)}>encerrar</button>
-            </div>
-            <div className="muted xsmall">
-              Dia {g.day_index} de {g.duration_days} · {g.days_left > 0 ? `faltam ${g.days_left}` : 'último dia'} ·{' '}
-              <Icon name="flame" size={11} /> {g.me?.streak || 0}
-            </div>
-            <div className="bar"><div className="bar-fill" style={{ width: `${pct}%` }} /></div>
-            <div className="row between">
-              <span className="muted xsmall">{g.me?.count || 0}/{g.duration_days} dias</span>
-              {others.map((o) => (
-                <span className="muted xsmall" key={o.membership_id}>{o.name}: {o.count}/{g.duration_days}</span>
-              ))}
-            </div>
-            <button
-              className={'btn full ' + (g.me?.checked_today ? 'btn-done' : 'btn-primary') + ' icon-btn'}
-              disabled={busy}
-              onClick={() => toggleGoalCheckin(g.id)}
-            >
-              <Icon name="check" size={15} /> {g.me?.checked_today ? 'Cumpri hoje' : 'Marcar check-in de hoje'}
-            </button>
-          </section>
-        )
-      })}
+      {/* Incentivo / lembrete */}
+      {me.nudge && <div className="nudge">{me.nudge.text}</div>}
 
-      {/* Nova meta */}
-      {showGoalForm ? (
-        <section className="card">
-          <div className="card-title">Nova meta</div>
-          <div className="add-habit">
-            <IconPicker
-              emoji={goalForm.emoji}
-              icon={goalForm.icon}
-              onPick={({ emoji, icon }) => setGoalForm({ ...goalForm, emoji: emoji || '🎯', icon })}
-            />
-            <input
-              className="add-habit-label"
-              placeholder="Ex: Sem refrigerante"
-              value={goalForm.title}
-              onChange={(e) => setGoalForm({ ...goalForm, title: e.target.value })}
-            />
+      {/* ======= ZONA 1 · Resumo do dia ======= */}
+      {/* Progresso de hoje */}
+      <section className="card center">
+        <div className="card-title self-start">Progresso de hoje</div>
+        <ProgressRing value={today.points} max={today.max_points}>
+          <div className="ring-value">{today.points}</div>
+          <div className="muted xsmall">de {today.max_points} pts</div>
+        </ProgressRing>
+        <div className="mini-stats">
+          <div><b>{me.stats.today}</b><span className="muted xsmall">hoje</span></div>
+          <div><b>{me.stats.weekly}</b><span className="muted xsmall">semana</span></div>
+          <div><b>{me.stats.total}</b><span className="muted xsmall">total</span></div>
+          <div><b>{me.stats.completion_pct}%</b><span className="muted xsmall">conclusão</span></div>
+        </div>
+      </section>
+
+      {/* Anel das 5 áreas */}
+      <AreaRings challenges={today.challenges} streaks={streaks} />
+
+      {/* Ranking */}
+      <section className="card leaderboard">
+        <div className="card-title">Ranking</div>
+        {state.leaderboard.map((p, i) => (
+          <div className="rank-row" key={p.id}>
+            <div className="rank-pos">{i + 1}</div>
+            <div className="rank-avatar"><Avatar photo={p.photo} avatar={p.avatar} name={p.name} size={34} /></div>
+            <div className="rank-main">
+              <div className="rank-name">
+                {p.name} {p.today?.mood && <span className="rank-mood"><Icon name={moodIconName(p.today.mood)} size={13} /></span>}
+              </div>
+              <div className="bar">
+                <div className="bar-fill" style={{ width: `${p.stats.possible ? (p.stats.total / p.stats.possible) * 100 : 0}%` }} />
+              </div>
+            </div>
+            <div className="rank-meta">
+              <div className="rank-total">{p.stats.total}</div>
+              <div className="muted xsmall">🔥 {p.stats.streak} · ⭐ {p.stats.perfect_days}</div>
+            </div>
           </div>
-          <div className="chips">
-            {[7, 30, 60, 90].map((d) => (
-              <button
-                key={d}
-                className={'chip ' + (Number(goalForm.duration_days) === d ? 'active' : '')}
-                onClick={() => setGoalForm({ ...goalForm, duration_days: d })}
-              >
-                {d} dias
-              </button>
-            ))}
-          </div>
-          <div className="row" style={{ gap: 8 }}>
-            <button className="btn ghost full" onClick={() => setShowGoalForm(false)}>Cancelar</button>
-            <button className="btn full btn-primary" disabled={busy || !goalForm.title.trim()} onClick={createGoal}>Criar meta</button>
-          </div>
-        </section>
-      ) : (
-        <button className="btn ghost full icon-btn new-goal-btn" onClick={() => setShowGoalForm(true)}>
-          <Icon name="plus" size={15} /> Nova meta
-        </button>
-      )}
+        ))}
+        {state.casal_perfect_days > 0 && (
+          <div className="couple-note">💞 Casal Inabalável: {state.casal_perfect_days} dia(s) perfeito(s) juntos!</div>
+        )}
+      </section>
+
+      {/* ======= ZONA 2 · Ações de hoje ======= */}
+      {/* Desafios do dia (um por área) */}
+      <Section
+        id="desafios"
+        title="Desafios do dia"
+        meta={<>({today.areas_done}/{today.areas_total}){today.rerolls_left > 0 && ` · ${today.rerolls_left} troca`}</>}
+        defaultOpen
+      >
+        <p className="muted xsmall proof-note">Só pontua anexando a foto que comprova o desafio.</p>
+        <div className="challenge-list">
+          {today.challenges.map((c) => (
+            <div className={'challenge-item ' + (c.done ? 'done' : '')} key={c.category}>
+              <div className="challenge-head">
+                <span className="tag"><Icon name={categoryIconName(c.category)} size={14} /> {c.category}</span>
+                <span className={diffClass(c.difficulty)}>{c.difficulty_label}</span>
+                <span className="pts">+{c.points}</span>
+              </div>
+              <p className="challenge-text">{c.text}</p>
+
+              {c.done ? (
+                <div className="proof done-proof">
+                  {c.proof && (
+                    <img className="proof-thumb" src={c.proof} alt="comprovação" onClick={() => setZoom(c.proof)} />
+                  )}
+                  <span className="challenge-ok"><Icon name="check" size={15} /> Concluído</span>
+                  <button
+                    className={'together-btn ' + (c.together ? 'on' : '')}
+                    disabled={busy}
+                    onClick={() => toggleTogether(c)}
+                  >
+                    <Icon name="heart" size={13} /> {c.together ? 'Juntos +10' : 'Fizemos juntos?'}
+                  </button>
+                  <button className="link-btn" disabled={busy} onClick={() => proveChallenge(c.category, c.together)}>trocar foto</button>
+                  <button className="link-btn danger" disabled={busy} onClick={() => removeChallenge(c.category)}>desfazer</button>
+                </div>
+              ) : (
+                <div className="challenge-actions">
+                  <button className="btn btn-primary small-btn icon-btn" disabled={busy} onClick={() => proveChallenge(c.category)}>
+                    <Icon name="camera" size={15} /> Provar e concluir
+                  </button>
+                  {today.rerolls_left > 0 && (
+                    <button className="btn ghost small-btn icon-btn" disabled={busy} onClick={() => rerollChallenge(c.category)}>
+                      <Icon name="refresh" size={14} /> Trocar
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+        {today.completed && (
+          <div className="perfect-banner"><Icon name="scale" size={15} /> Todas as áreas fechadas! +{today.balance_bonus} de bônus</div>
+        )}
+      </Section>
+
+      {/* Hábitos */}
+      <Section id="habitos" title="Hábitos de hoje" meta={`(${today.n_done}/${today.n_habits})`} defaultOpen>
+        <p className="muted xsmall proof-note">Marcar vale 10 · com foto-prova vale 12.</p>
+        <div className="habits">
+          {today.habits.map((h) => {
+            const done = today.habits_done.includes(h.key)
+            const proof = today.habit_proofs?.[h.key]
+            return (
+              <div key={h.key} className={'habit-row ' + (done ? 'done' : '')}>
+                <button className="habit habit-toggle" disabled={busy} onClick={() => toggleHabit(h.key)}>
+                  <span className="habit-emoji">{h.icon ? <Icon name={h.icon} size={18} /> : h.emoji}</span>
+                  <span className="habit-label">{h.label}</span>
+                  {proof && <span className="habit-bonus">+2</span>}
+                  <span className={'check ' + (done ? 'on' : '')}>{done ? <Icon name="check" size={14} /> : ''}</span>
+                </button>
+                {proof ? (
+                  <div className="habit-proof">
+                    <img className="habit-thumb" src={proof} alt="prova" onClick={() => setZoom(proof)} />
+                    <button className="habit-cam" disabled={busy} title="Remover foto" onClick={() => removeHabitPhoto(h.key)}>
+                      <Icon name="x" size={15} />
+                    </button>
+                  </div>
+                ) : (
+                  <button className="habit-cam" disabled={busy} title="Foto-prova (+2)" onClick={() => attachHabitPhoto(h.key)}>
+                    <Icon name="camera" size={16} />
+                  </button>
+                )}
+              </div>
+            )
+          })}
+        </div>
+        {today.perfect && <div className="perfect-banner"><Icon name="star" size={15} /> Dia perfeito! +{today.perfect_bonus} de bônus</div>}
+      </Section>
 
       {/* Alimentação de hoje (contador de calorias por foto) */}
-      <section className="card">
-        <div className="card-title">Alimentação de hoje</div>
+      <Section
+        id="alimentacao"
+        title="Alimentação de hoje"
+        meta={`${nutrition.calories}/${nutrition.calories_goal} kcal`}
+        defaultOpen
+      >
         <div className="nutri-goals">
           <div className="nutri-metric">
             <div className="nutri-metric-top">
@@ -371,12 +438,11 @@ export default function Home() {
         <p className="muted xsmall proof-note" style={{ marginTop: 8 }}>
           Estimativa por IA — confira e ajuste os valores se precisar.
         </p>
-      </section>
+      </Section>
 
       {/* Tarefas de hoje */}
       {tasks.length > 0 && (
-        <section className="card">
-          <div className="card-title">Tarefas de hoje</div>
+        <Section id="tarefas" title="Tarefas de hoje" meta={`(${tasksDone}/${tasks.length})`} defaultOpen>
           <div className="habits">
             {tasks.map((t) => (
               <div key={t.id} className={'habit-row ' + (t.checked_today ? 'done' : '')}>
@@ -398,168 +464,11 @@ export default function Home() {
               </div>
             ))}
           </div>
-        </section>
+        </Section>
       )}
-
-      {/* Mensagem do dia */}
-      <section className="card motd">
-        <div className="motd-icon"><Icon name="sparkle" size={18} /></div>
-        <div>
-          <div className="muted xsmall">Mensagem do dia</div>
-          <div className="motd-text">{state.motd}</div>
-        </div>
-      </section>
-
-      {/* Incentivo / lembrete */}
-      {me.nudge && <div className="nudge">{me.nudge.text}</div>}
-
-      {/* Anel das 5 áreas */}
-      <AreaRings challenges={today.challenges} streaks={streaks} />
-
-      {/* Ranking */}
-      <section className="card leaderboard">
-        <div className="card-title">Ranking</div>
-        {state.leaderboard.map((p, i) => (
-          <div className="rank-row" key={p.id}>
-            <div className="rank-pos">{i + 1}</div>
-            <div className="rank-avatar"><Avatar photo={p.photo} avatar={p.avatar} name={p.name} size={34} /></div>
-            <div className="rank-main">
-              <div className="rank-name">
-                {p.name} {p.today?.mood && <span className="rank-mood"><Icon name={moodIconName(p.today.mood)} size={13} /></span>}
-              </div>
-              <div className="bar">
-                <div className="bar-fill" style={{ width: `${p.stats.possible ? (p.stats.total / p.stats.possible) * 100 : 0}%` }} />
-              </div>
-            </div>
-            <div className="rank-meta">
-              <div className="rank-total">{p.stats.total}</div>
-              <div className="muted xsmall">🔥 {p.stats.streak} · ⭐ {p.stats.perfect_days}</div>
-            </div>
-          </div>
-        ))}
-        {state.casal_perfect_days > 0 && (
-          <div className="couple-note">💞 Casal Inabalável: {state.casal_perfect_days} dia(s) perfeito(s) juntos!</div>
-        )}
-      </section>
-
-      {/* Feed de atividades */}
-      {state.activities?.length > 0 && (
-        <section className="card">
-          <div className="card-title">Atividades</div>
-          <div className="feed">
-            {state.activities.map((a) => (
-              <div className="feed-item" key={a.id}>
-                <span className="feed-emoji">{a.emoji}</span>
-                <span className="feed-text">{a.text}</span>
-                {a.image && <img className="feed-thumb" src={a.image} alt="" onClick={() => setZoom(a.image)} />}
-                <span className="muted xsmall feed-time">{timeAgo(a.created_at)}</span>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Humor / emoções */}
-      <section className="card">
-        <div className="card-title">Como você está hoje? <span className="muted small">(pode marcar várias)</span></div>
-        <div className="mood-grid">
-          {state.moods.map((m) => (
-            <button
-              key={m.key}
-              className={'mood ' + ((today.moods || []).includes(m.key) ? 'active' : '')}
-              disabled={busy}
-              onClick={() => toggleMood(m.key)}
-            >
-              <span className="mood-emoji"><Icon name={moodIconName(m.key)} size={20} /></span>
-              <span className="mood-label">{m.label}</span>
-            </button>
-          ))}
-        </div>
-        <input
-          className="mood-note"
-          placeholder="Quer escrever algo sobre o dia? (opcional)"
-          value={moodNote}
-          maxLength={280}
-          disabled={busy}
-          onChange={(e) => setMoodNote(e.target.value)}
-          onBlur={saveMoodNote}
-          onKeyDown={(e) => e.key === 'Enter' && e.target.blur()}
-        />
-      </section>
-
-      {/* Progresso de hoje */}
-      <section className="card center">
-        <div className="card-title self-start">Progresso de hoje</div>
-        <ProgressRing value={today.points} max={today.max_points}>
-          <div className="ring-value">{today.points}</div>
-          <div className="muted xsmall">de {today.max_points} pts</div>
-        </ProgressRing>
-        <div className="mini-stats">
-          <div><b>{me.stats.today}</b><span className="muted xsmall">hoje</span></div>
-          <div><b>{me.stats.weekly}</b><span className="muted xsmall">semana</span></div>
-          <div><b>{me.stats.total}</b><span className="muted xsmall">total</span></div>
-          <div><b>{me.stats.completion_pct}%</b><span className="muted xsmall">conclusão</span></div>
-        </div>
-      </section>
-
-      {/* Desafios do dia (um por área) */}
-      <section className="card">
-        <div className="card-title">
-          Desafios do dia <span className="muted small">({today.areas_done}/{today.areas_total})</span>
-          {today.rerolls_left > 0 && <span className="reroll-hint muted xsmall"> · {today.rerolls_left} troca</span>}
-        </div>
-        <p className="muted xsmall proof-note">Só pontua anexando a foto que comprova o desafio.</p>
-        <div className="challenge-list">
-          {today.challenges.map((c) => (
-            <div className={'challenge-item ' + (c.done ? 'done' : '')} key={c.category}>
-              <div className="challenge-head">
-                <span className="tag"><Icon name={categoryIconName(c.category)} size={14} /> {c.category}</span>
-                <span className={diffClass(c.difficulty)}>{c.difficulty_label}</span>
-                <span className="pts">+{c.points}</span>
-              </div>
-              <p className="challenge-text">{c.text}</p>
-
-              {c.done ? (
-                <div className="proof done-proof">
-                  {c.proof && (
-                    <img className="proof-thumb" src={c.proof} alt="comprovação" onClick={() => setZoom(c.proof)} />
-                  )}
-                  <span className="challenge-ok"><Icon name="check" size={15} /> Concluído</span>
-                  <button
-                    className={'together-btn ' + (c.together ? 'on' : '')}
-                    disabled={busy}
-                    onClick={() => toggleTogether(c)}
-                  >
-                    <Icon name="heart" size={13} /> {c.together ? 'Juntos +10' : 'Fizemos juntos?'}
-                  </button>
-                  <button className="link-btn" disabled={busy} onClick={() => proveChallenge(c.category, c.together)}>trocar foto</button>
-                  <button className="link-btn danger" disabled={busy} onClick={() => removeChallenge(c.category)}>desfazer</button>
-                </div>
-              ) : (
-                <div className="challenge-actions">
-                  <button className="btn btn-primary small-btn icon-btn" disabled={busy} onClick={() => proveChallenge(c.category)}>
-                    <Icon name="camera" size={15} /> Provar e concluir
-                  </button>
-                  {today.rerolls_left > 0 && (
-                    <button className="btn ghost small-btn icon-btn" disabled={busy} onClick={() => rerollChallenge(c.category)}>
-                      <Icon name="refresh" size={14} /> Trocar
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-        {today.completed && (
-          <div className="perfect-banner"><Icon name="scale" size={15} /> Todas as áreas fechadas! +{today.balance_bonus} de bônus</div>
-        )}
-      </section>
 
       {/* Atividades em dupla */}
-      <section className="card">
-        <div className="card-title">
-          Atividades em dupla <span className="muted small">(+{joint.points_each} pra cada)</span>
-        </div>
+      <Section id="dupla" title="Atividades em dupla" meta={`(+${joint.points_each} pra cada)`} defaultOpen={false}>
         <p className="muted xsmall proof-note">Fizeram algo juntos além dos desafios? Registrem — os dois pontuam.</p>
 
         {joint.activities.length > 0 && (
@@ -619,43 +528,133 @@ export default function Home() {
         <button className="btn full btn-primary small-btn icon-btn" disabled={busy || !jointForm.label.trim()} onClick={addJoint}>
           <Icon name="plus" size={15} /> Registrar atividade em dupla
         </button>
-      </section>
+      </Section>
 
-      {/* Hábitos */}
-      <section className="card">
-        <div className="card-title">
-          Hábitos de hoje <span className="muted small">({today.n_done}/{today.n_habits})</span>
-        </div>
-        <p className="muted xsmall proof-note">Marcar vale 10 · com foto-prova vale 12.</p>
-        <div className="habits">
-          {today.habits.map((h) => {
-            const done = today.habits_done.includes(h.key)
-            const proof = today.habit_proofs?.[h.key]
-            return (
-              <div key={h.key} className={'habit-row ' + (done ? 'done' : '')}>
-                <button className="habit habit-toggle" disabled={busy} onClick={() => toggleHabit(h.key)}>
-                  <span className="habit-emoji">{h.icon ? <Icon name={h.icon} size={18} /> : h.emoji}</span>
-                  <span className="habit-label">{h.label}</span>
-                  {proof && <span className="habit-bonus">+2</span>}
-                  <span className={'check ' + (done ? 'on' : '')}>{done ? <Icon name="check" size={14} /> : ''}</span>
-                </button>
-                {proof ? (
-                  <div className="habit-proof">
-                    <img className="habit-thumb" src={proof} alt="prova" onClick={() => setZoom(proof)} />
-                    <button className="habit-cam" disabled={busy} title="Remover foto" onClick={() => removeHabitPhoto(h.key)}>
-                      <Icon name="x" size={15} />
-                    </button>
-                  </div>
-                ) : (
-                  <button className="habit-cam" disabled={busy} title="Foto-prova (+2)" onClick={() => attachHabitPhoto(h.key)}>
-                    <Icon name="camera" size={16} />
-                  </button>
-                )}
+      {/* ======= ZONA 3 · Acompanhar & social ======= */}
+      {/* Metas */}
+      {goals.map((g) => {
+        const pct = g.duration_days ? Math.min(100, ((g.me?.count || 0) / g.duration_days) * 100) : 0
+        const others = g.members.filter((m) => m.membership_id !== g.me?.membership_id)
+        return (
+          <section className={'card goal-card' + (g.me?.done ? ' goal-done' : '')} key={g.id}>
+            <div className="row between">
+              <div className="goal-title">
+                {g.icon ? <Icon name={g.icon} size={17} /> : <span className="goal-emoji">{g.emoji}</span>} {g.title}
               </div>
-            )
-          })}
+              <button className="link-btn" disabled={busy} onClick={() => endGoal(g.id)}>encerrar</button>
+            </div>
+            <div className="muted xsmall">
+              Dia {g.day_index} de {g.duration_days} · {g.days_left > 0 ? `faltam ${g.days_left}` : 'último dia'} ·{' '}
+              <Icon name="flame" size={11} /> {g.me?.streak || 0}
+            </div>
+            <div className="bar"><div className="bar-fill" style={{ width: `${pct}%` }} /></div>
+            <div className="row between">
+              <span className="muted xsmall">{g.me?.count || 0}/{g.duration_days} dias</span>
+              {others.map((o) => (
+                <span className="muted xsmall" key={o.membership_id}>{o.name}: {o.count}/{g.duration_days}</span>
+              ))}
+            </div>
+            <button
+              className={'btn full ' + (g.me?.checked_today ? 'btn-done' : 'btn-primary') + ' icon-btn'}
+              disabled={busy}
+              onClick={() => toggleGoalCheckin(g.id)}
+            >
+              <Icon name="check" size={15} /> {g.me?.checked_today ? 'Cumpri hoje' : 'Marcar check-in de hoje'}
+            </button>
+          </section>
+        )
+      })}
+
+      {/* Nova meta */}
+      {showGoalForm ? (
+        <section className="card">
+          <div className="card-title">Nova meta</div>
+          <div className="add-habit">
+            <IconPicker
+              emoji={goalForm.emoji}
+              icon={goalForm.icon}
+              onPick={({ emoji, icon }) => setGoalForm({ ...goalForm, emoji: emoji || '🎯', icon })}
+            />
+            <input
+              className="add-habit-label"
+              placeholder="Ex: Sem refrigerante"
+              value={goalForm.title}
+              onChange={(e) => setGoalForm({ ...goalForm, title: e.target.value })}
+            />
+          </div>
+          <div className="chips">
+            {[7, 30, 60, 90].map((d) => (
+              <button
+                key={d}
+                className={'chip ' + (Number(goalForm.duration_days) === d ? 'active' : '')}
+                onClick={() => setGoalForm({ ...goalForm, duration_days: d })}
+              >
+                {d} dias
+              </button>
+            ))}
+          </div>
+          <div className="row" style={{ gap: 8 }}>
+            <button className="btn ghost full" onClick={() => setShowGoalForm(false)}>Cancelar</button>
+            <button className="btn full btn-primary" disabled={busy || !goalForm.title.trim()} onClick={createGoal}>Criar meta</button>
+          </div>
+        </section>
+      ) : (
+        <button className="btn ghost full icon-btn new-goal-btn" onClick={() => setShowGoalForm(true)}>
+          <Icon name="plus" size={15} /> Nova meta
+        </button>
+      )}
+
+      {/* Humor / emoções */}
+      <Section id="humor" title="Como você está hoje?" meta="(pode marcar várias)" defaultOpen={false}>
+        <div className="mood-grid">
+          {state.moods.map((m) => (
+            <button
+              key={m.key}
+              className={'mood ' + ((today.moods || []).includes(m.key) ? 'active' : '')}
+              disabled={busy}
+              onClick={() => toggleMood(m.key)}
+            >
+              <span className="mood-emoji"><Icon name={moodIconName(m.key)} size={20} /></span>
+              <span className="mood-label">{m.label}</span>
+            </button>
+          ))}
         </div>
-        {today.perfect && <div className="perfect-banner"><Icon name="star" size={15} /> Dia perfeito! +{today.perfect_bonus} de bônus</div>}
+        <input
+          className="mood-note"
+          placeholder="Quer escrever algo sobre o dia? (opcional)"
+          value={moodNote}
+          maxLength={280}
+          disabled={busy}
+          onChange={(e) => setMoodNote(e.target.value)}
+          onBlur={saveMoodNote}
+          onKeyDown={(e) => e.key === 'Enter' && e.target.blur()}
+        />
+      </Section>
+
+      {/* Feed de atividades */}
+      {state.activities?.length > 0 && (
+        <Section id="feed" title="Atividades" defaultOpen={false}>
+          <div className="feed">
+            {state.activities.map((a) => (
+              <div className="feed-item" key={a.id}>
+                <span className="feed-emoji">{a.emoji}</span>
+                <span className="feed-text">{a.text}</span>
+                {a.image && <img className="feed-thumb" src={a.image} alt="" onClick={() => setZoom(a.image)} />}
+                <span className="muted xsmall feed-time">{timeAgo(a.created_at)}</span>
+              </div>
+            ))}
+          </div>
+          <Link to="/feed" className="btn ghost full small-btn" style={{ marginTop: 10 }}>Ver todas no Feed</Link>
+        </Section>
+      )}
+
+      {/* Mensagem do dia */}
+      <section className="card motd">
+        <div className="motd-icon"><Icon name="sparkle" size={18} /></div>
+        <div>
+          <div className="muted xsmall">Mensagem do dia</div>
+          <div className="motd-text">{state.motd}</div>
+        </div>
       </section>
 
       {zoom && (
