@@ -11,6 +11,7 @@ desafio e ainda traz bastante variedade sem uma chamada de IA por dia.
 """
 import json
 import os
+import re
 
 from .data import CATEGORY_ORDER, DIFFICULTIES, DIFFICULTY_LABEL
 
@@ -121,6 +122,8 @@ def _clean(pool: dict) -> dict:
 
 def _extract_json(text: str) -> dict:
     text = (text or "").strip()
+    # Modelos "thinking" (ex.: Qwen) podem prefixar um bloco de raciocínio.
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL | re.IGNORECASE).strip()
     if text.startswith("```"):
         # remove cerca de código ```json ... ```
         text = text.split("```", 2)[1] if text.count("```") >= 2 else text.strip("`")
@@ -202,19 +205,22 @@ def estimate_meal(image_data_url: str) -> dict:
     import groq
 
     client = groq.Groq()
-    resp = client.chat.completions.create(
-        model=_pick_model(client, "QUESTLY_VISION_MODEL", VISION_MODELS),
-        max_tokens=500,
-        temperature=0.2,
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": _MEAL_PROMPT},
-                    {"type": "image_url", "image_url": {"url": image_data_url}},
-                ],
-            }
-        ],
-    )
+    model = _pick_model(client, "QUESTLY_VISION_MODEL", VISION_MODELS)
+    messages = [
+        {"role": "system", "content": "Você responde SEMPRE com um único objeto JSON válido, sem texto extra e sem raciocínio."},
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": _MEAL_PROMPT},
+                {"type": "image_url", "image_url": {"url": image_data_url}},
+            ],
+        },
+    ]
+    kwargs = dict(model=model, max_tokens=800, temperature=0.2, messages=messages)
+    try:
+        # Força saída JSON; se o modelo de visão não aceitar response_format, refaz sem.
+        resp = client.chat.completions.create(response_format={"type": "json_object"}, **kwargs)
+    except Exception:
+        resp = client.chat.completions.create(**kwargs)
     content = resp.choices[0].message.content or ""
     return _clean_meal(_extract_json(content))
