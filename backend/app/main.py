@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
+from . import ai
 from . import scoring
 from .auth import (
     create_token,
@@ -134,10 +135,46 @@ async def _reminder_loop() -> None:
         await asyncio.sleep(60)
 
 
+def _run_weekly_challenge_batch() -> None:
+    """Gera um lote novo de desafios por IA para todos os grupos (best-effort)."""
+    if not ai.ai_enabled():
+        return
+    db = SessionLocal()
+    try:
+        for s in db.query(Settings).all():
+            try:
+                regenerate_challenge_pool(db, s, _group_ai_context(db, s.group_id))
+            except Exception:
+                db.rollback()  # um grupo que falha não derruba os outros
+    finally:
+        db.close()
+
+
+async def _weekly_challenge_loop() -> None:
+    """Segunda-feira ~06h UTC (≈3h Brasília): renova o lote de desafios por IA."""
+    fired: set[str] = set()
+    while True:
+        try:
+            now = datetime.utcnow()
+            if now.weekday() == 0 and now.hour == 6 and now.minute < 10:
+                key = now.date().isoformat()
+                if key not in fired:
+                    fired.add(key)
+                    if len(fired) > 10:
+                        fired.clear()
+                        fired.add(key)
+                    await asyncio.to_thread(_run_weekly_challenge_batch)
+        except Exception:
+            pass
+        await asyncio.sleep(300)
+
+
 @app.on_event("startup")
 async def _start_reminders() -> None:
     if pushmod.push_enabled() and REMINDER_HOURS:
         asyncio.create_task(_reminder_loop())
+    if ai.ai_enabled():
+        asyncio.create_task(_weekly_challenge_loop())
 
 
 # --- helpers genéricos -----------------------------------------------------
@@ -171,6 +208,21 @@ def parse_date(value: str | None, default: date | None = None) -> date:
 def validate_image(image: str | None) -> None:
     if image and len(image) > MAX_IMAGE_CHARS:
         raise HTTPException(413, "Imagem muito grande. Tente uma foto menor.")
+
+
+def parse_time(value: str | None) -> str | None:
+    """Valida e normaliza um horário 'HH:MM' (24h). None/'' → None."""
+    if not value or not value.strip():
+        return None
+    v = value.strip()
+    try:
+        hh, mm = v.split(":")
+        h, m = int(hh), int(mm)
+        if not (0 <= h < 24 and 0 <= m < 60):
+            raise ValueError
+    except ValueError:
+        raise HTTPException(400, f"Horário inválido: {value!r} (use HH:MM).")
+    return f"{h:02d}:{m:02d}"
 
 
 def user_public(u: User) -> dict:
@@ -351,6 +403,15 @@ def remove_activity(db: Session, gid: int, membership: Membership, ref: str, day
     db.commit()
 
 
+def remove_activities_by_ref(db: Session, gid: int, ref: str) -> None:
+    """Remove do feed TODOS os eventos com este ref (qualquer membro/dia).
+
+    Usado quando o item de origem é excluído (tarefa agendada, atividade em dupla),
+    para que ele não continue aparecendo no feed."""
+    db.query(Activity).filter(Activity.group_id == gid, Activity.ref == ref).delete()
+    db.commit()
+
+
 def serialize_activity(a: Activity, members_by_id: dict) -> dict:
     mem = members_by_id.get(a.membership_id)
     u = mem.user if mem else None
@@ -363,11 +424,20 @@ def serialize_activity(a: Activity, members_by_id: dict) -> dict:
         "author": u.name if u else "?",
         "avatar": u.avatar if u else "❓",
         "photo": u.photo if u else None,
+        "day": a.day.isoformat() if a.day else None,
         "created_at": a.created_at.isoformat() + "Z",
     }
 
 
+def _ai_pool_count(s: Settings) -> int:
+    pool = getattr(s, "challenge_pool", None) or {}
+    if not isinstance(pool, dict):
+        return 0
+    return sum(len(v) for cat in pool.values() if isinstance(cat, dict) for v in cat.values() if isinstance(v, list))
+
+
 def settings_public(s: Settings) -> dict:
+    updated = getattr(s, "challenge_pool_updated", None)
     return {
         "timezone": getattr(s, "timezone", None) or DEFAULT_TZ,
         "start_date": s.start_date.isoformat(),
@@ -382,6 +452,9 @@ def settings_public(s: Settings) -> dict:
         "surprise_frequency": s.surprise_frequency,
         "fixed_habits": s.fixed_habits,
         "habits_menu": HABITS_MENU,
+        "ai_enabled": ai.ai_enabled(),
+        "ai_pool_count": _ai_pool_count(s),
+        "ai_pool_updated": updated.isoformat() + "Z" if updated else None,
     }
 
 
@@ -560,6 +633,42 @@ def challenges_today(gid: int, day: str | None = None, user: User = Depends(get_
         "challenges": scoring.daily_challenges(s, d),
         "motd": scoring.motd(d),
     }
+
+
+def _group_ai_context(db: Session, gid: int) -> str | None:
+    """Contexto leve (objetivos dos membros) para personalizar o lote de desafios."""
+    goals = [m.user.objetivo for m in group_members(db, gid) if m.user and m.user.objetivo]
+    return "; ".join(dict.fromkeys(g.strip() for g in goals if g and g.strip())) or None
+
+
+def regenerate_challenge_pool(db: Session, s: Settings, context: str | None = None) -> int:
+    """Gera um novo lote de desafios por IA e o guarda em ``settings.challenge_pool``.
+
+    Substitui o lote anterior (os fixos continuam via merge). Retorna a quantidade
+    gerada. Levanta exceção em erro — o chamador decide como reportar.
+    """
+    cats = scoring.active_categories(s)
+    pool = ai.generate_challenge_pool(cats, per_diff=6, context=context)
+    s.challenge_pool = pool
+    s.challenge_pool_updated = datetime.utcnow()
+    db.commit()
+    return _ai_pool_count(s)
+
+
+@app.post("/api/groups/{gid}/challenges/generate")
+def generate_challenges(gid: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Gera um novo lote de desafios por IA (só o dono do grupo)."""
+    m = get_membership(db, user, gid)
+    if m.role != "owner":
+        raise HTTPException(403, "Só o dono do grupo pode gerar novos desafios.")
+    if not ai.ai_enabled():
+        raise HTTPException(503, "Geração por IA indisponível (configure ANTHROPIC_API_KEY no servidor).")
+    s = get_group_settings(db, gid)
+    try:
+        count = regenerate_challenge_pool(db, s, _group_ai_context(db, gid))
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f"Falha ao gerar desafios: {e}")
+    return {"ok": True, "count": count, **settings_public(s)}
 
 
 @app.get("/api/groups/{gid}/members/{mid}")
@@ -812,6 +921,7 @@ def delete_joint(gid: int, aid: int, user: User = Depends(get_current_user), db:
         raise HTTPException(404, "Atividade não encontrada.")
     db.delete(a)
     db.commit()
+    remove_activities_by_ref(db, gid, f"joint:{aid}")  # tira do feed também
     return {"ok": True}
 
 
@@ -947,6 +1057,7 @@ def serialize_task(db: Session, task: ScheduledTask, members: list[Membership], 
         "icon": task.icon,
         "kind": task.kind,
         "date": task.date.isoformat() if task.date else None,
+        "time": getattr(task, "time", None),
         "weekdays": task.weekdays or [],
         "due": _task_due(task, d),
         "checked_today": me.id in done_by,
@@ -955,14 +1066,18 @@ def serialize_task(db: Session, task: ScheduledTask, members: list[Membership], 
     }
 
 
+def _task_sort_key(t: ScheduledTask):
+    """Ordena por horário (as sem horário vão para o fim), depois por id."""
+    return (getattr(t, "time", None) or "99:99", t.id)
+
+
 def tasks_due(db: Session, gid: int, d: date) -> list[ScheduledTask]:
     rows = (
         db.query(ScheduledTask)
         .filter(ScheduledTask.group_id == gid, ScheduledTask.active == True)  # noqa: E712
-        .order_by(ScheduledTask.id)
         .all()
     )
-    return [t for t in rows if _task_due(t, d)]
+    return sorted((t for t in rows if _task_due(t, d)), key=_task_sort_key)
 
 
 @app.get("/api/groups/{gid}/tasks")
@@ -996,6 +1111,7 @@ def create_task(gid: int, payload: TaskCreate, user: User = Depends(get_current_
         icon=payload.icon,
         kind=payload.kind,
         date=parse_date(payload.date) if (payload.kind == "once" and payload.date) else None,
+        time=parse_time(payload.time),
         weekdays=sorted(set(payload.weekdays)) if payload.kind == "weekly" else [],
         created_by=me.id,
     )
@@ -1044,7 +1160,10 @@ def delete_task(gid: int, task_id: int, user: User = Depends(get_current_user), 
     if task is None or task.group_id != gid:
         raise HTTPException(404, "Tarefa não encontrada.")
     task.active = False
+    # Some da UI: tira as conclusões (some do Mural) e os eventos do feed.
+    db.query(TaskCompletion).filter(TaskCompletion.task_id == task_id).delete()
     db.commit()
+    remove_activities_by_ref(db, gid, f"task:{task_id}")
     return {"ok": True}
 
 

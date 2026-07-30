@@ -36,8 +36,8 @@ export default function Mural() {
       {weeks &&
         weeks.map((w) => (
           <section className="card" key={w.week_start}>
-            <div className="row between">
-              <div className="card-title no-margin">Semana de {w.label}</div>
+            <div className="row between mural-week-head">
+              <div className="mural-week-title">Semana de {w.label}</div>
               <div className="muted small">{w.retro.photo_count} foto(s)</div>
             </div>
 

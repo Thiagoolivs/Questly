@@ -38,6 +38,8 @@ export default function Config() {
   const [newHabit, setNewHabit] = useState({ emoji: '✅', icon: null, label: '' })
   const [saved, setSaved] = useState(false)
   const [err, setErr] = useState(null)
+  const [genBusy, setGenBusy] = useState(false)
+  const [genMsg, setGenMsg] = useState(null)
 
   useEffect(() => {
     if (!groupId) return
@@ -99,6 +101,26 @@ export default function Config() {
     setTimeout(() => setSaved(false), 1800)
   }
 
+  async function generateAI() {
+    if (genBusy) return
+    setGenBusy(true)
+    setGenMsg(null)
+    try {
+      const d = await api.generateChallenges(groupId)
+      setS((prev) => ({ ...prev, ...d }))
+      setGenMsg({ ok: true, text: `Prontos! ${d.count} desafios novos gerados.` })
+      await refresh()
+    } catch (e) {
+      setGenMsg({ ok: false, text: e.message })
+    } finally {
+      setGenBusy(false)
+    }
+  }
+
+  const aiUpdated = s.ai_pool_updated
+    ? new Date(s.ai_pool_updated).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })
+    : null
+
   return (
     <div className="screen">
       <header className="topbar">
@@ -118,6 +140,36 @@ export default function Config() {
             </button>
           ))}
         </div>
+      </section>
+
+      <section className="card">
+        <div className="card-title">Desafios por IA</div>
+        <div className="muted small" style={{ marginBottom: 10 }}>
+          Gera um lote novo de desafios variados (misturados aos fixos). O app sorteia
+          desse lote a cada dia — os dois veem o mesmo desafio.
+        </div>
+        {s.ai_enabled ? (
+          <>
+            <div className="muted small" style={{ marginBottom: 10 }}>
+              {s.ai_pool_count > 0
+                ? `${s.ai_pool_count} desafios de IA no lote${aiUpdated ? ` · atualizado em ${aiUpdated}` : ''}.`
+                : 'Nenhum lote gerado ainda — só os desafios fixos por enquanto.'}
+            </div>
+            <button className="btn full btn-primary icon-btn" disabled={genBusy} onClick={generateAI}>
+              <Icon name="refresh" size={15} /> {genBusy ? 'Gerando…' : 'Gerar novos desafios'}
+            </button>
+            {genMsg && (
+              <div className={'small ' + (genMsg.ok ? 'muted' : 'error')} style={{ marginTop: 8 }}>
+                {genMsg.text}
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="muted small">
+            Indisponível neste servidor. Para ativar, configure a variável
+            <code> ANTHROPIC_API_KEY</code> no backend.
+          </div>
+        )}
       </section>
 
       <section className="card">

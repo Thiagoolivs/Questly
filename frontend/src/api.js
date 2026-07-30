@@ -81,6 +81,7 @@ export const api = {
   achievements: (g, mid) => req(`/api/groups/${g}/achievements/${mid}`),
   ranking: (g) => req(`/api/groups/${g}/ranking`),
   challengesToday: (g, day) => req(`/api/groups/${g}/challenges/today${qs(day)}`),
+  generateChallenges: (g) => req(`/api/groups/${g}/challenges/generate`, { method: 'POST' }),
   messages: (g, afterId = 0) => req(`/api/groups/${g}/messages${afterId ? `?after_id=${afterId}` : ''}`),
   sendMessage: (g, b) => req(`/api/groups/${g}/messages`, { method: 'POST', body: b }),
   activities: (g) => req(`/api/groups/${g}/activities`),

@@ -90,6 +90,7 @@ class TaskCreate(BaseModel):
     icon: Optional[str] = Field(None, max_length=24)
     kind: Literal["once", "weekly"] = "once"
     date: Optional[str] = None          # para 'once' (YYYY-MM-DD)
+    time: Optional[str] = Field(None, max_length=5)  # "HH:MM" opcional
     weekdays: list[int] = Field(default_factory=list)  # para 'weekly' (0=Dom..6=Sáb)
 
 

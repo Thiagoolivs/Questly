@@ -256,7 +256,10 @@ export default function Home() {
               <div key={t.id} className={'habit-row ' + (t.checked_today ? 'done' : '')}>
                 <button className="habit habit-toggle" disabled={busy} onClick={() => toggleTask(t.id)}>
                   <span className="habit-emoji">{t.icon ? <Icon name={t.icon} size={17} /> : t.emoji}</span>
-                  <span className="habit-label">{t.title}</span>
+                  <span className="habit-main-col">
+                    <span className="habit-label">{t.title}</span>
+                    {t.time && <span className="muted xsmall">{t.time}</span>}
+                  </span>
                   <span className={'check ' + (t.checked_today ? 'on' : '')}>{t.checked_today ? <Icon name="check" size={14} /> : ''}</span>
                 </button>
                 {t.image && <img className="habit-thumb" src={t.image} alt="prova" onClick={() => setZoom(t.image)} />}
