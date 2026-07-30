@@ -75,7 +75,7 @@ from .seed import init_db
 MAX_IMAGE_CHARS = 3_500_000
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
-app = FastAPI(title="Questly API", version="0.3.0")
+app = FastAPI(title="Questly API", version="0.3.1")
 
 app.add_middleware(
     CORSMiddleware,
@@ -1723,4 +1723,4 @@ else:
 
     @app.get("/")
     def root():
-        return {"app": "Questly", "version": "0.3.0", "docs": "/docs"}
+        return {"app": "Questly", "version": "0.3.1", "docs": "/docs"}
