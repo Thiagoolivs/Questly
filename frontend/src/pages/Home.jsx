@@ -365,7 +365,7 @@ export default function Home() {
           </button>
         ) : (
           <div className="muted xsmall" style={{ marginTop: 8 }}>
-            Contador por IA inativo — configure <code>GROQ_API_KEY</code> no servidor para estimar calorias pela foto.
+            Contador por IA inativo — configure <code>OPENAI_API_KEY</code> (ou <code>GROQ_API_KEY</code>) no servidor para estimar calorias pela foto.
           </div>
         )}
         <p className="muted xsmall proof-note" style={{ marginTop: 8 }}>

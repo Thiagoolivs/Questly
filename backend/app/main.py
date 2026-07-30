@@ -685,7 +685,7 @@ def generate_challenges(gid: int, user: User = Depends(get_current_user), db: Se
     if m.role != "owner":
         raise HTTPException(403, "Só o dono do grupo pode gerar novos desafios.")
     if not ai.ai_enabled():
-        raise HTTPException(503, "Geração por IA indisponível (configure GROQ_API_KEY no servidor).")
+        raise HTTPException(503, "Geração por IA indisponível (configure GROQ_API_KEY ou OPENAI_API_KEY no servidor).")
     s = get_group_settings(db, gid)
     try:
         count = regenerate_challenge_pool(db, s, _group_ai_context(db, gid))
@@ -1263,7 +1263,7 @@ def create_meal(gid: int, payload: MealCreate, user: User = Depends(get_current_
     d = parse_date(payload.date, today)
     ensure_today(d, today)
     if not ai.ai_enabled():
-        raise HTTPException(503, "Contador por IA indisponível (configure GROQ_API_KEY no servidor).")
+        raise HTTPException(503, "Contador por IA indisponível (configure OPENAI_API_KEY ou GROQ_API_KEY no servidor).")
     try:
         est = ai.estimate_meal(payload.image)
     except Exception as e:  # noqa: BLE001

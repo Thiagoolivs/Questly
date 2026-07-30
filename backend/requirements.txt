@@ -8,5 +8,6 @@ PyJWT==2.9.0
 pywebpush==2.3.0
 # Necessário apenas quando DATABASE_URL (Postgres) estiver definido — ex: Railway.
 psycopg[binary]==3.2.1
-# Geração de desafios por IA (lote). Opcional: só usado se GROQ_API_KEY existir.
+# IA (desafios + contador de calorias). Opcionais: usados se a chave existir.
 groq==0.13.0
+openai>=1.40,<2
