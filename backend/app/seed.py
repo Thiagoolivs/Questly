@@ -34,6 +34,7 @@ _NEW_COLUMNS = {
         "habit_proofs": "JSON",
         "moods": "JSON",
         "mood_note": "TEXT",
+        "water_ml": "INTEGER",
     },
     "settings": {
         "timezone": "VARCHAR(40)",
@@ -105,6 +106,32 @@ def _reset_legacy_schema() -> None:
             conn.execute(text(f"DROP TABLE IF EXISTS {table}"))
 
 
+def _relabel_water_habit() -> None:
+    """Renomeia o hábito de água ('Beber 2,5L de água' → 'Bater a meta de água
+    diária') nos grupos já existentes. Idempotente: só toca no rótulo antigo."""
+    from sqlalchemy.orm import Session
+
+    from .models import Settings
+
+    old, new = "Beber 2,5L de água", "Bater a meta de água diária"
+    try:
+        with Session(engine) as s:
+            changed = False
+            for st in s.query(Settings).all():
+                fh = st.fixed_habits or []
+                new_fh = [
+                    {**h, "label": new} if (isinstance(h, dict) and h.get("key") == "agua" and h.get("label") == old) else h
+                    for h in fh
+                ]
+                if new_fh != fh:
+                    st.fixed_habits = new_fh
+                    changed = True
+            if changed:
+                s.commit()
+    except Exception:
+        pass  # cosmético; não pode derrubar o startup
+
+
 def init_db() -> None:
     """Garante o schema novo. Reseta apenas na primeira migração para o novo modelo."""
     tables = set(inspect(engine).get_table_names())
@@ -112,3 +139,4 @@ def init_db() -> None:
         _reset_legacy_schema()
     Base.metadata.create_all(bind=engine)
     _ensure_columns()
+    _relabel_water_habit()

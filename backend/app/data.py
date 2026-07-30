@@ -9,7 +9,7 @@ pontuações crescentes. As 5 áreas: Física, Mental, Social, Relação, Espiri
 # --- Hábitos ---------------------------------------------------------------
 # Conjunto padrão. O grupo pode adicionar QUANTOS hábitos quiser nas configs.
 DEFAULT_HABITS = [
-    {"key": "agua", "label": "Beber 2,5L de água", "emoji": "💧", "category": "Saúde"},
+    {"key": "agua", "label": "Bater a meta de água diária", "emoji": "💧", "category": "Saúde"},
     {"key": "sono", "label": "Dormir no mínimo 7h30", "emoji": "😴", "category": "Saúde"},
     {"key": "refeicoes", "label": "Não pular refeições", "emoji": "🍽️", "category": "Saúde"},
     {"key": "leitura", "label": "Ler 10 páginas (ou 15 min)", "emoji": "📖", "category": "Mental"},
@@ -189,6 +189,18 @@ ACHIEVEMENTS = [
     {"key": "casal_inabalavel", "name": "Casal Inabalável", "emoji": "💞",
      "desc": "Vocês dois concluírem o mesmo dia (dia perfeito em conjunto).",
      "metric": "casal", "target": 1},
+]
+
+# --- Reações do feed (estilo LinkedIn) -------------------------------------
+# Cada membro pode dar UMA reação por item do feed (toca outra troca; toca a
+# mesma remove).
+FEED_REACTIONS = [
+    {"key": "apoio", "emoji": "👏", "label": "Apoio"},
+    {"key": "amei", "emoji": "❤️", "label": "Amei"},
+    {"key": "forca", "emoji": "🔥", "label": "Força"},
+    {"key": "mandou", "emoji": "💪", "label": "Mandou bem"},
+    {"key": "grato", "emoji": "🙏", "label": "Grato"},
+    {"key": "haha", "emoji": "😂", "label": "Haha"},
 ]
 
 # --- Sugestões de atividades em dupla --------------------------------------

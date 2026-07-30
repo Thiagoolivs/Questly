@@ -115,6 +115,8 @@ class DayEntry(Base):
     # Humor do dia: lista de emoções nomeadas + nota livre opcional.
     moods: Mapped[list] = mapped_column(JSON, default=list)
     mood_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Consumo de água do dia, em mililitros (registrado de 500 em 500).
+    water_ml: Mapped[int] = mapped_column(Integer, default=0)
 
     membership: Mapped["Membership"] = relationship(back_populates="days")
 
@@ -288,3 +290,16 @@ class Meal(Base):
     image: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # foto (data URL)
     ai_confidence: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)  # baixa|media|alta
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
+class ActivityReaction(Base):
+    """Reação (estilo LinkedIn) de um membro a um item do feed. Uma por membro/item."""
+
+    __tablename__ = "activity_reactions"
+    __table_args__ = (UniqueConstraint("activity_id", "membership_id", name="uq_activity_member"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    activity_id: Mapped[int] = mapped_column(ForeignKey("activities.id"), index=True)
+    membership_id: Mapped[int] = mapped_column(ForeignKey("memberships.id"), index=True)
+    reaction: Mapped[str] = mapped_column(String(16))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
