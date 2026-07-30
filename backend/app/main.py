@@ -24,10 +24,11 @@ from .auth import (
     verify_password,
 )
 from . import push as pushmod
-from .data import CATEGORY_EMOJI, DEFAULT_HABITS, HABITS_MENU, JOINT_SUGGESTIONS, MOODS
+from .data import CATEGORY_EMOJI, DEFAULT_HABITS, FEED_REACTIONS, HABITS_MENU, JOINT_SUGGESTIONS, MOODS
 from .database import SessionLocal, get_db
 from .models import (
     Activity,
+    ActivityReaction,
     DayEntry,
     Goal,
     GoalCheckin,
@@ -52,6 +53,8 @@ from .schemas import (
     JointActivityCreate,
     MealCreate,
     MealUpdate,
+    ReactRequest,
+    WaterRequest,
     TaskCompleteRequest,
     TaskCreate,
     LoginRequest,
@@ -409,12 +412,21 @@ def upsert_activity(db: Session, gid: int, membership: Membership, kind: str, em
     db.commit()
 
 
+def _purge_activity_reactions(db: Session, activity_query) -> None:
+    """Apaga as reações dos itens de feed prestes a serem removidos."""
+    ids = [a.id for a in activity_query.all()]
+    if ids:
+        db.query(ActivityReaction).filter(ActivityReaction.activity_id.in_(ids)).delete(synchronize_session=False)
+
+
 def remove_activity(db: Session, gid: int, membership: Membership, ref: str, day: date | None = None) -> None:
     day = day or date.today()
-    db.query(Activity).filter(
+    q = db.query(Activity).filter(
         Activity.group_id == gid, Activity.membership_id == membership.id,
         Activity.ref == ref, Activity.day == day,
-    ).delete()
+    )
+    _purge_activity_reactions(db, q)
+    q.delete(synchronize_session=False)
     db.commit()
 
 
@@ -423,11 +435,29 @@ def remove_activities_by_ref(db: Session, gid: int, ref: str) -> None:
 
     Usado quando o item de origem é excluído (tarefa agendada, atividade em dupla),
     para que ele não continue aparecendo no feed."""
-    db.query(Activity).filter(Activity.group_id == gid, Activity.ref == ref).delete()
+    q = db.query(Activity).filter(Activity.group_id == gid, Activity.ref == ref)
+    _purge_activity_reactions(db, q)
+    q.delete(synchronize_session=False)
     db.commit()
 
 
-def serialize_activity(a: Activity, members_by_id: dict) -> dict:
+def reactions_map(db: Session, activity_ids: list[int], me_id: int) -> dict:
+    """Para cada activity: {counts: {key: n}, mine: key|None, total: n}."""
+    out = {aid: {"counts": {}, "mine": None, "total": 0} for aid in activity_ids}
+    if not activity_ids:
+        return out
+    for r in db.query(ActivityReaction).filter(ActivityReaction.activity_id.in_(activity_ids)).all():
+        e = out.get(r.activity_id)
+        if e is None:
+            continue
+        e["counts"][r.reaction] = e["counts"].get(r.reaction, 0) + 1
+        e["total"] += 1
+        if r.membership_id == me_id:
+            e["mine"] = r.reaction
+    return out
+
+
+def serialize_activity(a: Activity, members_by_id: dict, reactions: dict | None = None) -> dict:
     mem = members_by_id.get(a.membership_id)
     u = mem.user if mem else None
     return {
@@ -441,6 +471,7 @@ def serialize_activity(a: Activity, members_by_id: dict) -> dict:
         "photo": u.photo if u else None,
         "day": a.day.isoformat() if a.day else None,
         "created_at": a.created_at.isoformat() + "Z",
+        "reactions": (reactions or {}).get(a.id) or {"counts": {}, "mine": None, "total": 0},
     }
 
 
@@ -1219,6 +1250,12 @@ def nutrition_payload(db: Session, gid: int, membership: Membership, d: date, s:
     rows = meals_of(db, gid, membership.id, d)
     t = nutrition.compute_targets(membership.user, s)
     tg = t["targets"]
+    entry = (
+        db.query(DayEntry)
+        .filter(DayEntry.membership_id == membership.id, DayEntry.date == d)
+        .first()
+    )
+    water_ml = (entry.water_ml or 0) if entry else 0
     return {
         "date": d.isoformat(),
         "calories": sum(m.calories for m in rows),
@@ -1230,6 +1267,8 @@ def nutrition_payload(db: Session, gid: int, membership: Membership, d: date, s:
         "carbs_goal_g": tg["carbs_g"],
         "fat_goal_g": tg["fat_g"],
         "water_goal_l": tg["water_l"],
+        "water_ml": water_ml,
+        "water_l": round(water_ml / 1000, 2),
         "count": len(rows),
         "meals": [serialize_meal(m) for m in rows],
         "targets": t,
@@ -1311,6 +1350,20 @@ def delete_meal(gid: int, meal_id: int, user: User = Depends(get_current_user), 
     return {"ok": True, "nutrition": nutrition_payload(db, gid, me, d, s)}
 
 
+@app.post("/api/groups/{gid}/water")
+def add_water(gid: int, req: WaterRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Ajusta o consumo de água do dia (de 500 em 500 ml, só no dia de hoje)."""
+    membership = get_membership(db, user, gid)
+    s = get_group_settings(db, gid)
+    today = today_of(s)
+    d = parse_date(req.date, today)
+    ensure_today(d, today)
+    entry = get_or_create_entry(db, membership, d)
+    entry.water_ml = max(0, (entry.water_ml or 0) + req.delta_ml)
+    db.commit()
+    return nutrition_payload(db, gid, membership, d, s)
+
+
 # --- rotas: grupo (chat) ---------------------------------------------------
 @app.get("/api/groups/{gid}/messages")
 def list_messages(gid: int, after_id: int = 0, limit: int = 200, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -1341,7 +1394,7 @@ def create_message(gid: int, payload: MessageCreate, user: User = Depends(get_cu
 # --- rotas: grupo (feed de atividades) -------------------------------------
 @app.get("/api/groups/{gid}/activities")
 def list_activities(gid: int, limit: int = 40, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    get_membership(db, user, gid)
+    me = get_membership(db, user, gid)
     members_by_id = {m.id: m for m in group_members(db, gid)}
     rows = (
         db.query(Activity)
@@ -1350,7 +1403,39 @@ def list_activities(gid: int, limit: int = 40, user: User = Depends(get_current_
         .limit(min(limit, 200))
         .all()
     )
-    return {"activities": [serialize_activity(a, members_by_id) for a in rows]}
+    rmap = reactions_map(db, [a.id for a in rows], me.id)
+    return {
+        "activities": [serialize_activity(a, members_by_id, rmap) for a in rows],
+        "reaction_types": FEED_REACTIONS,
+    }
+
+
+@app.post("/api/groups/{gid}/activities/{aid}/react")
+def react_activity(gid: int, aid: int, req: ReactRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Define/troca/remove a reação do membro num item do feed."""
+    me = get_membership(db, user, gid)
+    a = db.get(Activity, aid)
+    if a is None or a.group_id != gid:
+        raise HTTPException(404, "Item do feed não encontrado.")
+    valid = {r["key"] for r in FEED_REACTIONS}
+    key = (req.reaction or "").strip() or None
+    existing = (
+        db.query(ActivityReaction)
+        .filter(ActivityReaction.activity_id == aid, ActivityReaction.membership_id == me.id)
+        .first()
+    )
+    if key is None or (existing and existing.reaction == key):
+        if existing:
+            db.delete(existing)  # toggle off / remover
+    elif key in valid:
+        if existing:
+            existing.reaction = key
+        else:
+            db.add(ActivityReaction(activity_id=aid, membership_id=me.id, reaction=key))
+    else:
+        raise HTTPException(400, "Reação inválida.")
+    db.commit()
+    return reactions_map(db, [aid], me.id)[aid]
 
 
 # --- rotas: grupo (histórico/conquistas/ranking) ---------------------------
@@ -1579,6 +1664,7 @@ def state(gid: int, user: User = Depends(get_current_user), db: Session = Depend
         .limit(12)
         .all()
     )
+    act_reactions = reactions_map(db, [a.id for a in recent_activities], membership.id)
 
     return {
         "date": today.isoformat(),
@@ -1599,7 +1685,8 @@ def state(gid: int, user: User = Depends(get_current_user), db: Session = Depend
             "activities": [serialize_joint(a, members_by_id) for a in joint_today],
             "suggestions": JOINT_SUGGESTIONS,
         },
-        "activities": [serialize_activity(a, members_by_id) for a in recent_activities],
+        "activities": [serialize_activity(a, members_by_id, act_reactions) for a in recent_activities],
+        "reaction_types": FEED_REACTIONS,
         "goals": [serialize_goal(db, g, members, membership, today) for g in active_goals(db, gid)],
         "tasks": [serialize_task(db, t, members, membership, today) for t in tasks_due(db, gid, today)],
         "nutrition": nutrition_payload(db, gid, membership, today, s),

@@ -142,6 +142,10 @@ export default function Home() {
   const meals = nutrition.meals || []
   const kcalPct = Math.min(100, Math.round((nutrition.calories / (nutrition.calories_goal || 1)) * 100))
   const protPct = Math.min(100, Math.round((nutrition.protein_g / (nutrition.protein_goal_g || 1)) * 100))
+  const waterL = nutrition.water_l || 0
+  const waterGoal = nutrition.water_goal_l || 2.5
+  const waterPct = Math.min(100, Math.round((waterL / (waterGoal || 1)) * 100))
+  const addWater = (delta) => run(() => api.addWater(groupId, { date: state.date, delta_ml: delta }))
   async function addMealPhoto() {
     const f = await pickImage()
     if (!f || mealBusy) return
@@ -376,8 +380,19 @@ export default function Home() {
             </div>
             <div className="nutri-bar"><div className="nutri-fill prot" style={{ width: protPct + '%' }} /></div>
           </div>
+          <div className="nutri-metric">
+            <div className="nutri-metric-top">
+              <span><Icon name="droplet" size={14} /> Água</span>
+              <span className="muted small">{waterL.toFixed(1)} / {waterGoal} L</span>
+            </div>
+            <div className="nutri-bar"><div className="nutri-fill water" style={{ width: waterPct + '%' }} /></div>
+            <div className="water-actions">
+              <button className="btn ghost small-btn" disabled={busy || waterL <= 0} onClick={() => addWater(-500)}>−500 ml</button>
+              <button className="btn ghost small-btn icon-btn" disabled={busy} onClick={() => addWater(500)}><Icon name="plus" size={13} /> 500 ml</button>
+            </div>
+          </div>
           <div className="muted xsmall nutri-macros">
-            Carbo {nutrition.carbs_g}/{nutrition.carbs_goal_g}g · Gordura {nutrition.fat_g}/{nutrition.fat_goal_g}g · Meta de água {nutrition.water_goal_l}L
+            Carbo {nutrition.carbs_g}/{nutrition.carbs_goal_g}g · Gordura {nutrition.fat_g}/{nutrition.fat_goal_g}g
           </div>
         </div>
 

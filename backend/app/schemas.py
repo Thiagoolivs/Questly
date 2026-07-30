@@ -116,6 +116,15 @@ class MealCreate(BaseModel):
     image: str  # data URL (base64) da foto — a IA estima os valores
 
 
+class WaterRequest(BaseModel):
+    date: str
+    delta_ml: int = Field(..., ge=-5000, le=5000)  # ex.: +500 / -500
+
+
+class ReactRequest(BaseModel):
+    reaction: Optional[str] = Field(None, max_length=16)  # None/"" remove a reação
+
+
 class MealUpdate(BaseModel):
     label: Optional[str] = Field(None, min_length=1, max_length=120)
     calories: Optional[int] = Field(None, ge=0, le=6000)
