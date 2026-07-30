@@ -14,6 +14,7 @@ function onceLabel(iso) {
 export default function Tarefas() {
   const { groupId } = useApp()
   const [tasks, setTasks] = useState(null)
+  const [today, setToday] = useState(() => new Date().toISOString().slice(0, 10))
   const [err, setErr] = useState(null)
   const [busy, setBusy] = useState(false)
   const [zoom, setZoom] = useState(null)
@@ -22,7 +23,11 @@ export default function Tarefas() {
 
   const load = useCallback(() => {
     if (!groupId) return
-    api.tasks(groupId, '?all=true').then((d) => setTasks(d.tasks)).catch((e) => setErr(e.message))
+    api.tasks(groupId, '?all=true').then((d) => {
+      setTasks(d.tasks)
+      // Data "de hoje" no fuso do grupo (o backend só aceita conclusões nesse dia).
+      if (d.date) setToday(d.date)
+    }).catch((e) => setErr(e.message))
   }, [groupId])
 
   useEffect(() => {
@@ -42,7 +47,6 @@ export default function Tarefas() {
     }
   }
 
-  const today = new Date().toISOString().slice(0, 10)
   const toggle = (id) => run(() => api.completeTask(groupId, id, { date: today }))
   const remove = (id) => {
     if (!confirm('Remover esta tarefa?')) return

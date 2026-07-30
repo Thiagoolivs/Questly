@@ -4,6 +4,9 @@ import os
 import re
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+DEFAULT_TZ = "America/Sao_Paulo"
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -138,9 +141,27 @@ async def _start_reminders() -> None:
 
 
 # --- helpers genéricos -----------------------------------------------------
-def parse_date(value: str | None) -> date:
+def _zone(tz: str | None) -> ZoneInfo:
+    try:
+        return ZoneInfo(tz or DEFAULT_TZ)
+    except (ZoneInfoNotFoundError, ValueError, KeyError):
+        return ZoneInfo(DEFAULT_TZ)
+
+
+def today_of(settings: Settings) -> date:
+    """Data de 'hoje' no fuso do grupo (evita o dia virar à meia-noite UTC)."""
+    return datetime.now(_zone(getattr(settings, "timezone", None))).date()
+
+
+def ensure_today(d: date, today: date) -> None:
+    """Só permite registrar no dia de hoje (evita 'gaming' com datas passadas/futuras)."""
+    if d != today:
+        raise HTTPException(400, "Só é possível registrar no dia de hoje.")
+
+
+def parse_date(value: str | None, default: date | None = None) -> date:
     if not value:
-        return date.today()
+        return default or date.today()
     try:
         return date.fromisoformat(value)
     except ValueError:
@@ -348,6 +369,7 @@ def serialize_activity(a: Activity, members_by_id: dict) -> dict:
 
 def settings_public(s: Settings) -> dict:
     return {
+        "timezone": getattr(s, "timezone", None) or DEFAULT_TZ,
         "start_date": s.start_date.isoformat(),
         "duration_days": s.duration_days,
         "water_goal_l": s.water_goal_l,
@@ -512,6 +534,11 @@ def update_settings(gid: int, payload: SettingsUpdate, user: User = Depends(get_
     get_membership(db, user, gid)
     s = get_group_settings(db, gid)
     data = payload.model_dump(exclude_unset=True)
+    if data.get("timezone"):
+        try:
+            ZoneInfo(data["timezone"])
+        except (ZoneInfoNotFoundError, ValueError, KeyError):
+            raise HTTPException(400, f"Fuso horário inválido: {data['timezone']!r}.")
     if "fixed_habits" in data and data["fixed_habits"] is not None:
         data["fixed_habits"] = [h.model_dump() if hasattr(h, "model_dump") else h for h in payload.fixed_habits]
     for field, value in data.items():
@@ -525,7 +552,7 @@ def update_settings(gid: int, payload: SettingsUpdate, user: User = Depends(get_
 def challenges_today(gid: int, day: str | None = None, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     get_membership(db, user, gid)
     s = get_group_settings(db, gid)
-    d = parse_date(day)
+    d = parse_date(day, today_of(s))
     return {
         "date": d.isoformat(),
         "day_number": scoring.day_number(s, d),
@@ -539,7 +566,8 @@ def challenges_today(gid: int, day: str | None = None, user: User = Depends(get_
 def read_member(gid: int, mid: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     get_membership(db, user, gid)
     membership = get_group_member(db, gid, mid)
-    return member_payload(get_group_settings(db, gid), membership, joint_points_map(db, gid), date.today())
+    s = get_group_settings(db, gid)
+    return member_payload(s, membership, joint_points_map(db, gid), today_of(s))
 
 
 @app.get("/api/groups/{gid}/day/{mid}")
@@ -547,7 +575,7 @@ def read_day(gid: int, mid: int, day: str | None = None, user: User = Depends(ge
     get_membership(db, user, gid)
     membership = get_group_member(db, gid, mid)
     s = get_group_settings(db, gid)
-    d = parse_date(day)
+    d = parse_date(day, today_of(s))
     entry = next((e for e in membership.days if e.date == d), None)
     return scoring.compute_day(s, entry, d)
 
@@ -555,7 +583,7 @@ def read_day(gid: int, mid: int, day: str | None = None, user: User = Depends(ge
 def _day_result(db: Session, settings: Settings, membership: Membership, entry: DayEntry, d: date):
     db.commit()
     db.refresh(membership)
-    today = date.today()
+    today = today_of(settings)
     joint = joint_points_map(db, membership.group_id)
     days = build_member_days(settings, membership, joint, today)
     day_cd = scoring.compute_day(settings, entry, d)
@@ -577,7 +605,9 @@ def _habit_info(settings: Settings, key: str) -> dict:
 def toggle(gid: int, req: ToggleRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     membership = get_membership(db, user, gid)
     s = get_group_settings(db, gid)
-    d = parse_date(req.date)
+    today = today_of(s)
+    d = parse_date(req.date, today)
+    ensure_today(d, today)
     if not req.habit_key:
         raise HTTPException(400, "habit_key é obrigatório.")
     entry = get_or_create_entry(db, membership, d)
@@ -611,7 +641,9 @@ def set_habit_photo(gid: int, req: HabitPhotoRequest, user: User = Depends(get_c
     validate_image(req.image)
     membership = get_membership(db, user, gid)
     s = get_group_settings(db, gid)
-    d = parse_date(req.date)
+    today = today_of(s)
+    d = parse_date(req.date, today)
+    ensure_today(d, today)
     entry = get_or_create_entry(db, membership, d)
     proofs = dict(entry.habit_proofs or {})
     if req.image:
@@ -638,7 +670,9 @@ def set_mood(gid: int, req: MoodRequest, user: User = Depends(get_current_user),
     s = get_group_settings(db, gid)
     valid = {m["key"] for m in MOODS}
     moods = [m for m in dict.fromkeys(req.moods) if m in valid]  # únicos e válidos
-    d = parse_date(req.date)
+    today = today_of(s)
+    d = parse_date(req.date, today)
+    ensure_today(d, today)
     entry = get_or_create_entry(db, membership, d)
     entry.moods = moods
     entry.mood_note = (req.note or "").strip() or None
@@ -653,7 +687,9 @@ def set_challenge(gid: int, req: ChallengeProofRequest, user: User = Depends(get
     s = get_group_settings(db, gid)
     if req.category not in scoring.active_categories(s):
         raise HTTPException(400, "Área inválida.")
-    d = parse_date(req.date)
+    today = today_of(s)
+    d = parse_date(req.date, today)
+    ensure_today(d, today)
     entry = get_or_create_entry(db, membership, d)
     was_done = bool((entry.challenge_proofs or {}).get(req.category))
     proofs = dict(entry.challenge_proofs or {})
@@ -677,7 +713,7 @@ def set_challenge(gid: int, req: ChallengeProofRequest, user: User = Depends(get
         extra = " (juntos 💞)" if req.together else ""
         text = f"{membership.user.name} fechou o desafio de {req.category}!{extra}"
         upsert_activity(db, gid, membership, "challenge", emoji, text, ref=ref, image=req.image, day=d)
-        if not was_done and d == date.today():
+        if not was_done:
             notify_group_others(db, gid, membership.user_id, membership.group.name, f"{emoji} {text}", "/")
     else:
         remove_activity(db, gid, membership, ref, day=d)
@@ -691,7 +727,9 @@ def reroll_challenge(gid: int, req: RerollRequest, user: User = Depends(get_curr
     s = get_group_settings(db, gid)
     if req.category not in scoring.active_categories(s):
         raise HTTPException(400, "Área inválida.")
-    d = parse_date(req.date)
+    today = today_of(s)
+    d = parse_date(req.date, today)
+    ensure_today(d, today)
     entry = get_or_create_entry(db, membership, d)
     if (entry.challenge_proofs or {}).get(req.category):
         raise HTTPException(400, "Desafio já concluído — não dá para trocar.")
@@ -723,7 +761,7 @@ def serialize_joint(a: JointActivity, members_by_id: dict) -> dict:
 @app.get("/api/groups/{gid}/joint")
 def list_joint(gid: int, day: str | None = None, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     get_membership(db, user, gid)
-    d = parse_date(day)
+    d = parse_date(day, today_of(get_group_settings(db, gid)))
     members_by_id = {m.id: m for m in group_members(db, gid)}
     rows = (
         db.query(JointActivity)
@@ -743,7 +781,10 @@ def list_joint(gid: int, day: str | None = None, user: User = Depends(get_curren
 def create_joint(gid: int, payload: JointActivityCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     validate_image(payload.image)
     membership = get_membership(db, user, gid)
-    d = parse_date(payload.date)
+    s = get_group_settings(db, gid)
+    today = today_of(s)
+    d = parse_date(payload.date, today)
+    ensure_today(d, today)
     a = JointActivity(
         group_id=gid,
         date=d,
@@ -757,10 +798,9 @@ def create_joint(gid: int, payload: JointActivityCreate, user: User = Depends(ge
     db.add(a)
     db.commit()
     db.refresh(a)
-    if d == date.today():
-        text = f"{membership.user.name} registrou em dupla: {a.label} (+{a.points} pra vocês!)"
-        upsert_activity(db, gid, membership, "joint", a.emoji, text, ref=f"joint:{a.id}", image=a.image, day=d)
-        notify_group_others(db, gid, membership.user_id, membership.group.name, f"💞 {text}", "/")
+    text = f"{membership.user.name} registrou em dupla: {a.label} (+{a.points} pra vocês!)"
+    upsert_activity(db, gid, membership, "joint", a.emoji, text, ref=f"joint:{a.id}", image=a.image, day=d)
+    notify_group_others(db, gid, membership.user_id, membership.group.name, f"💞 {text}", "/")
     return serialize_joint(a, {membership.id: membership})
 
 
@@ -832,26 +872,27 @@ def active_goals(db: Session, gid: int) -> list[Goal]:
 def list_goals(gid: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     me = get_membership(db, user, gid)
     members = group_members(db, gid)
-    today = date.today()
+    today = today_of(get_group_settings(db, gid))
     return {"goals": [serialize_goal(db, g, members, me, today) for g in active_goals(db, gid)]}
 
 
 @app.post("/api/groups/{gid}/goals")
 def create_goal(gid: int, payload: GoalCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     me = get_membership(db, user, gid)
+    today = today_of(get_group_settings(db, gid))
     goal = Goal(
         group_id=gid,
         title=payload.title.strip(),
         emoji=(payload.emoji or "🎯").strip() or "🎯",
         icon=payload.icon,
-        start_date=date.today(),
+        start_date=today,
         duration_days=payload.duration_days,
         created_by=me.id,
     )
     db.add(goal)
     db.commit()
     db.refresh(goal)
-    return serialize_goal(db, goal, group_members(db, gid), me, date.today())
+    return serialize_goal(db, goal, group_members(db, gid), me, today)
 
 
 @app.post("/api/groups/{gid}/goals/{goal_id}/checkin")
@@ -860,7 +901,9 @@ def goal_checkin(gid: int, goal_id: int, req: GoalCheckinRequest, user: User = D
     goal = db.get(Goal, goal_id)
     if goal is None or goal.group_id != gid:
         raise HTTPException(404, "Meta não encontrada.")
-    d = parse_date(req.date)
+    today = today_of(get_group_settings(db, gid))
+    d = parse_date(req.date, today)
+    ensure_today(d, today)
     existing = (
         db.query(GoalCheckin)
         .filter(GoalCheckin.goal_id == goal_id, GoalCheckin.membership_id == me.id, GoalCheckin.date == d)
@@ -871,7 +914,7 @@ def goal_checkin(gid: int, goal_id: int, req: GoalCheckinRequest, user: User = D
     else:
         db.add(GoalCheckin(goal_id=goal_id, membership_id=me.id, date=d))
     db.commit()
-    return serialize_goal(db, goal, group_members(db, gid), me, date.today())
+    return serialize_goal(db, goal, group_members(db, gid), me, today)
 
 
 @app.delete("/api/groups/{gid}/goals/{goal_id}")
@@ -926,7 +969,7 @@ def tasks_due(db: Session, gid: int, d: date) -> list[ScheduledTask]:
 def list_tasks(gid: int, day: str | None = None, all: bool = False, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     me = get_membership(db, user, gid)
     members = group_members(db, gid)
-    d = parse_date(day)
+    d = parse_date(day, today_of(get_group_settings(db, gid)))
     if all:
         rows = (
             db.query(ScheduledTask)
@@ -959,7 +1002,7 @@ def create_task(gid: int, payload: TaskCreate, user: User = Depends(get_current_
     db.add(task)
     db.commit()
     db.refresh(task)
-    return serialize_task(db, task, group_members(db, gid), me, date.today())
+    return serialize_task(db, task, group_members(db, gid), me, today_of(get_group_settings(db, gid)))
 
 
 @app.post("/api/groups/{gid}/tasks/{task_id}/complete")
@@ -969,7 +1012,9 @@ def complete_task(gid: int, task_id: int, req: TaskCompleteRequest, user: User =
     task = db.get(ScheduledTask, task_id)
     if task is None or task.group_id != gid:
         raise HTTPException(404, "Tarefa não encontrada.")
-    d = parse_date(req.date)
+    today = today_of(get_group_settings(db, gid))
+    d = parse_date(req.date, today)
+    ensure_today(d, today)
     existing = (
         db.query(TaskCompletion)
         .filter(TaskCompletion.task_id == task_id, TaskCompletion.membership_id == me.id, TaskCompletion.date == d)
@@ -1051,7 +1096,7 @@ def history(gid: int, mid: int, user: User = Depends(get_current_user), db: Sess
     get_membership(db, user, gid)
     membership = get_group_member(db, gid, mid)
     s = get_group_settings(db, gid)
-    today = date.today()
+    today = today_of(s)
     days = build_member_days(s, membership, joint_points_map(db, gid), today)
     stats = scoring.player_stats(s, days, today)
     calendar = [
@@ -1076,7 +1121,7 @@ def achievements(gid: int, mid: int, user: User = Depends(get_current_user), db:
     get_membership(db, user, gid)
     membership = get_group_member(db, gid, mid)
     s = get_group_settings(db, gid)
-    today = date.today()
+    today = today_of(s)
     days = build_member_days(s, membership, joint_points_map(db, gid), today)
     stats = scoring.player_stats(s, days, today)
     casal = casal_perfect_days(s, group_members(db, gid), today)
@@ -1099,7 +1144,7 @@ def radar(gid: int, user: User = Depends(get_current_user), db: Session = Depend
     get_membership(db, user, gid)
     s = get_group_settings(db, gid)
     cats = scoring.active_categories(s)
-    today = date.today()
+    today = today_of(s)
     members = group_members(db, gid)
     out = []
     for m in members:
@@ -1123,7 +1168,7 @@ def gallery(gid: int, weeks_limit: int = 8, user: User = Depends(get_current_use
     """Mural de fotos das provas + atividades em dupla, com retrospectiva semanal."""
     get_membership(db, user, gid)
     s = get_group_settings(db, gid)
-    today = date.today()
+    today = today_of(s)
     members = group_members(db, gid)
     members_by_id = {m.id: m for m in members}
     joint = joint_points_map(db, gid)
@@ -1225,7 +1270,7 @@ def gallery(gid: int, weeks_limit: int = 8, user: User = Depends(get_current_use
 def ranking(gid: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     get_membership(db, user, gid)
     s = get_group_settings(db, gid)
-    today = date.today()
+    today = today_of(s)
     members = group_members(db, gid)
     joint = joint_points_map(db, gid)
     rows = [member_payload(s, m, joint, today) for m in members]
@@ -1238,7 +1283,7 @@ def state(gid: int, user: User = Depends(get_current_user), db: Session = Depend
     """Payload agregado que abastece a tela inicial em uma única chamada."""
     membership = get_membership(db, user, gid)
     s = get_group_settings(db, gid)
-    today = date.today()
+    today = today_of(s)
     members = group_members(db, gid)
     joint = joint_points_map(db, gid)
     player_rows = [member_payload(s, m, joint, today) for m in members]
