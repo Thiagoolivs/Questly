@@ -1,13 +1,19 @@
-"""Geração de desafios por IA (em lote) via Groq.
+"""IA do Questly: geração de desafios (texto) e contador de calorias (visão).
 
-Opcional e degradável: só funciona quando ``GROQ_API_KEY`` está definido e o
-pacote ``groq`` está instalado. Caso contrário, ``ai_enabled()`` retorna False e
-o app segue usando apenas os desafios fixos de ``data.py``.
+Dois provedores suportados, escolhidos por variável de ambiente / disponibilidade:
+- Groq (``GROQ_API_KEY``, pacote ``groq``) — barato/grátis, ótimo para os desafios.
+- OpenAI (``OPENAI_API_KEY``, pacote ``openai``) — usado por padrão na VISÃO
+  (contador de calorias) quando a chave existe, por ser mais confiável com fotos.
 
-O lote gerado é ANEXADO ao pool fixo (nunca substitui) e guardado em
-``Settings.challenge_pool``. Como a seleção do desafio do dia é determinística por
-data, gerar em lote (semanal/manual) mantém os dois parceiros vendo o mesmo
-desafio e ainda traz bastante variedade sem uma chamada de IA por dia.
+Ambos os SDKs falam a mesma API (``chat.completions``), então o código é comum;
+só mudam o cliente e o modelo. ``ai_enabled()`` é True se qualquer provedor estiver
+configurado — senão o app segue com os desafios fixos e o card de calorias inativo.
+
+Overrides (opcionais):
+- ``QUESTLY_AI_PROVIDER`` / ``QUESTLY_TEXT_PROVIDER`` / ``QUESTLY_VISION_PROVIDER``
+  = ``openai`` | ``groq``
+- ``QUESTLY_AI_MODEL`` / ``QUESTLY_VISION_MODEL`` = força um ID de modelo
+- ``QUESTLY_OPENAI_TEXT_MODEL`` / ``QUESTLY_OPENAI_VISION_MODEL`` (padrão gpt-4o-mini)
 """
 import json
 import os
@@ -15,27 +21,38 @@ import re
 
 from .data import CATEGORY_ORDER, DIFFICULTIES, DIFFICULTY_LABEL
 
-# A Groq roda os modelos abertos e ROTACIONA/descontinua com frequência, então
-# em vez de fixar um ID (que quebra na próxima rotação) mantemos uma lista de
-# candidatos e escolhemos, em runtime, o primeiro que estiver disponível na conta
-# (via /models). As variáveis QUESTLY_AI_MODEL / QUESTLY_VISION_MODEL forçam um ID.
-TEXT_MODELS = [
+# Groq roda modelos abertos e ROTACIONA/descontinua com frequência, então em vez
+# de fixar um ID escolhemos, em runtime, o 1º candidato disponível na conta (/models).
+GROQ_TEXT_MODELS = [
     "qwen/qwen3.6-27b",
     "llama-3.3-70b-versatile",
     "llama-3.1-8b-instant",
     "openai/gpt-oss-20b",
 ]
-VISION_MODELS = [
+GROQ_VISION_MODELS = [
     "qwen/qwen3.6-27b",
     "meta-llama/llama-4-maverick-17b-128e-instruct",
     "meta-llama/llama-4-scout-17b-16e-instruct",
 ]
+OPENAI_TEXT_DEFAULT = "gpt-4o-mini"
+OPENAI_VISION_DEFAULT = "gpt-4o-mini"
 MAX_TEXT_LEN = 160
 
 _avail_cache: "set[str] | None" = None
 
 
-def ai_enabled() -> bool:
+# --- disponibilidade / escolha de provedor ---------------------------------
+def _has_openai() -> bool:
+    if not os.getenv("OPENAI_API_KEY"):
+        return False
+    try:
+        import openai  # noqa: F401
+    except Exception:
+        return False
+    return True
+
+
+def _has_groq() -> bool:
     if not os.getenv("GROQ_API_KEY"):
         return False
     try:
@@ -45,8 +62,38 @@ def ai_enabled() -> bool:
     return True
 
 
+def ai_enabled() -> bool:
+    return _has_openai() or _has_groq()
+
+
+def _provider(kind: str) -> "str | None":
+    """Escolhe o provedor para ``kind`` ('text' | 'vision').
+
+    Padrão: VISÃO prefere OpenAI (mais confiável com fotos); TEXTO prefere Groq
+    (grátis). Um override por env move o provedor escolhido para a frente.
+    """
+    override = os.getenv("QUESTLY_VISION_PROVIDER" if kind == "vision" else "QUESTLY_TEXT_PROVIDER") or os.getenv("QUESTLY_AI_PROVIDER")
+    order = ("openai", "groq") if kind == "vision" else ("groq", "openai")
+    if override in ("openai", "groq"):
+        order = (override,) + tuple(p for p in order if p != override)
+    for p in order:
+        if p == "openai" and _has_openai():
+            return "openai"
+        if p == "groq" and _has_groq():
+            return "groq"
+    return None
+
+
+def _client(provider: str):
+    if provider == "openai":
+        import openai
+        return openai.OpenAI()  # lê OPENAI_API_KEY
+    import groq
+    return groq.Groq()  # lê GROQ_API_KEY
+
+
 def _available_model_ids(client) -> set:
-    """IDs de modelos disponíveis na conta (cacheado por processo)."""
+    """IDs disponíveis na conta Groq (cacheado por processo)."""
     global _avail_cache
     if _avail_cache is None:
         try:
@@ -56,18 +103,51 @@ def _available_model_ids(client) -> set:
     return _avail_cache
 
 
-def _pick_model(client, override_env: str, candidates: list) -> str:
-    """Escolhe o 1º candidato disponível na conta; respeita o override por env."""
-    override = os.getenv(override_env)
+def _resolve_model(client, provider: str, kind: str) -> str:
+    override = os.getenv("QUESTLY_AI_MODEL" if kind == "text" else "QUESTLY_VISION_MODEL")
     if override:
         return override
+    if provider == "openai":
+        if kind == "text":
+            return os.getenv("QUESTLY_OPENAI_TEXT_MODEL", OPENAI_TEXT_DEFAULT)
+        return os.getenv("QUESTLY_OPENAI_VISION_MODEL", OPENAI_VISION_DEFAULT)
+    candidates = GROQ_TEXT_MODELS if kind == "text" else GROQ_VISION_MODELS
     avail = _available_model_ids(client)
     for c in candidates:
         if c in avail:
             return c
-    return candidates[0]  # último recurso: deixa a API reportar se não existir
+    return candidates[0]
 
 
+def _complete_json(provider: str, kind: str, messages: list, max_tokens: int, temperature: float) -> str:
+    """Chama o provedor pedindo JSON; devolve o texto da resposta."""
+    client = _client(provider)
+    model = _resolve_model(client, provider, kind)
+    kwargs = dict(model=model, max_tokens=max_tokens, temperature=temperature, messages=messages)
+    try:
+        resp = client.chat.completions.create(response_format={"type": "json_object"}, **kwargs)
+    except Exception:
+        # Alguns modelos não aceitam response_format (ou o param); refaz sem ele.
+        resp = client.chat.completions.create(**kwargs)
+    return resp.choices[0].message.content or ""
+
+
+# --- helpers de parsing -----------------------------------------------------
+def _extract_json(text: str) -> dict:
+    text = (text or "").strip()
+    # Modelos "thinking" (ex.: Qwen) podem prefixar um bloco de raciocínio.
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL | re.IGNORECASE).strip()
+    if text.startswith("```"):
+        text = text.split("```", 2)[1] if text.count("```") >= 2 else text.strip("`")
+        if text.lstrip().startswith("json"):
+            text = text.lstrip()[4:]
+    start, end = text.find("{"), text.rfind("}")
+    if start == -1 or end == -1:
+        raise ValueError("Resposta da IA sem JSON.")
+    return json.loads(text[start : end + 1])
+
+
+# --- desafios (texto) -------------------------------------------------------
 def _prompt(categories: list[str], per_diff: int, context: str | None) -> str:
     cats = ", ".join(categories)
     diffs = ", ".join(f"{d} ({DIFFICULTY_LABEL[d]})" for d in DIFFICULTIES)
@@ -120,48 +200,28 @@ def _clean(pool: dict) -> dict:
     return out
 
 
-def _extract_json(text: str) -> dict:
-    text = (text or "").strip()
-    # Modelos "thinking" (ex.: Qwen) podem prefixar um bloco de raciocínio.
-    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL | re.IGNORECASE).strip()
-    if text.startswith("```"):
-        # remove cerca de código ```json ... ```
-        text = text.split("```", 2)[1] if text.count("```") >= 2 else text.strip("`")
-        if text.lstrip().startswith("json"):
-            text = text.lstrip()[4:]
-    start, end = text.find("{"), text.rfind("}")
-    if start == -1 or end == -1:
-        raise ValueError("Resposta da IA sem JSON.")
-    return json.loads(text[start : end + 1])
-
-
 def generate_challenge_pool(categories: list[str], per_diff: int = 6, context: str | None = None) -> dict:
-    """Chama a Groq e devolve ``{categoria: {dificuldade: [textos]}}`` (validado).
-
-    Levanta exceção em erro (o chamador decide como reportar). Só chame se
-    ``ai_enabled()`` for True.
-    """
-    import groq
-
-    client = groq.Groq()  # lê GROQ_API_KEY do ambiente
-    resp = client.chat.completions.create(
-        model=_pick_model(client, "QUESTLY_AI_MODEL", TEXT_MODELS),
-        max_tokens=4096,
-        temperature=0.9,
-        response_format={"type": "json_object"},
-        messages=[
+    """Gera ``{categoria: {dificuldade: [textos]}}`` (validado). Só com ``ai_enabled()``."""
+    provider = _provider("text")
+    if provider is None:
+        raise ValueError("Nenhum provedor de IA configurado.")
+    content = _complete_json(
+        provider,
+        "text",
+        [
             {"role": "system", "content": "Você responde SEMPRE com um único objeto JSON válido, sem texto extra."},
             {"role": "user", "content": _prompt(categories, per_diff, context)},
         ],
+        max_tokens=4096,
+        temperature=0.9,
     )
-    content = resp.choices[0].message.content or ""
     pool = _clean(_extract_json(content))
     if not pool:
         raise ValueError("A IA não retornou desafios válidos.")
     return pool
 
 
-# --- Contador de calorias por foto -----------------------------------------
+# --- contador de calorias por foto (visão) ---------------------------------
 _MEAL_PROMPT = (
     "Você analisa a FOTO de uma refeição e estima os valores nutricionais da "
     "porção visível, em português do Brasil. Seja realista com o tamanho da porção.\n\n"
@@ -198,29 +258,24 @@ def _clean_meal(data: dict) -> dict:
 
 
 def estimate_meal(image_data_url: str) -> dict:
-    """Estima ``{label, calories, protein_g, carbs_g, fat_g, confidence}`` da foto.
-
-    Levanta exceção em erro. Só chame se ``ai_enabled()`` for True.
-    """
-    import groq
-
-    client = groq.Groq()
-    model = _pick_model(client, "QUESTLY_VISION_MODEL", VISION_MODELS)
-    messages = [
-        {"role": "system", "content": "Você responde SEMPRE com um único objeto JSON válido, sem texto extra e sem raciocínio."},
-        {
-            "role": "user",
-            "content": [
-                {"type": "text", "text": _MEAL_PROMPT},
-                {"type": "image_url", "image_url": {"url": image_data_url}},
-            ],
-        },
-    ]
-    kwargs = dict(model=model, max_tokens=800, temperature=0.2, messages=messages)
-    try:
-        # Força saída JSON; se o modelo de visão não aceitar response_format, refaz sem.
-        resp = client.chat.completions.create(response_format={"type": "json_object"}, **kwargs)
-    except Exception:
-        resp = client.chat.completions.create(**kwargs)
-    content = resp.choices[0].message.content or ""
+    """Estima ``{label, calories, protein_g, carbs_g, fat_g, confidence}`` da foto."""
+    provider = _provider("vision")
+    if provider is None:
+        raise ValueError("Nenhum provedor de IA configurado.")
+    content = _complete_json(
+        provider,
+        "vision",
+        [
+            {"role": "system", "content": "Você responde SEMPRE com um único objeto JSON válido, sem texto extra e sem raciocínio."},
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": _MEAL_PROMPT},
+                    {"type": "image_url", "image_url": {"url": image_data_url}},
+                ],
+            },
+        ],
+        max_tokens=800,
+        temperature=0.2,
+    )
     return _clean_meal(_extract_json(content))
