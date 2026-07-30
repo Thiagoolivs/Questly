@@ -167,7 +167,7 @@ export default function Config() {
         ) : (
           <div className="muted small">
             Indisponível neste servidor. Para ativar, configure a variável
-            <code> ANTHROPIC_API_KEY</code> no backend.
+            <code> GROQ_API_KEY</code> no backend.
           </div>
         )}
       </section>

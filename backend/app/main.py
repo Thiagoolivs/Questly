@@ -662,7 +662,7 @@ def generate_challenges(gid: int, user: User = Depends(get_current_user), db: Se
     if m.role != "owner":
         raise HTTPException(403, "Só o dono do grupo pode gerar novos desafios.")
     if not ai.ai_enabled():
-        raise HTTPException(503, "Geração por IA indisponível (configure ANTHROPIC_API_KEY no servidor).")
+        raise HTTPException(503, "Geração por IA indisponível (configure GROQ_API_KEY no servidor).")
     s = get_group_settings(db, gid)
     try:
         count = regenerate_challenge_pool(db, s, _group_ai_context(db, gid))

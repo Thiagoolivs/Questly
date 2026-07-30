@@ -1,8 +1,8 @@
-"""Geração de desafios por IA (em lote).
+"""Geração de desafios por IA (em lote) via Groq.
 
-Opcional e degradável: só funciona quando ``ANTHROPIC_API_KEY`` está definido e o
-pacote ``anthropic`` está instalado. Caso contrário, ``ai_enabled()`` retorna
-False e o app segue usando apenas os desafios fixos de ``data.py``.
+Opcional e degradável: só funciona quando ``GROQ_API_KEY`` está definido e o
+pacote ``groq`` está instalado. Caso contrário, ``ai_enabled()`` retorna False e
+o app segue usando apenas os desafios fixos de ``data.py``.
 
 O lote gerado é ANEXADO ao pool fixo (nunca substitui) e guardado em
 ``Settings.challenge_pool``. Como a seleção do desafio do dia é determinística por
@@ -14,16 +14,16 @@ import os
 
 from .data import CATEGORY_ORDER, DIFFICULTIES, DIFFICULTY_LABEL
 
-# Modelo econômico por padrão (bom o suficiente para itens curtos e criativos).
-DEFAULT_MODEL = os.getenv("QUESTLY_AI_MODEL", "claude-haiku-4-5-20251001")
+# Modelo padrão da Groq (bom para JSON e itens curtos/criativos).
+DEFAULT_MODEL = os.getenv("QUESTLY_AI_MODEL", "llama-3.3-70b-versatile")
 MAX_TEXT_LEN = 160
 
 
 def ai_enabled() -> bool:
-    if not os.getenv("ANTHROPIC_API_KEY"):
+    if not os.getenv("GROQ_API_KEY"):
         return False
     try:
-        import anthropic  # noqa: F401
+        import groq  # noqa: F401
     except Exception:
         return False
     return True
@@ -47,7 +47,7 @@ def _prompt(categories: list[str], per_diff: int, context: str | None) -> str:
         "- Nada de conteúdo sensível, caro, perigoso ou que exija terceiros específicos.\n"
         "- Não repita ideias óbvias; traga variedade real.\n"
         f"{extra}\n\n"
-        "Responda APENAS com JSON válido, sem texto fora do JSON, no formato exato:\n"
+        "Responda APENAS com um objeto JSON, sem texto fora do JSON, no formato exato:\n"
         '{\"Área\": {\"facil\": [\"...\"], \"medio\": [\"...\"], \"dificil\": [\"...\"]}}\n'
         "Use exatamente os nomes de área e as chaves de dificuldade indicados."
     )
@@ -95,21 +95,26 @@ def _extract_json(text: str) -> dict:
 
 
 def generate_challenge_pool(categories: list[str], per_diff: int = 6, context: str | None = None) -> dict:
-    """Chama o Claude e devolve ``{categoria: {dificuldade: [textos]}}`` (validado).
+    """Chama a Groq e devolve ``{categoria: {dificuldade: [textos]}}`` (validado).
 
     Levanta exceção em erro (o chamador decide como reportar). Só chame se
     ``ai_enabled()`` for True.
     """
-    import anthropic
+    import groq
 
-    client = anthropic.Anthropic()  # lê ANTHROPIC_API_KEY do ambiente
-    msg = client.messages.create(
+    client = groq.Groq()  # lê GROQ_API_KEY do ambiente
+    resp = client.chat.completions.create(
         model=DEFAULT_MODEL,
         max_tokens=4096,
-        messages=[{"role": "user", "content": _prompt(categories, per_diff, context)}],
+        temperature=0.9,
+        response_format={"type": "json_object"},
+        messages=[
+            {"role": "system", "content": "Você responde SEMPRE com um único objeto JSON válido, sem texto extra."},
+            {"role": "user", "content": _prompt(categories, per_diff, context)},
+        ],
     )
-    parts = [b.text for b in msg.content if getattr(b, "type", None) == "text"]
-    pool = _clean(_extract_json("".join(parts)))
+    content = resp.choices[0].message.content or ""
+    pool = _clean(_extract_json(content))
     if not pool:
         raise ValueError("A IA não retornou desafios válidos.")
     return pool
