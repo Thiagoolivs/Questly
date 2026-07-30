@@ -25,6 +25,9 @@ _NEW_COLUMNS = {
         "moods": "JSON",
         "mood_note": "TEXT",
     },
+    "settings": {
+        "timezone": "VARCHAR(40)",
+    },
     "activities": {
         "image": "TEXT",
         "ref": "VARCHAR(40)",

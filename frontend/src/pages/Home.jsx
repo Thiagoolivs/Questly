@@ -97,7 +97,10 @@ export default function Home() {
 
   const goals = state.goals || []
   const toggleGoalCheckin = (goalId) => run(() => api.goalCheckin(groupId, goalId, { date: state.date }))
-  const endGoal = (goalId) => run(() => api.endGoal(groupId, goalId))
+  const endGoal = (goalId) => {
+    if (!window.confirm('Encerrar esta meta? Ela sai da lista e não pode ser reativada.')) return
+    run(() => api.endGoal(groupId, goalId))
+  }
   function createGoal() {
     if (!goalForm.title.trim()) return
     run(async () => {
@@ -114,7 +117,10 @@ export default function Home() {
 
   const tasks = state.tasks || []
   const toggleTask = (id) => run(() => api.completeTask(groupId, id, { date: state.date }))
-  const deleteTask = (id) => run(() => api.deleteTask(groupId, id))
+  const deleteTask = (id) => {
+    if (!window.confirm('Remover esta tarefa agendada? Ela deixa de aparecer para o grupo.')) return
+    run(() => api.deleteTask(groupId, id))
+  }
   async function attachTaskPhoto(id) {
     const f = await pickImage()
     if (!f) return
@@ -123,7 +129,10 @@ export default function Home() {
   }
 
   const joint = state.joint || { points_each: 20, activities: [], suggestions: [] }
-  const removeJoint = (aid) => run(() => api.jointRemove(groupId, aid))
+  const removeJoint = (aid) => {
+    if (!window.confirm('Remover esta atividade em dupla? Os pontos dela saem do placar.')) return
+    run(() => api.jointRemove(groupId, aid))
+  }
   async function attachJointPhoto() {
     const f = await pickImage()
     if (!f) return

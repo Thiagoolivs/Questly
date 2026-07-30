@@ -97,6 +97,11 @@ def _fixed_habits(settings) -> list:
     return settings.fixed_habits or DEFAULT_HABITS
 
 
+def _is_rest_day(settings, d: date) -> bool:
+    """Dia de descanso do grupo (convenção JS: 0=Dom..6=Sáb)."""
+    return ((d.weekday() + 1) % 7) in set(settings.rest_days or [])
+
+
 def compute_day(settings, entry, d: date) -> dict:
     """Resumo pontuado de um dia (entry pode ser ``None``)."""
     habits = _fixed_habits(settings)
@@ -155,6 +160,7 @@ def compute_day(settings, entry, d: date) -> dict:
     return {
         "date": d.isoformat(),
         "day_number": day_number(settings, d),
+        "is_rest": _is_rest_day(settings, d),
         "points": points,
         "max_points": max_points,
         "completion_pct": min(100, round(points / max_points * 100)) if max_points else 0,
@@ -218,21 +224,29 @@ def _challenge_window(settings, today: date):
 
 
 def _current_streak(days: list[dict]) -> int:
-    if not days:
-        return 0
-    i = len(days) - 1
-    if not days[i]["completed"]:
-        i -= 1
+    """Sequência atual. Dias de descanso são transparentes: não contam como
+    ponto na sequência, mas também não a quebram."""
     streak = 0
-    while i >= 0 and days[i]["completed"]:
-        streak += 1
-        i -= 1
+    started = False  # já passou do dia de hoje (que pode estar em andamento)?
+    for cd in reversed(days):
+        if cd.get("is_rest"):
+            continue  # descanso não conta nem quebra
+        if cd["completed"]:
+            streak += 1
+            started = True
+        elif not started:
+            # Primeiro dia útil a partir do fim (hoje) ainda em andamento: ignora.
+            started = True
+        else:
+            break
     return streak
 
 
 def _best_streak(days: list[dict]) -> int:
     best = run = 0
     for cd in days:
+        if cd.get("is_rest"):
+            continue  # descanso não quebra a maior sequência
         if cd["completed"]:
             run += 1
             best = max(best, run)

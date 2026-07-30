@@ -6,6 +6,21 @@ import IconPicker from '../components/IconPicker.jsx'
 
 const WEEKDAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 const DURATIONS = [30, 60, 75, 90]
+const TIMEZONES = [
+  ['America/Sao_Paulo', 'Brasília (São Paulo)'],
+  ['America/Bahia', 'Salvador (Bahia)'],
+  ['America/Fortaleza', 'Fortaleza'],
+  ['America/Recife', 'Recife'],
+  ['America/Manaus', 'Manaus (AM)'],
+  ['America/Cuiaba', 'Cuiabá (MT)'],
+  ['America/Rio_Branco', 'Rio Branco (AC)'],
+  ['America/Noronha', 'Fernando de Noronha'],
+  ['America/New_York', 'Nova York (EUA Leste)'],
+  ['America/Los_Angeles', 'Los Angeles (EUA Oeste)'],
+  ['Europe/Lisbon', 'Lisboa'],
+  ['Europe/London', 'Londres'],
+  ['UTC', 'UTC'],
+]
 
 const slug = (s) =>
   s
@@ -68,6 +83,7 @@ export default function Config() {
   async function save() {
     const fixed_habits = menu.filter((h) => selected.has(h.key))
     await api.updateSettings(groupId, {
+      timezone: s.timezone || 'America/Sao_Paulo',
       duration_days: Number(s.duration_days),
       water_goal_l: Number(s.water_goal_l),
       steps_goal: Number(s.steps_goal),
@@ -132,6 +148,24 @@ export default function Config() {
             <span className="knob" />
           </button>
         </div>
+      </section>
+
+      <section className="card">
+        <div className="card-title">Fuso horário</div>
+        <div className="muted small" style={{ marginBottom: 8 }}>
+          Define quando o dia vira à meia-noite (o placar zera no seu horário local, não em UTC).
+        </div>
+        <select
+          className="input"
+          value={s.timezone || 'America/Sao_Paulo'}
+          onChange={(e) => set({ timezone: e.target.value })}
+        >
+          {(TIMEZONES.some(([tz]) => tz === s.timezone) ? TIMEZONES : [[s.timezone, s.timezone], ...TIMEZONES]).map(
+            ([tz, label]) => (
+              <option key={tz} value={tz}>{label}</option>
+            ),
+          )}
+        </select>
       </section>
 
       <section className="card">

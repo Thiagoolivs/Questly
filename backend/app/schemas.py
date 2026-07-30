@@ -122,6 +122,7 @@ class HabitDef(BaseModel):
 
 
 class SettingsUpdate(BaseModel):
+    timezone: Optional[str] = Field(None, max_length=40)
     duration_days: Optional[int] = Field(None, ge=1, le=365)
     water_goal_l: Optional[float] = None
     steps_goal: Optional[int] = None
