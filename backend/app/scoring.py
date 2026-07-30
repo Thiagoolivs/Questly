@@ -51,12 +51,36 @@ def day_number(settings, d: date) -> int:
     return (d - settings.start_date).days + 1
 
 
-def _catalog(cat: str) -> list[tuple[str, str]]:
+def merged_pool(settings, cat: str) -> dict:
+    """Pools da área mesclando os desafios fixos com os gerados por IA em lote.
+
+    Os gerados ficam em ``settings.challenge_pool`` no formato
+    ``{categoria: {dificuldade: [textos]}}`` e são só ANEXADOS aos fixos, para
+    manter o determinismo por data (ambos os parceiros veem o mesmo desafio) —
+    o conteúdo só muda quando um novo lote é gerado.
+    """
+    base = CHALLENGE_POOLS.get(cat, {})
+    extra = {}
+    ai = getattr(settings, "challenge_pool", None) or {}
+    if isinstance(ai, dict):
+        extra = ai.get(cat, {}) or {}
+    out = {}
+    for diff in DIFFICULTIES:
+        items = list(base.get(diff, []))
+        for t in (extra.get(diff, []) or []):
+            if isinstance(t, str) and t.strip() and t not in items:
+                items.append(t)
+        out[diff] = items
+    return out
+
+
+def _catalog(settings, cat: str) -> list[tuple[str, str]]:
     """Lista achatada (dificuldade, texto) de uma área, em ordem estável."""
-    return [(diff, t) for diff in DIFFICULTIES for t in CHALLENGE_POOLS[cat][diff]]
+    pool = merged_pool(settings, cat)
+    return [(diff, t) for diff in DIFFICULTIES for t in pool[diff]]
 
 
-def challenge_for(d: date, cat: str, cat_index: int, offset: int = 0) -> dict:
+def challenge_for(settings, d: date, cat: str, cat_index: int, offset: int = 0) -> dict:
     """Desafio de uma área num dia.
 
     A dificuldade base rotaciona pela posição da área (``cat_index``) somada a um
@@ -64,9 +88,10 @@ def challenge_for(d: date, cat: str, cat_index: int, offset: int = 0) -> dict:
     para dia. Cada troca (``offset`` > 0) avança para o próximo item do catálogo,
     garantindo um desafio diferente (e possivelmente outra dificuldade).
     """
-    items = _catalog(cat)
+    pool = merged_pool(settings, cat)
+    items = [(diff, t) for diff in DIFFICULTIES for t in pool[diff]]
     base_tier = DIFFICULTIES[(_seed(d, "tier") + cat_index) % len(DIFFICULTIES)]
-    base_pool = CHALLENGE_POOLS[cat][base_tier]
+    base_pool = pool[base_tier] or CHALLENGE_POOLS[cat][base_tier]
     base_text = base_pool[_seed(d, f"text:{cat}") % len(base_pool)]
     base_pos = items.index((base_tier, base_text))
     diff, text = items[(base_pos + offset) % len(items)]
@@ -84,7 +109,7 @@ def daily_challenges(settings, d: date, rerolls: dict | None = None) -> list[dic
     """Os desafios do dia (um por área ativa), aplicando as trocas do membro."""
     rerolls = rerolls or {}
     return [
-        challenge_for(d, cat, i, int(rerolls.get(cat, 0) or 0))
+        challenge_for(settings, d, cat, i, int(rerolls.get(cat, 0) or 0))
         for i, cat in enumerate(active_categories(settings))
     ]
 
@@ -126,7 +151,7 @@ def compute_day(settings, entry, d: date) -> dict:
     done_cats = []
     for i, cat in enumerate(active_categories(settings)):
         offset = int(rerolls.get(cat, 0) or 0)
-        ch = challenge_for(d, cat, i, offset)
+        ch = challenge_for(settings, d, cat, i, offset)
         proof = proofs.get(cat)
         done = bool(proof)
         is_together = done and bool(together.get(cat))

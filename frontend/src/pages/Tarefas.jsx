@@ -11,6 +11,12 @@ function onceLabel(iso) {
   return new Date(iso + 'T00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
+// Monta o subtítulo da tarefa (quando/recorrência + horário, se houver).
+function taskWhen(t) {
+  const base = t.kind === 'once' ? onceLabel(t.date) : t.weekdays.map((i) => WEEKDAYS[i]).join(', ')
+  return t.time ? `${base} · ${t.time}` : base
+}
+
 export default function Tarefas() {
   const { groupId } = useApp()
   const [tasks, setTasks] = useState(null)
@@ -19,7 +25,7 @@ export default function Tarefas() {
   const [busy, setBusy] = useState(false)
   const [zoom, setZoom] = useState(null)
   const [show, setShow] = useState(false)
-  const [form, setForm] = useState({ emoji: '🗓️', icon: null, title: '', kind: 'once', date: '', weekdays: [] })
+  const [form, setForm] = useState({ emoji: '🗓️', icon: null, title: '', kind: 'once', date: '', time: '', weekdays: [] })
 
   const load = useCallback(() => {
     if (!groupId) return
@@ -71,9 +77,10 @@ export default function Tarefas() {
         icon: form.icon,
         kind: form.kind,
         date: form.kind === 'once' ? form.date : null,
+        time: form.time || null,
         weekdays: form.kind === 'weekly' ? form.weekdays : [],
       })
-      setForm({ emoji: '🗓️', icon: null, title: '', kind: 'once', date: '', weekdays: [] })
+      setForm({ emoji: '🗓️', icon: null, title: '', kind: 'once', date: '', time: '', weekdays: [] })
       setShow(false)
     })
   }
@@ -89,9 +96,7 @@ export default function Tarefas() {
         <span className="habit-emoji">{t.icon ? <Icon name={t.icon} size={17} /> : t.emoji}</span>
         <span className="habit-main-col">
           <span className="habit-label">{t.title}</span>
-          <span className="muted xsmall">
-            {t.kind === 'once' ? onceLabel(t.date) : t.weekdays.map((i) => WEEKDAYS[i]).join(', ')}
-          </span>
+          <span className="muted xsmall">{taskWhen(t)}</span>
         </span>
         {canComplete && <span className={'check ' + (t.checked_today ? 'on' : '')}>{t.checked_today ? <Icon name="check" size={14} /> : ''}</span>}
       </div>
@@ -133,6 +138,8 @@ export default function Tarefas() {
               ))}
             </div>
           )}
+          <label className="field"><span>Horário <span className="muted xsmall">(opcional)</span></span>
+            <input type="time" value={form.time} onChange={(e) => setForm({ ...form, time: e.target.value })} /></label>
           <div className="row" style={{ gap: 8 }}>
             <button className="btn ghost full" onClick={() => setShow(false)}>Cancelar</button>
             <button className="btn full btn-primary" disabled={busy || !form.title.trim()} onClick={create}>Agendar</button>

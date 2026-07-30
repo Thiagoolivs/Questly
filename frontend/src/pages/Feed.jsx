@@ -11,6 +11,21 @@ function timeAgo(iso) {
   return `${Math.floor(s / 86400)}d`
 }
 
+function dayKey(a) {
+  return a.day || (a.created_at ? a.created_at.slice(0, 10) : '')
+}
+
+function dayLabel(iso) {
+  if (!iso) return ''
+  const d = new Date(iso + 'T00:00')
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const diff = Math.round((today - d) / 86400000)
+  if (diff === 0) return 'Hoje'
+  if (diff === 1) return 'Ontem'
+  return d.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })
+}
+
 export default function Feed() {
   const { groupId } = useApp()
   const [items, setItems] = useState(null)
@@ -30,6 +45,18 @@ export default function Feed() {
     return () => clearInterval(t)
   }, [load])
 
+  // Agrupa por dia mantendo a ordem (itens já vêm do mais novo pro mais antigo).
+  const groups = []
+  const idx = {}
+  for (const a of items || []) {
+    const k = dayKey(a)
+    if (!(k in idx)) {
+      idx[k] = groups.length
+      groups.push({ key: k, items: [] })
+    }
+    groups[idx[k]].items.push(a)
+  }
+
   return (
     <div className="screen">
       <header className="topbar">
@@ -44,24 +71,29 @@ export default function Feed() {
         </div>
       )}
 
-      {items && items.length > 0 && (
-        <div className="feed-list">
-          {items.map((a) => (
-            <div className="feed-row card" key={a.id}>
-              <div className="feed-av">
-                <Avatar photo={a.photo} avatar={a.avatar} name={a.author} size={34} />
-              </div>
-              <div className="feed-body">
-                <div className="feed-line">
-                  <span className="feed-row-emoji">{a.emoji}</span> {a.text}
+      {groups.map((g) => (
+        <div className="feed-day" key={g.key}>
+          <div className="feed-day-divider">{dayLabel(g.key)}</div>
+          <div className="feed-list">
+            {g.items.map((a) => (
+              <div className="feed-row card" key={a.id}>
+                <div className="feed-av">
+                  <Avatar photo={a.photo} avatar={a.avatar} name={a.author} size={34} />
                 </div>
-                <div className="muted xsmall">{timeAgo(a.created_at)}</div>
+                <div className="feed-body">
+                  <div className="feed-line">
+                    <span className="feed-row-emoji">{a.emoji}</span> {a.text}
+                  </div>
+                  {a.image && (
+                    <img className="feed-photo" src={a.image} alt="" loading="lazy" onClick={() => setZoom(a.image)} />
+                  )}
+                  <div className="muted xsmall">{timeAgo(a.created_at)}</div>
+                </div>
               </div>
-              {a.image && <img className="feed-row-thumb" src={a.image} alt="" onClick={() => setZoom(a.image)} />}
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-      )}
+      ))}
 
       {zoom && (
         <div className="lightbox" onClick={() => setZoom(null)}>

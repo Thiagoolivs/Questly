@@ -27,6 +27,8 @@ _NEW_COLUMNS = {
     },
     "settings": {
         "timezone": "VARCHAR(40)",
+        "challenge_pool": "JSON",
+        "challenge_pool_updated": "TIMESTAMP",
     },
     "activities": {
         "image": "TEXT",
@@ -38,6 +40,9 @@ _NEW_COLUMNS = {
     },
     "joint_activities": {
         "icon": "VARCHAR(24)",
+    },
+    "scheduled_tasks": {
+        "time": "VARCHAR(5)",
     },
 }
 

@@ -126,6 +126,9 @@ class Settings(Base):
     spiritual_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     surprise_frequency: Mapped[float] = mapped_column(Float, default=0.34)
     fixed_habits: Mapped[list] = mapped_column(JSON, default=list)
+    # Desafios gerados por IA (lote), mesclados aos fixos: {categoria: {dificuldade: [textos]}}
+    challenge_pool: Mapped[dict] = mapped_column(JSON, default=dict)
+    challenge_pool_updated: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     group: Mapped["Group"] = relationship(back_populates="settings")
 
@@ -206,6 +209,7 @@ class ScheduledTask(Base):
     icon: Mapped[Optional[str]] = mapped_column(String(24), nullable=True)
     kind: Mapped[str] = mapped_column(String(10), default="once")  # once | weekly
     date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)  # para 'once'
+    time: Mapped[Optional[str]] = mapped_column(String(5), nullable=True)  # "HH:MM" opcional
     weekdays: Mapped[list] = mapped_column(JSON, default=list)  # para 'weekly' (0=Dom..6=Sáb)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_by: Mapped[int] = mapped_column(ForeignKey("memberships.id"))
