@@ -62,21 +62,29 @@ def _has_groq() -> bool:
     return True
 
 
+def _has_gemini() -> bool:
+    # Usa a API REST do Gemini (stdlib), sem SDK — basta a chave.
+    return bool(os.getenv("GEMINI_API_KEY"))
+
+
 def ai_enabled() -> bool:
-    return _has_openai() or _has_groq()
+    return _has_gemini() or _has_openai() or _has_groq()
 
 
 def _provider(kind: str) -> "str | None":
     """Escolhe o provedor para ``kind`` ('text' | 'vision').
 
-    Padrão: VISÃO prefere OpenAI (mais confiável com fotos); TEXTO prefere Groq
-    (grátis). Um override por env move o provedor escolhido para a frente.
+    Padrão: VISÃO prefere Gemini (barato/free e ótimo com fotos), depois OpenAI,
+    depois Groq; TEXTO prefere Groq (grátis), depois Gemini, depois OpenAI. Um
+    override por env move o provedor escolhido para a frente.
     """
     override = os.getenv("QUESTLY_VISION_PROVIDER" if kind == "vision" else "QUESTLY_TEXT_PROVIDER") or os.getenv("QUESTLY_AI_PROVIDER")
-    order = ("openai", "groq") if kind == "vision" else ("groq", "openai")
-    if override in ("openai", "groq"):
+    order = ("gemini", "openai", "groq") if kind == "vision" else ("groq", "gemini", "openai")
+    if override in ("gemini", "openai", "groq"):
         order = (override,) + tuple(p for p in order if p != override)
     for p in order:
+        if p == "gemini" and _has_gemini():
+            return "gemini"
         if p == "openai" and _has_openai():
             return "openai"
         if p == "groq" and _has_groq():
@@ -130,6 +138,57 @@ def _complete_json(provider: str, kind: str, messages: list, max_tokens: int, te
         # Alguns modelos não aceitam response_format (ou o param); refaz sem ele.
         resp = client.chat.completions.create(**kwargs)
     return resp.choices[0].message.content or ""
+
+
+# --- Gemini (Google) via API REST (sem SDK) --------------------------------
+def _gemini_model(kind: str) -> str:
+    generic = os.getenv("QUESTLY_VISION_MODEL" if kind == "vision" else "QUESTLY_AI_MODEL")
+    if generic and "gemini" in generic:
+        return generic
+    return os.getenv("QUESTLY_GEMINI_MODEL", "gemini-2.0-flash")
+
+
+def _split_data_url(url: str) -> "tuple[str, str]":
+    """Separa 'data:image/jpeg;base64,XXXX' em (mime, base64)."""
+    if isinstance(url, str) and url.startswith("data:") and "," in url:
+        head, b64 = url.split(",", 1)
+        mime = head[5:].split(";")[0] or "image/jpeg"
+        return mime, b64
+    return "image/jpeg", url
+
+
+def _gemini_json(kind: str, prompt: str, image_data_url: str | None = None) -> str:
+    """Chama o Gemini (generateContent) pedindo JSON; devolve o texto."""
+    import urllib.error
+    import urllib.request
+
+    key = os.getenv("GEMINI_API_KEY")
+    parts: list = [{"text": prompt}]
+    if image_data_url:
+        mime, b64 = _split_data_url(image_data_url)
+        parts.append({"inline_data": {"mime_type": mime, "data": b64}})
+    body = {
+        "contents": [{"parts": parts}],
+        "generationConfig": {
+            "temperature": 0.2 if image_data_url else 0.9,
+            "responseMimeType": "application/json",
+        },
+    }
+    model = _gemini_model(kind)
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
+    req = urllib.request.Request(
+        url, data=json.dumps(body).encode(), headers={"Content-Type": "application/json"}, method="POST"
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=45) as resp:
+            payload = json.loads(resp.read().decode())
+    except urllib.error.HTTPError as e:
+        raise ValueError(f"Gemini {e.code}: {e.read().decode(errors='ignore')[:300]}")
+    cands = payload.get("candidates") or []
+    if not cands:
+        raise ValueError("Gemini não retornou resposta.")
+    out_parts = (cands[0].get("content") or {}).get("parts") or []
+    return "".join(p.get("text", "") for p in out_parts)
 
 
 # --- helpers de parsing -----------------------------------------------------
@@ -205,16 +264,19 @@ def generate_challenge_pool(categories: list[str], per_diff: int = 6, context: s
     provider = _provider("text")
     if provider is None:
         raise ValueError("Nenhum provedor de IA configurado.")
-    content = _complete_json(
-        provider,
-        "text",
-        [
-            {"role": "system", "content": "Você responde SEMPRE com um único objeto JSON válido, sem texto extra."},
-            {"role": "user", "content": _prompt(categories, per_diff, context)},
-        ],
-        max_tokens=4096,
-        temperature=0.9,
-    )
+    if provider == "gemini":
+        content = _gemini_json("text", _prompt(categories, per_diff, context))
+    else:
+        content = _complete_json(
+            provider,
+            "text",
+            [
+                {"role": "system", "content": "Você responde SEMPRE com um único objeto JSON válido, sem texto extra."},
+                {"role": "user", "content": _prompt(categories, per_diff, context)},
+            ],
+            max_tokens=4096,
+            temperature=0.9,
+        )
     pool = _clean(_extract_json(content))
     if not pool:
         raise ValueError("A IA não retornou desafios válidos.")
@@ -262,20 +324,23 @@ def estimate_meal(image_data_url: str) -> dict:
     provider = _provider("vision")
     if provider is None:
         raise ValueError("Nenhum provedor de IA configurado.")
-    content = _complete_json(
-        provider,
-        "vision",
-        [
-            {"role": "system", "content": "Você responde SEMPRE com um único objeto JSON válido, sem texto extra e sem raciocínio."},
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": _MEAL_PROMPT},
-                    {"type": "image_url", "image_url": {"url": image_data_url}},
-                ],
-            },
-        ],
-        max_tokens=800,
-        temperature=0.2,
-    )
+    if provider == "gemini":
+        content = _gemini_json("vision", _MEAL_PROMPT, image_data_url)
+    else:
+        content = _complete_json(
+            provider,
+            "vision",
+            [
+                {"role": "system", "content": "Você responde SEMPRE com um único objeto JSON válido, sem texto extra e sem raciocínio."},
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": _MEAL_PROMPT},
+                        {"type": "image_url", "image_url": {"url": image_data_url}},
+                    ],
+                },
+            ],
+            max_tokens=800,
+            temperature=0.2,
+        )
     return _clean_meal(_extract_json(content))

@@ -58,6 +58,49 @@ def _decode_token(token: str) -> int:
         raise HTTPException(401, "Token inválido ou expirado.")
 
 
+# --- tokens de redefinição de senha ----------------------------------------
+def hash_token(token: str) -> str:
+    """Hash (sha256) do token de reset — guardamos só o hash no banco."""
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+# --- login com Google -------------------------------------------------------
+_GOOGLE_CERTS = "https://www.googleapis.com/oauth2/v3/certs"
+_GOOGLE_ISSUERS = ["https://accounts.google.com", "accounts.google.com"]
+_google_jwks = None
+
+
+def google_enabled() -> bool:
+    return bool(os.getenv("GOOGLE_CLIENT_ID"))
+
+
+def verify_google_token(credential: str) -> dict:
+    """Valida o ID token do Google e devolve os dados (sub, email, name, picture).
+
+    Usa as chaves públicas da Google (JWKS) + PyJWT/cryptography (já instalado).
+    """
+    client_id = os.getenv("GOOGLE_CLIENT_ID")
+    if not client_id:
+        raise HTTPException(503, "Login com Google não configurado no servidor.")
+    global _google_jwks
+    if _google_jwks is None:
+        _google_jwks = jwt.PyJWKClient(_GOOGLE_CERTS)
+    try:
+        signing_key = _google_jwks.get_signing_key_from_jwt(credential)
+        data = jwt.decode(
+            credential,
+            signing_key.key,
+            algorithms=["RS256"],
+            audience=client_id,
+            issuer=_GOOGLE_ISSUERS,
+        )
+    except Exception:
+        raise HTTPException(401, "Token do Google inválido.")
+    if not data.get("email"):
+        raise HTTPException(401, "Conta Google sem e-mail.")
+    return data
+
+
 # --- convite ---------------------------------------------------------------
 def generate_invite_code(length: int = 6) -> str:
     return "".join(secrets.choice(_INVITE_ALPHABET) for _ in range(length))

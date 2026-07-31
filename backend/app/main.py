@@ -1,26 +1,32 @@
 """API do Questly (FastAPI) — multi-tenant com auth e grupos (Fase 1)."""
 import asyncio
+import logging
 import os
 import re
+import secrets
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 DEFAULT_TZ = "America/Sao_Paulo"
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from . import ai
+from . import mailer
 from . import nutrition
 from . import scoring
 from .auth import (
     create_token,
     generate_invite_code,
     get_current_user,
+    google_enabled,
     hash_password,
+    hash_token,
+    verify_google_token,
     verify_password,
 )
 from . import push as pushmod
@@ -37,6 +43,7 @@ from .models import (
     Meal,
     Membership,
     Message,
+    PasswordReset,
     PushSubscription,
     ScheduledTask,
     Settings,
@@ -45,10 +52,13 @@ from .models import (
 )
 from .schemas import (
     ChallengeProofRequest,
+    ForgotPasswordRequest,
     GoalCheckinRequest,
     GoalCreate,
+    GoogleAuthRequest,
     GroupCreate,
     GroupJoin,
+    ResetPasswordRequest,
     HabitPhotoRequest,
     JointActivityCreate,
     MealCreate,
@@ -569,6 +579,111 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == email).first()
     if user is None or not verify_password(payload.password, user.password_hash):
         raise HTTPException(401, "E-mail ou senha incorretos.")
+    return {"token": create_token(user.id), "user": user_public(user)}
+
+
+@app.get("/api/auth/config")
+def auth_config():
+    """Config pública da tela de login (o front usa para mostrar o botão Google)."""
+    return {
+        "google_enabled": google_enabled(),
+        "google_client_id": os.getenv("GOOGLE_CLIENT_ID") or None,
+        "email_enabled": mailer.email_enabled(),
+    }
+
+
+@app.post("/api/auth/google")
+def google_login(payload: GoogleAuthRequest, db: Session = Depends(get_db)):
+    """Login/cadastro com Google: valida o ID token e acha-ou-cria o usuário."""
+    data = verify_google_token(payload.credential)
+    sub = str(data["sub"])
+    email = (data.get("email") or "").strip().lower()
+    user = db.query(User).filter(User.google_sub == sub).first()
+    if user is None:
+        user = db.query(User).filter(User.email == email).first()
+        if user is not None:
+            user.google_sub = sub  # vincula ao login e-mail/senha existente
+        else:
+            user = User(
+                email=email,
+                password_hash=hash_password(secrets.token_urlsafe(24)),  # senha aleatória (não usada)
+                google_sub=sub,
+                name=(data.get("name") or email.split("@")[0]).strip()[:60],
+                avatar="",
+                photo=data.get("picture") or None,
+            )
+            db.add(user)
+    db.commit()
+    db.refresh(user)
+    return {"token": create_token(user.id), "user": user_public(user)}
+
+
+def _app_base_url(request: Request) -> str:
+    base = os.getenv("APP_BASE_URL")
+    if base:
+        return base.rstrip("/")
+    return str(request.base_url).rstrip("/")
+
+
+@app.post("/api/auth/forgot-password")
+def forgot_password(payload: ForgotPasswordRequest, request: Request, db: Session = Depends(get_db)):
+    """Gera um link de redefinição e envia por e-mail. Resposta genérica (não revela
+    se o e-mail existe)."""
+    email = payload.email.strip().lower()
+    user = db.query(User).filter(User.email == email).first()
+    if user is not None:
+        token = secrets.token_urlsafe(32)
+        db.add(PasswordReset(
+            user_id=user.id,
+            token_hash=hash_token(token),
+            expires_at=datetime.utcnow() + timedelta(hours=1),
+        ))
+        db.commit()
+        link = f"{_app_base_url(request)}/reset?token={token}"
+        subject = "Redefinição de senha — Questly"
+        text = (
+            f"Olá!\n\nRecebemos um pedido para redefinir sua senha no Questly.\n"
+            f"Abra o link abaixo (válido por 1 hora):\n\n{link}\n\n"
+            f"Se não foi você, pode ignorar este e-mail."
+        )
+        html = (
+            f"<p>Olá!</p><p>Recebemos um pedido para redefinir sua senha no <b>Questly</b>.</p>"
+            f"<p><a href=\"{link}\">Clique aqui para criar uma nova senha</a> (válido por 1 hora).</p>"
+            f"<p style=\"color:#888;font-size:13px\">Se não foi você, pode ignorar este e-mail.</p>"
+        )
+        if mailer.email_enabled():
+            try:
+                mailer.send_email(user.email, subject, text, html)
+            except Exception as e:  # noqa: BLE001
+                logging.getLogger(__name__).warning("Falha ao enviar e-mail de reset: %s", e)
+        else:
+            # Sem SMTP configurado: registra no log do servidor (só o dono vê).
+            logging.getLogger(__name__).warning("[reset] SMTP off — link para %s: %s", user.email, link)
+    return {"ok": True}
+
+
+@app.post("/api/auth/reset-password")
+def reset_password(payload: ResetPasswordRequest, db: Session = Depends(get_db)):
+    """Valida o token, troca a senha e já devolve uma sessão (auto-login)."""
+    row = (
+        db.query(PasswordReset)
+        .filter(PasswordReset.token_hash == hash_token(payload.token), PasswordReset.used == False)  # noqa: E712
+        .order_by(PasswordReset.id.desc())
+        .first()
+    )
+    if row is None or row.expires_at < datetime.utcnow():
+        raise HTTPException(400, "Link inválido ou expirado. Peça um novo.")
+    user = db.get(User, row.user_id)
+    if user is None:
+        raise HTTPException(400, "Usuário não encontrado.")
+    user.password_hash = hash_password(payload.password)
+    row.used = True
+    # Invalida outros pedidos pendentes do mesmo usuário.
+    db.query(PasswordReset).filter(
+        PasswordReset.user_id == user.id, PasswordReset.used == False  # noqa: E712
+    ).update({"used": True})
+    db.commit()
+    db.refresh(user)
     return {"token": create_token(user.id), "user": user_public(user)}
 
 
@@ -1302,7 +1417,7 @@ def create_meal(gid: int, payload: MealCreate, user: User = Depends(get_current_
     d = parse_date(payload.date, today)
     ensure_today(d, today)
     if not ai.ai_enabled():
-        raise HTTPException(503, "Contador por IA indisponível (configure OPENAI_API_KEY ou GROQ_API_KEY no servidor).")
+        raise HTTPException(503, "Contador por IA indisponível (configure GEMINI_API_KEY, OPENAI_API_KEY ou GROQ_API_KEY no servidor).")
     try:
         est = ai.estimate_meal(payload.image)
     except Exception as e:  # noqa: BLE001

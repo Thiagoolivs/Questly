@@ -32,6 +32,8 @@ class User(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(255))
+    # Vínculo com conta Google (sub do token). Nulo para contas só e-mail/senha.
+    google_sub: Mapped[Optional[str]] = mapped_column(String(64), unique=True, nullable=True)
     name: Mapped[str] = mapped_column(String(60))
     avatar: Mapped[str] = mapped_column(String(8), default="🎮")
     photo: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # data URL base64 (opcional)
@@ -302,4 +304,17 @@ class ActivityReaction(Base):
     activity_id: Mapped[int] = mapped_column(ForeignKey("activities.id"), index=True)
     membership_id: Mapped[int] = mapped_column(ForeignKey("memberships.id"), index=True)
     reaction: Mapped[str] = mapped_column(String(16))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class PasswordReset(Base):
+    """Token de redefinição de senha (guardamos só o hash do token)."""
+
+    __tablename__ = "password_resets"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+    used: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
