@@ -1417,7 +1417,7 @@ def create_meal(gid: int, payload: MealCreate, user: User = Depends(get_current_
     d = parse_date(payload.date, today)
     ensure_today(d, today)
     if not ai.ai_enabled():
-        raise HTTPException(503, "Contador por IA indisponível (configure OPENAI_API_KEY ou GROQ_API_KEY no servidor).")
+        raise HTTPException(503, "Contador por IA indisponível (configure GEMINI_API_KEY, OPENAI_API_KEY ou GROQ_API_KEY no servidor).")
     try:
         est = ai.estimate_meal(payload.image)
     except Exception as e:  # noqa: BLE001
