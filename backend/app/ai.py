@@ -141,11 +141,54 @@ def _complete_json(provider: str, kind: str, messages: list, max_tokens: int, te
 
 
 # --- Gemini (Google) via API REST (sem SDK) --------------------------------
+# A Google também rotaciona/descontinua modelos (ex.: gemini-2.0-flash saiu do ar).
+# Em vez de fixar um ID, descobrimos um modelo válido via ListModels (cacheado) e
+# escolhemos de uma lista de preferência. QUESTLY_GEMINI_MODEL força um ID.
+GEMINI_PREFERRED = [
+    "gemini-flash-latest",
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-lite",
+    "gemini-2.0-flash-001",
+    "gemini-2.5-pro",
+    "gemini-pro-latest",
+]
+_gemini_avail: "list[str] | None" = None
+
+
+def _gemini_available_models() -> list:
+    """IDs de modelos Gemini que suportam generateContent (cacheado por processo)."""
+    global _gemini_avail
+    if _gemini_avail is None:
+        _gemini_avail = []
+        try:
+            import urllib.request
+
+            key = os.getenv("GEMINI_API_KEY")
+            url = f"https://generativelanguage.googleapis.com/v1beta/models?key={key}&pageSize=200"
+            with urllib.request.urlopen(url, timeout=15) as r:
+                data = json.loads(r.read().decode())
+            for m in data.get("models", []):
+                if "generateContent" in (m.get("supportedGenerationMethods") or []):
+                    _gemini_avail.append((m.get("name") or "").split("/")[-1])
+        except Exception:
+            _gemini_avail = []
+    return _gemini_avail
+
+
 def _gemini_model(kind: str) -> str:
-    generic = os.getenv("QUESTLY_VISION_MODEL" if kind == "vision" else "QUESTLY_AI_MODEL")
-    if generic and "gemini" in generic:
-        return generic
-    return os.getenv("QUESTLY_GEMINI_MODEL", "gemini-2.0-flash")
+    override = os.getenv("QUESTLY_GEMINI_MODEL") or os.getenv(
+        "QUESTLY_VISION_MODEL" if kind == "vision" else "QUESTLY_AI_MODEL"
+    )
+    if override and "gemini" in override:
+        return override
+    avail = _gemini_available_models()
+    for m in GEMINI_PREFERRED:
+        if m in avail:
+            return m
+    for m in avail:  # fallback: qualquer "flash", senão o primeiro disponível
+        if "flash" in m:
+            return m
+    return avail[0] if avail else "gemini-2.5-flash"
 
 
 def _split_data_url(url: str) -> "tuple[str, str]":
