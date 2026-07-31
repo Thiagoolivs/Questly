@@ -53,6 +53,10 @@ export const api = {
   // --- auth ---
   register: (b) => req('/api/auth/register', { method: 'POST', body: b, auth: false }),
   login: (b) => req('/api/auth/login', { method: 'POST', body: b, auth: false }),
+  authConfig: () => req('/api/auth/config', { auth: false }),
+  googleAuth: (b) => req('/api/auth/google', { method: 'POST', body: b, auth: false }),
+  forgotPassword: (b) => req('/api/auth/forgot-password', { method: 'POST', body: b, auth: false }),
+  resetPassword: (b) => req('/api/auth/reset-password', { method: 'POST', body: b, auth: false }),
   me: () => req('/api/auth/me'),
   updateMe: (b) => req('/api/users/me', { method: 'PUT', body: b }),
   // --- grupos ---

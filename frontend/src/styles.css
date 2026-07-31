@@ -466,6 +466,25 @@ input[type='range'] { width: 100%; accent-color: var(--accent); height: 24px; }
   font-size: 0.85rem;
   margin: 4px 0 12px;
 }
+.auth-notice {
+  background: rgba(63, 178, 127, 0.12);
+  color: var(--green);
+  border: 1px solid rgba(63, 178, 127, 0.32);
+  padding: 10px 12px; border-radius: 10px; font-size: 0.85rem; margin: 4px 0 12px;
+}
+.auth-title { margin: 4px 0 12px; }
+.auth-link {
+  background: none; border: 0; color: var(--accent-text); font-size: 13px;
+  font-weight: 600; cursor: pointer; padding: 0;
+}
+.auth-forgot { display: block; margin: -4px 0 14px; text-align: right; width: 100%; }
+.auth-back { display: block; margin: 14px auto 0; }
+.auth-or {
+  display: flex; align-items: center; gap: 10px; margin: 14px 0;
+  color: var(--muted); font-size: 12px;
+}
+.auth-or::before, .auth-or::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+.google-btn { display: flex; justify-content: center; min-height: 40px; color-scheme: light; }
 .logout-link {
   display: block;
   margin: 16px auto 0;

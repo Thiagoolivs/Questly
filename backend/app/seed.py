@@ -16,6 +16,7 @@ from .database import Base, engine
 _NEW_COLUMNS = {
     "users": {
         "photo": "TEXT",
+        "google_sub": "VARCHAR(64)",
         "altura_cm": "FLOAT",
         "sexo": "VARCHAR(1)",
         "idade": "INTEGER",

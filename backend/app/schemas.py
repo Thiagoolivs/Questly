@@ -17,6 +17,19 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class GoogleAuthRequest(BaseModel):
+    credential: str  # ID token do Google Identity Services
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    password: str = Field(..., min_length=6, max_length=128)
+
+
 class UserUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=60)
     avatar: Optional[str] = Field(None, max_length=8)

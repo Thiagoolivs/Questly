@@ -101,13 +101,27 @@ export function AppProvider({ children }) {
     return gs
   }, [])
 
-  async function login(email, password) {
-    const { token: t, user: u } = await api.login({ email, password })
+  async function establishSession(t, u) {
     setToken(t)
     setTokenState(t)
     setUser(u)
     const gs = await refreshGroups()
     selectGroup(gs[0]?.id ?? null)
+  }
+
+  async function login(email, password) {
+    const { token: t, user: u } = await api.login({ email, password })
+    await establishSession(t, u)
+  }
+
+  async function googleLogin(credential) {
+    const { token: t, user: u } = await api.googleAuth({ credential })
+    await establishSession(t, u)
+  }
+
+  async function resetPassword(token, password) {
+    const { token: t, user: u } = await api.resetPassword({ token, password })
+    await establishSession(t, u)
   }
 
   async function register(payload) {
@@ -147,6 +161,8 @@ export function AppProvider({ children }) {
         refresh,
         refreshGroups,
         login,
+        googleLogin,
+        resetPassword,
         register,
         logout,
         updateUser,
