@@ -200,7 +200,7 @@ def _split_data_url(url: str) -> "tuple[str, str]":
     return "image/jpeg", url
 
 
-def _gemini_json(kind: str, prompt: str, image_data_url: str | None = None) -> str:
+def _gemini_json(kind: str, prompt: str, image_data_url: str | None = None, temperature: float | None = None) -> str:
     """Chama o Gemini (generateContent) pedindo JSON; devolve o texto."""
     import urllib.error
     import urllib.request
@@ -213,7 +213,7 @@ def _gemini_json(kind: str, prompt: str, image_data_url: str | None = None) -> s
     body = {
         "contents": [{"parts": parts}],
         "generationConfig": {
-            "temperature": 0.2 if image_data_url else 0.9,
+            "temperature": temperature if temperature is not None else (0.2 if image_data_url else 0.9),
             "responseMimeType": "application/json",
         },
     }
@@ -246,7 +246,32 @@ def _extract_json(text: str) -> dict:
     start, end = text.find("{"), text.rfind("}")
     if start == -1 or end == -1:
         raise ValueError("Resposta da IA sem JSON.")
-    return json.loads(text[start : end + 1])
+    raw = text[start : end + 1]
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return json.loads(_repair_json(raw))
+
+
+def _repair_json(raw: str) -> str:
+    """Conserta os deslizes mais comuns dos modelos ao 'quase' escrever JSON.
+
+    Ex.: ``"calories": 60-90`` (faixa), ``~120`` (aproximado), ``120 kcal``
+    (com unidade) e vírgula sobrando antes de ``}``/``]``.
+    """
+    s = raw
+    # "~120" / "≈120" → 120
+    s = re.sub(r'(:\s*)[~≈±]\s*(\d)', r'\1\2', s)
+    # Faixas: "60-90", "60 a 90", "60 to 90" → média (60-90 vira 75)
+    def _avg(m):
+        a, b = float(m.group(2)), float(m.group(3))
+        return f"{m.group(1)}{round((a + b) / 2)}"
+    s = re.sub(r'(:\s*)(\d+(?:\.\d+)?)\s*(?:-|–|—|a|to)\s*(\d+(?:\.\d+)?)(?=\s*[,}\]])', _avg, s)
+    # Unidade colada no número: "120 kcal" / "30g" → 120 / 30
+    s = re.sub(r'(:\s*\d+(?:\.\d+)?)\s*(?:kcal|cal|kj|g|gr|gramas|ml|l)\b', r'\1', s, flags=re.IGNORECASE)
+    # Vírgula sobrando antes do fechamento
+    s = re.sub(r',(\s*[}\]])', r'\1', s)
+    return s
 
 
 # --- desafios (texto) -------------------------------------------------------
@@ -342,7 +367,15 @@ def _clamp_int(v, lo: int, hi: int) -> int:
     try:
         return max(lo, min(hi, int(round(float(v)))))
     except (TypeError, ValueError):
-        return 0
+        pass
+    # Último recurso: valor veio como texto ("120 kcal", "60-90", "~30g").
+    if isinstance(v, str):
+        nums = re.findall(r"\d+(?:[.,]\d+)?", v)
+        if nums:
+            vals = [float(n.replace(",", ".")) for n in nums[:2]]
+            avg = sum(vals) / len(vals)  # faixa "60-90" → 75
+            return max(lo, min(hi, int(round(avg))))
+    return 0
 
 
 def _clean_meal(data: dict) -> dict:
@@ -412,7 +445,9 @@ def estimate_meal_text(text: str) -> dict:
         raise ValueError("Nenhum provedor de IA configurado.")
     prompt = _MEAL_TEXT_PROMPT + (text or "").strip()
     if provider == "gemini":
-        content = _gemini_json("text", prompt)
+        # Temperatura baixa: aqui queremos números estáveis, não criatividade
+        # (com temperatura alta o modelo escrevia faixas como "60-90" e quebrava o JSON).
+        content = _gemini_json("text", prompt, temperature=0.2)
     else:
         content = _complete_json(
             provider,
