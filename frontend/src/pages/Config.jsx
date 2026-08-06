@@ -94,6 +94,8 @@ export default function Config() {
       sleep_goal_h: Number(s.sleep_goal_h),
       rest_days: s.rest_days || [],
       spiritual_enabled: s.spiritual_enabled,
+      disabled_areas: s.disabled_areas || [],
+      custom_challenges: s.custom_challenges || {},
       fixed_habits: fixed_habits.length ? fixed_habits : undefined,
     })
     await refresh()
@@ -186,21 +188,7 @@ export default function Config() {
           <input type="number" step="0.5" value={s.sleep_goal_h} onChange={(e) => set({ sleep_goal_h: e.target.value })} /></label>
       </section>
 
-      <section className="card">
-        <div className="row between">
-          <div>
-            <div className="card-title no-margin">Área espiritual</div>
-            <div className="muted small">Inclui a área espiritual nos desafios do dia.</div>
-          </div>
-          <button
-            className={'toggle ' + (s.spiritual_enabled ? 'on' : '')}
-            onClick={() => set({ spiritual_enabled: !s.spiritual_enabled })}
-            aria-pressed={s.spiritual_enabled}
-          >
-            <span className="knob" />
-          </button>
-        </div>
-      </section>
+      <ChallengesCard s={s} set={set} />
 
       <section className="card">
         <div className="card-title">Fuso horário</div>
@@ -275,5 +263,115 @@ export default function Config() {
         {saved ? '✓ Configurações salvas!' : 'Salvar configurações'}
       </button>
     </div>
+  )
+}
+
+// Personalização dos desafios: liga/desliga áreas e deixa o grupo escrever os
+// seus próprios desafios por área e dificuldade.
+function ChallengesCard({ s, set }) {
+  const areas = s.areas || ['Física', 'Mental', 'Social', 'Relação', 'Espiritual']
+  const diffs = s.difficulties || [
+    { key: 'facil', label: 'Fácil', points: 10 },
+    { key: 'medio', label: 'Médio', points: 25 },
+    { key: 'dificil', label: 'Difícil', points: 45 },
+  ]
+  const off = s.disabled_areas || []
+  const custom = s.custom_challenges || {}
+  const [area, setArea] = useState(areas[0])
+  const [diff, setDiff] = useState('facil')
+  const [text, setText] = useState('')
+
+  const listOf = (a, d) => (custom[a] && custom[a][d]) || []
+
+  const toggleArea = (a) => {
+    const next = off.includes(a) ? off.filter((x) => x !== a) : [...off, a]
+    if (next.length >= areas.length) return alert('Deixe pelo menos uma área ativa.')
+    set({ disabled_areas: next, spiritual_enabled: !next.includes('Espiritual') })
+  }
+
+  const patchArea = (a, patch) =>
+    set({ custom_challenges: { ...custom, [a]: { ...(custom[a] || {}), ...patch } } })
+
+  function addChallenge() {
+    const t = text.trim()
+    if (!t) return
+    const cur = listOf(area, diff)
+    if (cur.includes(t)) return setText('')
+    patchArea(area, { [diff]: [...cur, t] })
+    setText('')
+  }
+
+  const removeChallenge = (a, d, t) => patchArea(a, { [d]: listOf(a, d).filter((x) => x !== t) })
+
+  const mine = Object.entries(custom).flatMap(([a, block]) =>
+    diffs.flatMap((dd) => ((block && block[dd.key]) || []).map((t) => ({ area: a, diff: dd.key, label: dd.label, text: t }))),
+  )
+
+  return (
+    <section className="card">
+      <div className="card-title">Desafios</div>
+      <div className="muted small" style={{ marginTop: -4 }}>Áreas em jogo — o dia sorteia um desafio de cada área ativa.</div>
+      <div className="chips">
+        {areas.map((a) => (
+          <button key={a} className={'chip ' + (off.includes(a) ? '' : 'active')} onClick={() => toggleArea(a)}>{a}</button>
+        ))}
+      </div>
+
+      <div className="muted small" style={{ marginTop: 12 }}>Escreva desafios de vocês (entram no sorteio junto com os do app):</div>
+      <div className="chips">
+        {areas.filter((a) => !off.includes(a)).map((a) => (
+          <button key={a} className={'chip ' + (area === a ? 'active' : '')} onClick={() => setArea(a)}>{a}</button>
+        ))}
+      </div>
+      <div className="chips">
+        {diffs.map((d) => (
+          <button key={d.key} className={'chip ' + (diff === d.key ? 'active' : '')} onClick={() => setDiff(d.key)}>
+            {d.label} · {d.points}pts
+          </button>
+        ))}
+      </div>
+      <div className="meal-text-row">
+        <input
+          className="meal-text-input"
+          placeholder={`Ex: desafio de ${area.toLowerCase()}…`}
+          value={text}
+          maxLength={160}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && addChallenge()}
+        />
+        <button className="btn btn-primary small-btn" disabled={!text.trim()} onClick={addChallenge}>Adicionar</button>
+      </div>
+
+      {mine.length > 0 && (
+        <div className="custom-ch-list">
+          {mine.map((c) => (
+            <div className="custom-ch" key={c.area + c.diff + c.text}>
+              <span className="custom-ch-tag">{c.area} · {c.label}</span>
+              <span className="custom-ch-text">{c.text}</span>
+              <button className="habit-cam" title="Remover" onClick={() => removeChallenge(c.area, c.diff, c.text)}>
+                <Icon name="x" size={14} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {areas.filter((a) => !off.includes(a)).map((a) => {
+        const has = diffs.some((d) => listOf(a, d.key).length)
+        if (!has) return null
+        return (
+          <label className="row between custom-ch-only" key={a}>
+            <span className="muted small">Em {a}, usar só os desafios de vocês</span>
+            <button
+              className={'toggle ' + ((custom[a] && custom[a].only) ? 'on' : '')}
+              onClick={() => patchArea(a, { only: !(custom[a] && custom[a].only) })}
+              aria-pressed={!!(custom[a] && custom[a].only)}
+            >
+              <span className="knob" />
+            </button>
+          </label>
+        )
+      })}
+    </section>
   )
 }

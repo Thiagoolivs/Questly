@@ -726,3 +726,64 @@ input[type='range'] { width: 100%; accent-color: var(--accent); height: 24px; }
 /* navbar com 7 itens: aperta um pouco */
 .bottom-nav .nav-item { padding: 4px 3px; }
 .bottom-nav .nav-label { font-size: 9px; }
+
+/* Onboarding (primeiro acesso) ------------------------------------------- */
+.onb-overlay {
+  position: fixed; inset: 0; z-index: 60; display: grid; place-items: center;
+  background: rgba(0, 0, 0, 0.72); padding: 20px; backdrop-filter: blur(3px);
+}
+.onb-card {
+  position: relative; width: 100%; max-width: 380px; background: var(--card);
+  border: 1px solid var(--border); border-radius: 18px; padding: 26px 20px 20px;
+  display: flex; flex-direction: column; gap: 12px; text-align: center;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+.onb-skip {
+  position: absolute; top: 12px; right: 14px; background: none; border: 0;
+  color: var(--muted); font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.onb-icon {
+  width: 58px; height: 58px; margin: 4px auto 0; display: grid; place-items: center;
+  border-radius: 16px; background: var(--accent-weak); color: var(--accent-text);
+}
+.onb-title { font-size: 19px; font-weight: 800; letter-spacing: -0.02em; }
+.onb-text { font-size: 14px; line-height: 1.5; color: var(--text); }
+.onb-tip {
+  display: flex; align-items: flex-start; gap: 7px; text-align: left;
+  background: var(--card2); border: 1px solid var(--border); border-radius: 10px;
+  padding: 10px 12px; font-size: 12.5px; color: var(--muted);
+}
+.onb-dots { display: flex; justify-content: center; gap: 6px; margin: 4px 0 6px; }
+.onb-dot {
+  width: 7px; height: 7px; border-radius: 999px; border: 0; padding: 0;
+  background: var(--border-strong); cursor: pointer; transition: 0.2s;
+}
+.onb-dot.active { background: var(--accent); width: 20px; }
+
+/* Refeição por texto ------------------------------------------------------ */
+.meal-add { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+.meal-text-row { display: flex; gap: 8px; align-items: center; }
+.meal-text-input {
+  flex: 1; min-width: 0; background: var(--card2); border: 1px solid var(--border);
+  border-radius: 10px; padding: 11px 12px; color: var(--text); font-size: 14px;
+}
+.meal-text-input:focus { outline: none; border-color: var(--accent); }
+.meal-text-row .btn { flex-shrink: 0; }
+
+/* Desafios do grupo (Config) ---------------------------------------------- */
+.custom-ch-list { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.custom-ch {
+  display: flex; align-items: center; gap: 8px; background: var(--card2);
+  border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px;
+}
+.custom-ch-tag {
+  font-size: 10.5px; font-weight: 700; color: var(--accent-text);
+  background: var(--accent-weak); padding: 3px 7px; border-radius: 999px;
+  white-space: nowrap; flex-shrink: 0;
+}
+.custom-ch-text { flex: 1; min-width: 0; font-size: 13px; }
+.custom-ch-only { margin-top: 10px; }
+
+/* Convite por link -------------------------------------------------------- */
+.group-row-wrap { display: flex; flex-direction: column; gap: 6px; }
+.group-share { align-self: flex-end; }

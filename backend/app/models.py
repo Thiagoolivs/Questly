@@ -145,6 +145,10 @@ class Settings(Base):
     # Desafios gerados por IA (lote), mesclados aos fixos: {categoria: {dificuldade: [textos]}}
     challenge_pool: Mapped[dict] = mapped_column(JSON, default=dict)
     challenge_pool_updated: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    # Desafios escritos pelo próprio grupo: {categoria: {dificuldade: [textos]}}
+    custom_challenges: Mapped[dict] = mapped_column(JSON, default=dict)
+    # Áreas desligadas pelo grupo (lista de nomes de categoria).
+    disabled_areas: Mapped[list] = mapped_column(JSON, default=list)
 
     group: Mapped["Group"] = relationship(back_populates="settings")
 

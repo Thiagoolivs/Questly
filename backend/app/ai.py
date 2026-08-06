@@ -387,3 +387,41 @@ def estimate_meal(image_data_url: str) -> dict:
             temperature=0.2,
         )
     return _clean_meal(_extract_json(content))
+
+
+_MEAL_TEXT_PROMPT = (
+    "Você estima os valores nutricionais de uma refeição DESCRITA EM TEXTO, em "
+    "português do Brasil. O texto é informal e pode citar comidas típicas do Brasil "
+    "(pão de queijo, tapioca, feijoada, açaí, cuscuz...). Se a quantidade não for "
+    "dita, assuma uma porção comum.\n\n"
+    "Responda APENAS com um objeto JSON, sem texto fora do JSON:\n"
+    '{\"label\": \"nome curto da refeição\", \"calories\": inteiro_kcal, '
+    '\"protein_g\": inteiro, \"carbs_g\": inteiro, \"fat_g\": inteiro, '
+    '\"confidence\": \"baixa|media|alta\"}\n'
+    "O 'label' resume a refeição (ex.: \"Pão de queijo e café com leite\").\n"
+    "Se o texto não descrever comida, retorne calories 0 e label \"—\".\n\n"
+    "Refeição: "
+)
+
+
+def estimate_meal_text(text: str) -> dict:
+    """Estima ``{label, calories, protein_g, carbs_g, fat_g, confidence}`` de uma
+    descrição em texto (ex.: 'comi um pão de queijo e um copo de leite com café')."""
+    provider = _provider("text")
+    if provider is None:
+        raise ValueError("Nenhum provedor de IA configurado.")
+    prompt = _MEAL_TEXT_PROMPT + (text or "").strip()
+    if provider == "gemini":
+        content = _gemini_json("text", prompt)
+    else:
+        content = _complete_json(
+            provider,
+            "text",
+            [
+                {"role": "system", "content": "Você responde SEMPRE com um único objeto JSON válido, sem texto extra e sem raciocínio."},
+                {"role": "user", "content": prompt},
+            ],
+            max_tokens=500,
+            temperature=0.2,
+        )
+    return _clean_meal(_extract_json(content))

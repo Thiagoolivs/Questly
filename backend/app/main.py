@@ -30,7 +30,18 @@ from .auth import (
     verify_password,
 )
 from . import push as pushmod
-from .data import CATEGORY_EMOJI, DEFAULT_HABITS, FEED_REACTIONS, HABITS_MENU, JOINT_SUGGESTIONS, MOODS
+from .data import (
+    CATEGORY_EMOJI,
+    CATEGORY_ORDER,
+    DEFAULT_HABITS,
+    DIFFICULTIES,
+    DIFFICULTY_LABEL,
+    DIFFICULTY_POINTS,
+    FEED_REACTIONS,
+    HABITS_MENU,
+    JOINT_SUGGESTIONS,
+    MOODS,
+)
 from .database import SessionLocal, get_db
 from .models import (
     Activity,
@@ -62,6 +73,7 @@ from .schemas import (
     HabitPhotoRequest,
     JointActivityCreate,
     MealCreate,
+    MealTextCreate,
     MealUpdate,
     ReactRequest,
     WaterRequest,
@@ -492,6 +504,40 @@ def _ai_pool_count(s: Settings) -> int:
     return sum(len(v) for cat in pool.values() if isinstance(cat, dict) for v in cat.values() if isinstance(v, list))
 
 
+MAX_CUSTOM_PER_TIER = 30
+
+
+def _clean_custom_challenges(raw: dict) -> dict:
+    """Valida os desafios escritos pelo grupo: só áreas/dificuldades conhecidas,
+    textos limpos, sem duplicatas e com limite por dificuldade."""
+    out: dict = {}
+    if not isinstance(raw, dict):
+        return out
+    for cat in CATEGORY_ORDER:
+        block = raw.get(cat)
+        if not isinstance(block, dict):
+            continue
+        clean: dict = {}
+        for diff in DIFFICULTIES:
+            items = block.get(diff)
+            if not isinstance(items, list):
+                continue
+            seen: list[str] = []
+            for t in items:
+                if not isinstance(t, str):
+                    continue
+                t = " ".join(t.split())[:160]
+                if t and t not in seen:
+                    seen.append(t)
+            if seen:
+                clean[diff] = seen[:MAX_CUSTOM_PER_TIER]
+        if block.get("only"):
+            clean["only"] = True
+        if clean:
+            out[cat] = clean
+    return out
+
+
 def settings_public(s: Settings) -> dict:
     updated = getattr(s, "challenge_pool_updated", None)
     return {
@@ -508,6 +554,11 @@ def settings_public(s: Settings) -> dict:
         "surprise_frequency": s.surprise_frequency,
         "fixed_habits": s.fixed_habits,
         "habits_menu": HABITS_MENU,
+        "custom_challenges": getattr(s, "custom_challenges", None) or {},
+        "disabled_areas": getattr(s, "disabled_areas", None) or [],
+        "areas": CATEGORY_ORDER,
+        "active_areas": scoring.active_categories(s),
+        "difficulties": [{"key": d, "label": DIFFICULTY_LABEL[d], "points": DIFFICULTY_POINTS[d]} for d in DIFFICULTIES],
         "ai_enabled": ai.ai_enabled(),
         "ai_pool_count": _ai_pool_count(s),
         "ai_pool_updated": updated.isoformat() + "Z" if updated else None,
@@ -783,6 +834,13 @@ def update_settings(gid: int, payload: SettingsUpdate, user: User = Depends(get_
             raise HTTPException(400, f"Fuso horário inválido: {data['timezone']!r}.")
     if "fixed_habits" in data and data["fixed_habits"] is not None:
         data["fixed_habits"] = [h.model_dump() if hasattr(h, "model_dump") else h for h in payload.fixed_habits]
+    if data.get("custom_challenges") is not None:
+        data["custom_challenges"] = _clean_custom_challenges(data["custom_challenges"])
+    if data.get("disabled_areas") is not None:
+        off = [a for a in data["disabled_areas"] if a in CATEGORY_ORDER]
+        if len(off) >= len(CATEGORY_ORDER):
+            raise HTTPException(400, "Deixe pelo menos uma área ativa.")
+        data["disabled_areas"] = off
     for field, value in data.items():
         setattr(s, field, value)
     db.commit()
@@ -1432,6 +1490,38 @@ def create_meal(gid: int, payload: MealCreate, user: User = Depends(get_current_
         carbs_g=est["carbs_g"],
         fat_g=est["fat_g"],
         image=payload.image,
+        ai_confidence=est.get("confidence"),
+    )
+    db.add(meal)
+    db.commit()
+    db.refresh(meal)
+    return {"meal": serialize_meal(meal), "nutrition": nutrition_payload(db, gid, me, d, s)}
+
+
+@app.post("/api/groups/{gid}/meals/text")
+def create_meal_text(gid: int, payload: MealTextCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Registra uma refeição descrita em TEXTO (sem foto). Ex.: 'comi um pão de
+    queijo e um copo de leite com café' — a IA estima calorias e macros."""
+    me = get_membership(db, user, gid)
+    s = get_group_settings(db, gid)
+    today = today_of(s)
+    d = parse_date(payload.date, today)
+    ensure_today(d, today)
+    if not ai.ai_enabled():
+        raise HTTPException(503, "Contador por IA indisponível (configure GEMINI_API_KEY, OPENAI_API_KEY ou GROQ_API_KEY no servidor).")
+    try:
+        est = ai.estimate_meal_text(payload.text)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f"Falha ao interpretar a refeição: {e}")
+    meal = Meal(
+        group_id=gid,
+        membership_id=me.id,
+        date=d,
+        label=est["label"],
+        calories=est["calories"],
+        protein_g=est["protein_g"],
+        carbs_g=est["carbs_g"],
+        fat_g=est["fat_g"],
         ai_confidence=est.get("confidence"),
     )
     db.add(meal)
