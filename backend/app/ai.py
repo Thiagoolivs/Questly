@@ -23,11 +23,13 @@ from .data import CATEGORY_ORDER, DIFFICULTIES, DIFFICULTY_LABEL
 
 # Groq roda modelos abertos e ROTACIONA/descontinua com frequência, então em vez
 # de fixar um ID escolhemos, em runtime, o 1º candidato disponível na conta (/models).
+# Modelos "diretos" primeiro: os de raciocínio (ex.: qwen) gastam o limite de
+# tokens pensando e às vezes devolvem a resposta cortada, sem o JSON.
 GROQ_TEXT_MODELS = [
-    "qwen/qwen3.6-27b",
     "llama-3.3-70b-versatile",
     "llama-3.1-8b-instant",
     "openai/gpt-oss-20b",
+    "qwen/qwen3.6-27b",
 ]
 GROQ_VISION_MODELS = [
     "qwen/qwen3.6-27b",
@@ -200,7 +202,7 @@ def _split_data_url(url: str) -> "tuple[str, str]":
     return "image/jpeg", url
 
 
-def _gemini_json(kind: str, prompt: str, image_data_url: str | None = None) -> str:
+def _gemini_json(kind: str, prompt: str, image_data_url: str | None = None, temperature: float | None = None) -> str:
     """Chama o Gemini (generateContent) pedindo JSON; devolve o texto."""
     import urllib.error
     import urllib.request
@@ -213,7 +215,7 @@ def _gemini_json(kind: str, prompt: str, image_data_url: str | None = None) -> s
     body = {
         "contents": [{"parts": parts}],
         "generationConfig": {
-            "temperature": 0.2 if image_data_url else 0.9,
+            "temperature": temperature if temperature is not None else (0.2 if image_data_url else 0.9),
             "responseMimeType": "application/json",
         },
     }
@@ -246,7 +248,32 @@ def _extract_json(text: str) -> dict:
     start, end = text.find("{"), text.rfind("}")
     if start == -1 or end == -1:
         raise ValueError("Resposta da IA sem JSON.")
-    return json.loads(text[start : end + 1])
+    raw = text[start : end + 1]
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return json.loads(_repair_json(raw))
+
+
+def _repair_json(raw: str) -> str:
+    """Conserta os deslizes mais comuns dos modelos ao 'quase' escrever JSON.
+
+    Ex.: ``"calories": 60-90`` (faixa), ``~120`` (aproximado), ``120 kcal``
+    (com unidade) e vírgula sobrando antes de ``}``/``]``.
+    """
+    s = raw
+    # "~120" / "≈120" → 120
+    s = re.sub(r'(:\s*)[~≈±]\s*(\d)', r'\1\2', s)
+    # Faixas: "60-90", "60 a 90", "60 to 90" → média (60-90 vira 75)
+    def _avg(m):
+        a, b = float(m.group(2)), float(m.group(3))
+        return f"{m.group(1)}{round((a + b) / 2)}"
+    s = re.sub(r'(:\s*)(\d+(?:\.\d+)?)\s*(?:-|–|—|a|to)\s*(\d+(?:\.\d+)?)(?=\s*[,}\]])', _avg, s)
+    # Unidade colada no número: "120 kcal" / "30g" → 120 / 30
+    s = re.sub(r'(:\s*\d+(?:\.\d+)?)\s*(?:kcal|cal|kj|g|gr|gramas|ml|l)\b', r'\1', s, flags=re.IGNORECASE)
+    # Vírgula sobrando antes do fechamento
+    s = re.sub(r',(\s*[}\]])', r'\1', s)
+    return s
 
 
 # --- desafios (texto) -------------------------------------------------------
@@ -342,7 +369,15 @@ def _clamp_int(v, lo: int, hi: int) -> int:
     try:
         return max(lo, min(hi, int(round(float(v)))))
     except (TypeError, ValueError):
-        return 0
+        pass
+    # Último recurso: valor veio como texto ("120 kcal", "60-90", "~30g").
+    if isinstance(v, str):
+        nums = re.findall(r"\d+(?:[.,]\d+)?", v)
+        if nums:
+            vals = [float(n.replace(",", ".")) for n in nums[:2]]
+            avg = sum(vals) / len(vals)  # faixa "60-90" → 75
+            return max(lo, min(hi, int(round(avg))))
+    return 0
 
 
 def _clean_meal(data: dict) -> dict:
@@ -406,22 +441,43 @@ _MEAL_TEXT_PROMPT = (
 
 def estimate_meal_text(text: str) -> dict:
     """Estima ``{label, calories, protein_g, carbs_g, fat_g, confidence}`` de uma
-    descrição em texto (ex.: 'comi um pão de queijo e um copo de leite com café')."""
-    provider = _provider("text")
+    descrição em texto (ex.: 'comi um pão de queijo e um copo de leite com café').
+
+    Usa a MESMA preferência de provedor da foto (Gemini → OpenAI → Groq): estimar
+    nutrientes é extração factual, então vale o provedor mais confiável — e evita
+    cair num modelo de raciocínio, que gastava o limite de tokens "pensando" e
+    devolvia a resposta cortada (sem JSON).
+    """
+    provider = _provider("vision")
     if provider is None:
         raise ValueError("Nenhum provedor de IA configurado.")
     prompt = _MEAL_TEXT_PROMPT + (text or "").strip()
-    if provider == "gemini":
-        content = _gemini_json("text", prompt)
-    else:
-        content = _complete_json(
+
+    def _ask(extra_rule: str = "") -> str:
+        p = prompt + extra_rule
+        if provider == "gemini":
+            # Temperatura baixa: queremos números estáveis, não criatividade (com
+            # temperatura alta o modelo escrevia faixas como "60-90" e quebrava o JSON).
+            return _gemini_json("text", p, temperature=0.2)
+        return _complete_json(
             provider,
             "text",
             [
                 {"role": "system", "content": "Você responde SEMPRE com um único objeto JSON válido, sem texto extra e sem raciocínio."},
-                {"role": "user", "content": prompt},
+                {"role": "user", "content": p},
             ],
-            max_tokens=500,
+            # Folga suficiente para modelos que "pensam" antes de responder.
+            max_tokens=1200,
             temperature=0.2,
         )
-    return _clean_meal(_extract_json(content))
+
+    try:
+        return _clean_meal(_extract_json(_ask()))
+    except (ValueError, json.JSONDecodeError):
+        # Uma segunda tentativa, cobrando o formato de forma explícita.
+        retry = (
+            "\n\nATENÇÃO: responda somente o objeto JSON, começando com '{' e "
+            "terminando com '}'. Todos os números devem ser inteiros simples "
+            "(sem faixas, sem '~', sem unidades)."
+        )
+        return _clean_meal(_extract_json(_ask(retry)))
