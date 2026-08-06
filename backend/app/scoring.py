@@ -40,37 +40,57 @@ def _seed(d: date, salt: str) -> int:
 
 
 def active_categories(settings) -> list[str]:
-    """Áreas em jogo (remove Espiritual se desativada nas configs)."""
-    return [
-        c for c in CATEGORY_ORDER
-        if not (c == "Espiritual" and not settings.spiritual_enabled)
-    ]
+    """Áreas em jogo: tira as desligadas pelo grupo (e Espiritual pelo toggle antigo).
+
+    Nunca devolve vazio — se o grupo desligar tudo, mantemos a 1ª área para o dia
+    continuar tendo desafio.
+    """
+    off = set(getattr(settings, "disabled_areas", None) or [])
+    if not settings.spiritual_enabled:
+        off.add("Espiritual")
+    active = [c for c in CATEGORY_ORDER if c not in off]
+    return active or [CATEGORY_ORDER[0]]
 
 
 def day_number(settings, d: date) -> int:
     return (d - settings.start_date).days + 1
 
 
-def merged_pool(settings, cat: str) -> dict:
-    """Pools da área mesclando os desafios fixos com os gerados por IA em lote.
+def _pool_of(settings, attr: str, cat: str) -> dict:
+    raw = getattr(settings, attr, None) or {}
+    return (raw.get(cat) or {}) if isinstance(raw, dict) else {}
 
-    Os gerados ficam em ``settings.challenge_pool`` no formato
-    ``{categoria: {dificuldade: [textos]}}`` e são só ANEXADOS aos fixos, para
-    manter o determinismo por data (ambos os parceiros veem o mesmo desafio) —
-    o conteúdo só muda quando um novo lote é gerado.
+
+def merged_pool(settings, cat: str) -> dict:
+    """Pools da área: fixos + gerados por IA + escritos pelo próprio grupo.
+
+    Os extras ficam em ``settings.challenge_pool`` (IA) e
+    ``settings.custom_challenges`` (grupo), no formato
+    ``{categoria: {dificuldade: [textos]}}``, e são só ANEXADOS aos fixos, para
+    manter o determinismo por data (todos veem o mesmo desafio) — o conteúdo só
+    muda quando um lote novo é gerado ou o grupo edita os seus.
+
+    Se o grupo marcar ``only_custom``, usamos SÓ os desafios dele nas áreas em
+    que ele escreveu algum (útil para quem quer um desafio 100% próprio).
     """
     base = CHALLENGE_POOLS.get(cat, {})
-    extra = {}
-    ai = getattr(settings, "challenge_pool", None) or {}
-    if isinstance(ai, dict):
-        extra = ai.get(cat, {}) or {}
+    ai = _pool_of(settings, "challenge_pool", cat)
+    own = _pool_of(settings, "custom_challenges", cat)
+    only_own = bool(own.get("only")) and any(own.get(d) for d in DIFFICULTIES)
     out = {}
     for diff in DIFFICULTIES:
-        items = list(base.get(diff, []))
-        for t in (extra.get(diff, []) or []):
+        items = [] if only_own else list(base.get(diff, []))
+        if not only_own:
+            for t in (ai.get(diff, []) or []):
+                if isinstance(t, str) and t.strip() and t not in items:
+                    items.append(t)
+        for t in (own.get(diff, []) or []):
             if isinstance(t, str) and t.strip() and t not in items:
                 items.append(t)
         out[diff] = items
+    # Nunca deixa a área sem nenhum desafio (evita divisão por zero na seleção).
+    if not any(out[d] for d in DIFFICULTIES):
+        out = {d: list(base.get(d, [])) for d in DIFFICULTIES}
     return out
 
 
@@ -91,7 +111,11 @@ def challenge_for(settings, d: date, cat: str, cat_index: int, offset: int = 0) 
     pool = merged_pool(settings, cat)
     items = [(diff, t) for diff in DIFFICULTIES for t in pool[diff]]
     base_tier = DIFFICULTIES[(_seed(d, "tier") + cat_index) % len(DIFFICULTIES)]
-    base_pool = pool[base_tier] or CHALLENGE_POOLS[cat][base_tier]
+    # A dificuldade sorteada pode estar vazia (grupo usando só os desafios dele):
+    # nesse caso caímos na próxima dificuldade que tenha itens.
+    if not pool[base_tier]:
+        base_tier = next(t for t in DIFFICULTIES if pool[t])
+    base_pool = pool[base_tier]
     base_text = base_pool[_seed(d, f"text:{cat}") % len(base_pool)]
     base_pos = items.index((base_tier, base_text))
     diff, text = items[(base_pos + offset) % len(items)]

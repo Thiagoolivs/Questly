@@ -129,6 +129,11 @@ class MealCreate(BaseModel):
     image: str  # data URL (base64) da foto — a IA estima os valores
 
 
+class MealTextCreate(BaseModel):
+    date: str
+    text: str = Field(..., min_length=2, max_length=400)  # ex: "um pão de queijo e um café com leite"
+
+
 class WaterRequest(BaseModel):
     date: str
     delta_ml: int = Field(..., ge=-5000, le=5000)  # ex.: +500 / -500
@@ -181,3 +186,7 @@ class SettingsUpdate(BaseModel):
     spiritual_enabled: Optional[bool] = None
     surprise_frequency: Optional[float] = Field(None, ge=0.0, le=1.0)
     fixed_habits: Optional[list[HabitDef]] = None
+    # Desafios do próprio grupo: {categoria: {facil|medio|dificil: [textos], only: bool}}
+    custom_challenges: Optional[dict] = None
+    # Áreas desligadas (nomes de categoria)
+    disabled_areas: Optional[list[str]] = None

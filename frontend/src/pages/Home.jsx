@@ -28,6 +28,7 @@ export default function Home() {
   const [showGoalForm, setShowGoalForm] = useState(false)
   const [goalForm, setGoalForm] = useState({ emoji: '🎯', icon: null, title: '', duration_days: 30 })
   const [mealBusy, setMealBusy] = useState(false)
+  const [mealText, setMealText] = useState('')
   const [editMeal, setEditMeal] = useState(null)
 
   useEffect(() => {
@@ -156,6 +157,20 @@ export default function Home() {
       await refresh()
     } catch (e) {
       alert('Erro ao analisar a foto: ' + e.message)
+    } finally {
+      setMealBusy(false)
+    }
+  }
+  async function addMealFromText() {
+    const t = mealText.trim()
+    if (t.length < 3 || mealBusy) return
+    setMealBusy(true)
+    try {
+      await api.addMealText(groupId, { date: state.date, text: t })
+      setMealText('')
+      await refresh()
+    } catch (e) {
+      alert('Erro ao registrar a refeição: ' + e.message)
     } finally {
       setMealBusy(false)
     }
@@ -442,12 +457,32 @@ export default function Home() {
         )}
 
         {state.ai_enabled ? (
-          <button className="btn ghost full icon-btn new-goal-btn" disabled={mealBusy} onClick={addMealPhoto}>
-            <Icon name="camera" size={15} /> {mealBusy ? 'Analisando a foto…' : 'Foto da refeição'}
-          </button>
+          <div className="meal-add">
+            <div className="meal-text-row">
+              <input
+                className="meal-text-input"
+                placeholder="Ex: um pão de queijo e um copo de leite com café"
+                value={mealText}
+                disabled={mealBusy}
+                maxLength={400}
+                onChange={(e) => setMealText(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && addMealFromText()}
+              />
+              <button
+                className="btn btn-primary small-btn"
+                disabled={mealBusy || mealText.trim().length < 3}
+                onClick={addMealFromText}
+              >
+                {mealBusy ? '…' : 'Anotar'}
+              </button>
+            </div>
+            <button className="btn ghost full icon-btn" disabled={mealBusy} onClick={addMealPhoto}>
+              <Icon name="camera" size={15} /> {mealBusy ? 'Analisando…' : 'ou envie uma foto da refeição'}
+            </button>
+          </div>
         ) : (
           <div className="muted xsmall" style={{ marginTop: 8 }}>
-            Contador por IA inativo — configure <code>OPENAI_API_KEY</code> (ou <code>GROQ_API_KEY</code>) no servidor para estimar calorias pela foto.
+            Contador por IA inativo — configure <code>GEMINI_API_KEY</code> (ou <code>OPENAI_API_KEY</code>/<code>GROQ_API_KEY</code>) no servidor.
           </div>
         )}
         <p className="muted xsmall proof-note" style={{ marginTop: 8 }}>

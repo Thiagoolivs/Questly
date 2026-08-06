@@ -5,6 +5,8 @@ import { pickImage, fileToCompressedDataURL } from '../utils/image.js'
 import { getPushState, enablePush, disablePush } from '../utils/push.js'
 import Icon from '../components/Icon.jsx'
 import Avatar from '../components/Avatar.jsx'
+import Onboarding, { resetOnboarding } from '../components/Onboarding.jsx'
+import { shareInvite } from '../utils/invite.js'
 
 const AVATARS = ['🦊', '🐨', '🐼', '🦁', '🐯', '🐸', '🐵', '🦉', '🔥', '⚡', '🌟', '💜']
 const ATIVIDADES = [
@@ -24,6 +26,8 @@ export default function Perfil() {
   const [saved, setSaved] = useState(false)
   const [savedN, setSavedN] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [linkShared, setLinkShared] = useState(false)
+  const [showTour, setShowTour] = useState(false)
   const [photoBusy, setPhotoBusy] = useState(false)
   const [pushState, setPushState] = useState('off')
   const [pushBusy, setPushBusy] = useState(false)
@@ -128,6 +132,15 @@ export default function Perfil() {
     })
   }
 
+  async function shareLink() {
+    if (!group?.invite_code) return
+    const r = await shareInvite(group.invite_code, group.name)
+    if (r === 'copied' || r === 'shared') {
+      setLinkShared(true)
+      setTimeout(() => setLinkShared(false), 1800)
+    }
+  }
+
   const s = me?.stats
   const stats = s
     ? [
@@ -225,7 +238,12 @@ export default function Perfil() {
             <Icon name={copied ? 'check' : 'copy'} size={14} /> {copied ? 'Copiado' : 'Copiar'}
           </button>
         </div>
-        <p className="muted xsmall">Compartilhe esse código para alguém entrar no grupo.</p>
+        <button className="btn full btn-primary icon-btn" onClick={shareLink}>
+          <Icon name={linkShared ? 'check' : 'users'} size={15} /> {linkShared ? 'Link pronto!' : 'Convidar por link'}
+        </button>
+        <p className="muted xsmall">
+          O link já leva a pessoa direto para o grupo — ela só precisa criar a conta. Sem link, dá para usar o código acima.
+        </p>
 
         {groups.length > 1 && (
           <div className="group-list">
@@ -294,7 +312,13 @@ export default function Perfil() {
         </section>
       )}
 
+      <button className="btn ghost full icon-btn" onClick={() => { resetOnboarding(); setShowTour(true) }}>
+        <Icon name="bulb" size={15} /> Rever o tour do app
+      </button>
+
       <button className="btn full logout-btn icon-btn" onClick={logout}><Icon name="logout" size={15} /> Sair da conta</button>
+
+      {showTour && <Onboarding onClose={() => setShowTour(false)} />}
     </div>
   )
 }

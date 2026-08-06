@@ -102,6 +102,7 @@ export const api = {
   deleteTask: (g, id) => req(`/api/groups/${g}/tasks/${id}`, { method: 'DELETE' }),
   meals: (g, day) => req(`/api/groups/${g}/meals${qs(day)}`),
   addMeal: (g, b) => req(`/api/groups/${g}/meals`, { method: 'POST', body: b }),
+  addMealText: (g, b) => req(`/api/groups/${g}/meals/text`, { method: 'POST', body: b }),
   updateMeal: (g, id, b) => req(`/api/groups/${g}/meals/${id}`, { method: 'PATCH', body: b }),
   deleteMeal: (g, id) => req(`/api/groups/${g}/meals/${id}`, { method: 'DELETE' }),
   addWater: (g, b) => req(`/api/groups/${g}/water`, { method: 'POST', body: b }),

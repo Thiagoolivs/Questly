@@ -41,6 +41,8 @@ _NEW_COLUMNS = {
         "timezone": "VARCHAR(40)",
         "challenge_pool": "JSON",
         "challenge_pool_updated": "TIMESTAMP",
+        "custom_challenges": "JSON",
+        "disabled_areas": "JSON",
     },
     "activities": {
         "image": "TEXT",
