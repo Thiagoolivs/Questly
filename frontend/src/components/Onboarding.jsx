@@ -4,11 +4,17 @@ import Icon from './Icon.jsx'
 import InstallGuide from './InstallGuide.jsx'
 import { openSection } from './Section.jsx'
 
-const KEY = 'questly.onboarded'
+// v2: quem já tinha visto o modal antigo (chave `questly.onboarded`) precisa
+// ver o tour novo uma vez — por isso a chave é versionada.
+const KEY = 'questly.tour.v2'
+const LEGACY_KEY = 'questly.onboarded'
 const START_EVT = 'questly:start-tour'
 
 export const hasOnboarded = () => localStorage.getItem(KEY) === '1'
-export const markOnboarded = () => localStorage.setItem(KEY, '1')
+export const markOnboarded = () => {
+  localStorage.setItem(KEY, '1')
+  localStorage.removeItem(LEGACY_KEY)
+}
 export const resetOnboarding = () => localStorage.removeItem(KEY)
 
 // Dispara o tour de qualquer tela. Importante: quem RENDERIZA o tour é o Shell
