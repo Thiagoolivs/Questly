@@ -5,7 +5,7 @@ import { pickImage, fileToCompressedDataURL } from '../utils/image.js'
 import { getPushState, enablePush, disablePush } from '../utils/push.js'
 import Icon from '../components/Icon.jsx'
 import Avatar from '../components/Avatar.jsx'
-import Onboarding, { resetOnboarding } from '../components/Onboarding.jsx'
+import { startTour } from '../components/Onboarding.jsx'
 import InstallGuide from '../components/InstallGuide.jsx'
 import { shareInvite } from '../utils/invite.js'
 
@@ -28,7 +28,6 @@ export default function Perfil() {
   const [savedN, setSavedN] = useState(false)
   const [copied, setCopied] = useState(false)
   const [linkShared, setLinkShared] = useState(false)
-  const [showTour, setShowTour] = useState(false)
   const [photoBusy, setPhotoBusy] = useState(false)
   const [pushState, setPushState] = useState('off')
   const [pushBusy, setPushBusy] = useState(false)
@@ -318,13 +317,12 @@ export default function Perfil() {
         <InstallGuide />
       </section>
 
-      <button className="btn ghost full icon-btn" onClick={() => { resetOnboarding(); setShowTour(true) }}>
+      <button className="btn ghost full icon-btn" onClick={startTour}>
         <Icon name="bulb" size={15} /> Rever o tour do app
       </button>
 
       <button className="btn full logout-btn icon-btn" onClick={logout}><Icon name="logout" size={15} /> Sair da conta</button>
 
-      {showTour && <Onboarding onClose={() => setShowTour(false)} />}
     </div>
   )
 }

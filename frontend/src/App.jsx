@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AppProvider, useApp } from './store.jsx'
 import BottomNav from './components/BottomNav.jsx'
-import Onboarding, { hasOnboarded } from './components/Onboarding.jsx'
+import Onboarding, { hasOnboarded, useTourTrigger } from './components/Onboarding.jsx'
 import { captureInviteFromUrl } from './utils/invite.js'
 import Auth from './pages/Auth.jsx'
 import Grupos from './pages/Grupos.jsx'
@@ -36,12 +36,19 @@ function Gate() {
   return <Shell />
 }
 
+// O tour vive AQUI (fora das rotas): ele navega entre as telas, então precisa
+// sobreviver às trocas de página. Qualquer tela pode iniciá-lo com startTour().
+function TourHost() {
+  const [show, setShow] = useState(() => !hasOnboarded())
+  useTourTrigger(useCallback(() => setShow(true), []))
+  if (!show) return null
+  return <Onboarding onClose={() => setShow(false)} />
+}
+
 function Shell() {
-  // Onboarding do primeiro acesso (some depois de concluído/pulado).
-  const [showOnb, setShowOnb] = useState(() => !hasOnboarded())
   return (
     <BrowserRouter>
-      {showOnb && <Onboarding onClose={() => setShowOnb(false)} />}
+      <TourHost />
       <div className="app-shell">
         <main className="content">
           <Routes>

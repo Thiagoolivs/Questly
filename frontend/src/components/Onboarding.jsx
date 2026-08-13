@@ -5,10 +5,25 @@ import InstallGuide from './InstallGuide.jsx'
 import { openSection } from './Section.jsx'
 
 const KEY = 'questly.onboarded'
+const START_EVT = 'questly:start-tour'
 
 export const hasOnboarded = () => localStorage.getItem(KEY) === '1'
 export const markOnboarded = () => localStorage.setItem(KEY, '1')
 export const resetOnboarding = () => localStorage.removeItem(KEY)
+
+// Dispara o tour de qualquer tela. Importante: quem RENDERIZA o tour é o Shell
+// (fora das rotas) — se uma página renderizasse, o tour sumiria ao navegar.
+export function startTour() {
+  resetOnboarding()
+  window.dispatchEvent(new CustomEvent(START_EVT))
+}
+
+export function useTourTrigger(onStart) {
+  useEffect(() => {
+    window.addEventListener(START_EVT, onStart)
+    return () => window.removeEventListener(START_EVT, onStart)
+  }, [onStart])
+}
 
 // Cada passo aponta para um elemento real (data-tour). Sem `target`, o passo
 // aparece centralizado (boas-vindas e instalação).
@@ -107,7 +122,8 @@ export default function Onboarding({ onClose }) {
         }, 380))
         return
       }
-      if (tries++ < 14) timers.current.push(setTimeout(seek, 120))
+      // Paciência: na primeira carga a página ainda pode estar buscando os dados.
+      if (tries++ < 40) timers.current.push(setTimeout(seek, 150))
       else setRect(null) // alvo não existe nesta tela: mostra centralizado
     }
     seek()
