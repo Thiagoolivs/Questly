@@ -28,6 +28,7 @@ export default function BottomNav() {
           key={it.to}
           to={it.to}
           end={it.to === '/'}
+          data-tour={'nav-' + (it.to === '/' ? 'inicio' : it.to.slice(1))}
           className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}
         >
           {it.icon}

@@ -6,6 +6,7 @@ import { getPushState, enablePush, disablePush } from '../utils/push.js'
 import Icon from '../components/Icon.jsx'
 import Avatar from '../components/Avatar.jsx'
 import Onboarding, { resetOnboarding } from '../components/Onboarding.jsx'
+import InstallGuide from '../components/InstallGuide.jsx'
 import { shareInvite } from '../utils/invite.js'
 
 const AVATARS = ['🦊', '🐨', '🐼', '🦁', '🐯', '🐸', '🐵', '🦉', '🔥', '⚡', '🌟', '💜']
@@ -221,7 +222,7 @@ export default function Perfil() {
       <NutritionCard form={form} setForm={setForm} nt={user.nutrition_targets} onSave={saveNutrition} saved={savedN} />
 
       {/* Grupo atual + convite */}
-      <section className="card">
+      <section className="card" data-tour="perfil-convite">
         <div className="card-title">Grupo</div>
         <div className="row between">
           <div>
@@ -312,6 +313,11 @@ export default function Perfil() {
         </section>
       )}
 
+      <section className="card">
+        <div className="card-title">App na tela inicial</div>
+        <InstallGuide />
+      </section>
+
       <button className="btn ghost full icon-btn" onClick={() => { resetOnboarding(); setShowTour(true) }}>
         <Icon name="bulb" size={15} /> Rever o tour do app
       </button>
@@ -334,7 +340,7 @@ function NutritionCard({ form, setForm, nt, onSave, saved }) {
     ['meta_agua_l', 'Água', 'L', est.water_l],
   ]
   return (
-    <section className="card">
+    <section className="card" data-tour="perfil-nutricao">
       <div className="card-title">Metas de nutrição</div>
       <p className="muted xsmall" style={{ marginTop: -4, marginBottom: 10 }}>
         Estimativas com base no seu perfil — <b>não substituem um nutricionista</b>. Ajuste os valores como quiser.
