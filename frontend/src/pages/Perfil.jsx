@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useApp } from '../store.jsx'
 import { pickImage, fileToCompressedDataURL } from '../utils/image.js'
 import { getPushState, enablePush, disablePush } from '../utils/push.js'
+import { forceUpdate } from '../utils/pwa.js'
 import Icon from '../components/Icon.jsx'
 import Avatar from '../components/Avatar.jsx'
 import { startTour } from '../components/Onboarding.jsx'
@@ -320,6 +321,13 @@ export default function Perfil() {
       <button className="btn ghost full icon-btn" onClick={startTour}>
         <Icon name="bulb" size={15} /> Rever o tour do app
       </button>
+
+      <button className="btn ghost full icon-btn" onClick={forceUpdate}>
+        <Icon name="refresh" size={15} /> Buscar atualização do app
+      </button>
+      <div className="muted xsmall" style={{ textAlign: 'center' }}>
+        Use se o app parecer travado numa versão antiga.
+      </div>
 
       <button className="btn full logout-btn icon-btn" onClick={logout}><Icon name="logout" size={15} /> Sair da conta</button>
 

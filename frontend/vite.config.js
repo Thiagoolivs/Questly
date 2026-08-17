@@ -8,6 +8,9 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      // Registramos na mão em src/pwa-update.js (para checar atualização quando
+      // o app volta do segundo plano), então o plugin não injeta o script dele.
+      injectRegister: null,
       includeAssets: ['icon.svg', 'push-handlers.js'],
       // Injeta nossos handlers de push/clique no service worker gerado.
       workbox: { importScripts: ['/push-handlers.js'] },

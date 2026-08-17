@@ -43,6 +43,22 @@ export function isStandalone() {
   )
 }
 
+// Escotilha de emergência: joga fora o service worker e os caches e recarrega.
+// Serve para quando o app instalado ficou preso numa versão antiga.
+export async function forceUpdate() {
+  try {
+    const regs = (await navigator.serviceWorker?.getRegistrations?.()) || []
+    await Promise.all(regs.map((r) => r.unregister()))
+    if (window.caches) {
+      const keys = await caches.keys()
+      await Promise.all(keys.map((k) => caches.delete(k)))
+    }
+  } catch {
+    // se falhar, o reload abaixo já ajuda
+  }
+  window.location.reload()
+}
+
 // Identifica o aparelho/navegador para dar o passo a passo certo.
 export function detectPlatform() {
   const ua = navigator.userAgent || ''
