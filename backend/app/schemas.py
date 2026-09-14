@@ -190,3 +190,91 @@ class SettingsUpdate(BaseModel):
     custom_challenges: Optional[dict] = None
     # Áreas desligadas (nomes de categoria)
     disabled_areas: Optional[list[str]] = None
+
+
+# --- Fase 2: Calendário, Rotinas e Hábitos ---------------------------------
+
+class CalendarActivityCreate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=120)
+    description: Optional[str] = None
+    category: Optional[str] = None
+    start_datetime: Optional[str] = None  # ISO format
+    end_datetime: Optional[str] = None
+    duration_min: Optional[int] = None
+    recurrence_rule: dict = Field(default_factory=dict)
+    reminder_minutes: list[int] = Field(default_factory=list)
+    visibility: Literal["private", "group"] = "private"
+
+
+class CalendarActivityUpdate(BaseModel):
+    title: Optional[str] = Field(None, min_length=1, max_length=120)
+    description: Optional[str] = None
+    category: Optional[str] = None
+    start_datetime: Optional[str] = None
+    end_datetime: Optional[str] = None
+    duration_min: Optional[int] = None
+    recurrence_rule: Optional[dict] = None
+    reminder_minutes: Optional[list[int]] = None
+    visibility: Optional[Literal["private", "group"]] = None
+    status: Optional[Literal["pending", "done", "skipped"]] = None
+
+
+class RoutineStepCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=120)
+    duration_min: Optional[int] = None
+    is_required: bool = True
+    order: int = 0
+
+
+class RoutineCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=80)
+    category: Optional[str] = None
+    frequency: dict = Field(default_factory=dict)
+    time_slot: Optional[str] = None
+    steps: list[RoutineStepCreate] = Field(default_factory=list)
+
+
+class RoutineUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=80)
+    category: Optional[str] = None
+    frequency: Optional[dict] = None
+    time_slot: Optional[str] = None
+    active: Optional[bool] = None
+    order: Optional[int] = None
+
+
+class HabitCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=80)
+    category: Optional[str] = None
+    icon: Optional[str] = None
+    frequency: str = "daily"
+    custom_days: list[int] = Field(default_factory=list)
+    time: Optional[str] = None
+    goal_qty: Optional[float] = None
+    goal_unit: Optional[str] = None
+    reminder_minutes: Optional[int] = None
+
+
+class HabitUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=80)
+    category: Optional[str] = None
+    icon: Optional[str] = None
+    frequency: Optional[str] = None
+    custom_days: Optional[list[int]] = None
+    time: Optional[str] = None
+    goal_qty: Optional[float] = None
+    goal_unit: Optional[str] = None
+    reminder_minutes: Optional[int] = None
+    active: Optional[bool] = None
+
+
+class HabitLogUpdate(BaseModel):
+    date: str
+    completed: Optional[bool] = None
+    value: Optional[float] = None
+
+
+class RoutineLogUpdate(BaseModel):
+    date: str
+    steps_done: Optional[list[int]] = None  # List of step IDs completed
+    completed: Optional[bool] = None

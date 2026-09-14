@@ -241,7 +241,7 @@ def compute_day(settings, entry, d: date) -> dict:
 def nudge(today_cd: dict, my_total: int, partner_total=None, partner_name=None) -> dict:
     """Incentivo/lembrete contextual para o dia de hoje."""
     if today_cd["perfect"]:
-        base = "Dia perfeito! Você fechou tudo hoje. Orgulho! ⭐"
+        base = "Dia perfeito! Você fechou tudo hoje. Orgulho!"
     else:
         parts = []
         pend_areas = today_cd["areas_total"] - today_cd["areas_done"]
@@ -251,17 +251,17 @@ def nudge(today_cd: dict, my_total: int, partner_total=None, partner_name=None) 
         if pend_habits > 0:
             parts.append(f"{pend_habits} hábito(s)")
         base = (
-            "Faltam " + " e ".join(parts) + " pra fechar o dia. Bora! 💪"
-            if parts else "Tudo em ordem por hoje. 👏"
+            "Faltam " + " e ".join(parts) + " pra fechar o dia. Bora!"
+            if parts else "Tudo em ordem por hoje."
         )
 
     if partner_total is not None:
         if partner_total > my_total:
-            base += f" {partner_name or 'Seu par'} tá {partner_total - my_total} pts na frente 👀"
+            base += f" {partner_name or 'Seu par'} tá {partner_total - my_total} pts na frente."
         elif my_total > partner_total:
-            base += " Você tá liderando! 👑"
+            base += " Você tá liderando!"
 
-    return {"emoji": "📣", "text": base}
+    return {"emoji": "", "text": base}
 
 
 def _challenge_window(settings, today: date):

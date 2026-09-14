@@ -89,6 +89,7 @@ from .schemas import (
     ToggleRequest,
     UserUpdate,
 )
+from . import schemas as s, models as m
 
 JOINT_ACTIVITY_POINTS = 20  # pontos por atividade em dupla (para cada membro)
 from .seed import init_db
@@ -1897,6 +1898,121 @@ def state(gid: int, user: User = Depends(get_current_user), db: Session = Depend
         "nutrition": nutrition_payload(db, gid, membership, today, s),
         "ai_enabled": ai.ai_enabled(),
     }
+
+
+# --- rotas: calendário (Fase 2) --------------------------------------------
+@app.get("/api/calendar")
+def list_calendar(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    items = db.query(m.CalendarActivity).filter(m.CalendarActivity.user_id == user.id).all()
+    return {"activities": items}
+
+@app.post("/api/calendar")
+def create_calendar(payload: s.CalendarActivityCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    item = m.CalendarActivity(user_id=user.id, **payload.model_dump(exclude_unset=True))
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return item
+
+@app.put("/api/calendar/{item_id}")
+def update_calendar(item_id: int, payload: s.CalendarActivityUpdate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    item = db.query(m.CalendarActivity).filter(m.CalendarActivity.id == item_id, m.CalendarActivity.user_id == user.id).first()
+    if not item:
+        raise HTTPException(404, "Atividade não encontrada.")
+    for key, value in payload.model_dump(exclude_unset=True).items():
+        setattr(item, key, value)
+    db.commit()
+    db.refresh(item)
+    return item
+
+@app.delete("/api/calendar/{item_id}")
+def delete_calendar(item_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    item = db.query(m.CalendarActivity).filter(m.CalendarActivity.id == item_id, m.CalendarActivity.user_id == user.id).first()
+    if item:
+        db.delete(item)
+        db.commit()
+    return {"ok": True}
+
+# --- rotas: rotinas (Fase 2) -----------------------------------------------
+@app.get("/api/routines")
+def list_routines(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    routines = db.query(m.Routine).filter(m.Routine.user_id == user.id).all()
+    # Pega os steps também
+    out = []
+    for r in routines:
+        steps = db.query(m.RoutineStep).filter(m.RoutineStep.routine_id == r.id).order_by(m.RoutineStep.order).all()
+        r_dict = {c.name: getattr(r, c.name) for c in r.__table__.columns}
+        r_dict["steps"] = [{c.name: getattr(st, c.name) for c in st.__table__.columns} for st in steps]
+        out.append(r_dict)
+    return {"routines": out}
+
+@app.post("/api/routines")
+def create_routine(payload: s.RoutineCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    steps_data = payload.steps
+    data = payload.model_dump(exclude={"steps"}, exclude_unset=True)
+    routine = m.Routine(user_id=user.id, **data)
+    db.add(routine)
+    db.flush()
+    for idx, step_data in enumerate(steps_data):
+        sd = step_data.model_dump()
+        sd["order"] = sd.get("order", idx)
+        db.add(m.RoutineStep(routine_id=routine.id, **sd))
+    db.commit()
+    db.refresh(routine)
+    return routine
+
+@app.put("/api/routines/{routine_id}")
+def update_routine(routine_id: int, payload: s.RoutineUpdate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    routine = db.query(m.Routine).filter(m.Routine.id == routine_id, m.Routine.user_id == user.id).first()
+    if not routine:
+        raise HTTPException(404, "Rotina não encontrada.")
+    for key, value in payload.model_dump(exclude_unset=True).items():
+        setattr(routine, key, value)
+    db.commit()
+    db.refresh(routine)
+    return routine
+
+@app.delete("/api/routines/{routine_id}")
+def delete_routine(routine_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    routine = db.query(m.Routine).filter(m.Routine.id == routine_id, m.Routine.user_id == user.id).first()
+    if routine:
+        db.query(m.RoutineStep).filter(m.RoutineStep.routine_id == routine.id).delete()
+        db.delete(routine)
+        db.commit()
+    return {"ok": True}
+
+# --- rotas: hábitos recorrentes (Fase 2) -----------------------------------
+@app.get("/api/habits")
+def list_habits(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    habits = db.query(m.Habit).filter(m.Habit.user_id == user.id).all()
+    return {"habits": habits}
+
+@app.post("/api/habits")
+def create_habit(payload: s.HabitCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    habit = m.Habit(user_id=user.id, **payload.model_dump(exclude_unset=True))
+    db.add(habit)
+    db.commit()
+    db.refresh(habit)
+    return habit
+
+@app.put("/api/habits/{habit_id}")
+def update_habit(habit_id: int, payload: s.HabitUpdate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    habit = db.query(m.Habit).filter(m.Habit.id == habit_id, m.Habit.user_id == user.id).first()
+    if not habit:
+        raise HTTPException(404, "Hábito não encontrado.")
+    for key, value in payload.model_dump(exclude_unset=True).items():
+        setattr(habit, key, value)
+    db.commit()
+    db.refresh(habit)
+    return habit
+
+@app.delete("/api/habits/{habit_id}")
+def delete_habit(habit_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    habit = db.query(m.Habit).filter(m.Habit.id == habit_id, m.Habit.user_id == user.id).first()
+    if habit:
+        db.delete(habit)
+        db.commit()
+    return {"ok": True}
 
 
 # --- frontend estático (SPA) -----------------------------------------------

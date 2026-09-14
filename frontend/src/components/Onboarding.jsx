@@ -60,9 +60,9 @@ const STEPS = [
     text: 'Escreva o que comeu ("um pão de queijo e um café com leite") ou mande uma foto — a IA estima as calorias. A água você soma de 500 em 500 ml.',
   },
   {
-    target: 'nav-tarefas',
-    title: 'Tarefas agendadas',
-    text: 'Aqui ficam os compromissos com data e horário — consulta, treino, aniversário. Toque em "Nova tarefa" para criar.',
+    target: 'nav-plano',
+    title: 'Seu Planejamento',
+    text: 'Aqui fica o seu calendário e tarefas agendadas — consultas, treinos, aniversários. Planeje o seu mês na aba Plano.',
   },
   {
     target: 'perfil-nutricao',

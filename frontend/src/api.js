@@ -106,4 +106,17 @@ export const api = {
   updateMeal: (g, id, b) => req(`/api/groups/${g}/meals/${id}`, { method: 'PATCH', body: b }),
   deleteMeal: (g, id) => req(`/api/groups/${g}/meals/${id}`, { method: 'DELETE' }),
   addWater: (g, b) => req(`/api/groups/${g}/water`, { method: 'POST', body: b }),
+  // --- calendar, routines, habits (Fase 2) ---
+  calendar: () => req('/api/calendar'),
+  createCalendarActivity: (b) => req('/api/calendar', { method: 'POST', body: b }),
+  updateCalendarActivity: (id, b) => req(`/api/calendar/${id}`, { method: 'PUT', body: b }),
+  deleteCalendarActivity: (id) => req(`/api/calendar/${id}`, { method: 'DELETE' }),
+  routines: () => req('/api/routines'),
+  createRoutine: (b) => req('/api/routines', { method: 'POST', body: b }),
+  updateRoutine: (id, b) => req(`/api/routines/${id}`, { method: 'PUT', body: b }),
+  deleteRoutine: (id) => req(`/api/routines/${id}`, { method: 'DELETE' }),
+  habits: () => req('/api/habits'),
+  createHabit: (b) => req('/api/habits', { method: 'POST', body: b }),
+  updateHabit: (id, b) => req(`/api/habits/${id}`, { method: 'PUT', body: b }),
+  deleteHabit: (id) => req(`/api/habits/${id}`, { method: 'DELETE' }),
 }

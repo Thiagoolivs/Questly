@@ -6,11 +6,14 @@ import Onboarding, { hasOnboarded, useTourTrigger } from './components/Onboardin
 import { captureInviteFromUrl } from './utils/invite.js'
 import Auth from './pages/Auth.jsx'
 import Grupos from './pages/Grupos.jsx'
-import Home from './pages/Home.jsx'
-import Tarefas from './pages/Tarefas.jsx'
+import MeuDia from './pages/MeuDia.jsx'
+import Plano from './pages/Plano.jsx'
+import Grupo from './pages/Grupo.jsx'
 import Feed from './pages/Feed.jsx'
-import Chat from './pages/Chat.jsx'
 import Perfil from './pages/Perfil.jsx'
+// Sub-pages (acessíveis pelo Plano e Grupo, fora da bottom nav)
+import Tarefas from './pages/Tarefas.jsx'
+import Chat from './pages/Chat.jsx'
 import Historico from './pages/Historico.jsx'
 import Mural from './pages/Mural.jsx'
 import Conquistas from './pages/Conquistas.jsx'
@@ -52,11 +55,15 @@ function Shell() {
       <div className="app-shell">
         <main className="content">
           <Routes>
-            <Route path="/" element={<Home />} />
-            <Route path="/tarefas" element={<Tarefas />} />
+            {/* 5 abas principais */}
+            <Route path="/" element={<MeuDia />} />
+            <Route path="/plano" element={<Plano />} />
+            <Route path="/grupo" element={<Grupo />} />
             <Route path="/feed" element={<Feed />} />
-            <Route path="/chat" element={<Chat />} />
             <Route path="/perfil" element={<Perfil />} />
+            {/* Sub-páginas (acessíveis por links, fora da bottom nav) */}
+            <Route path="/tarefas" element={<Tarefas />} />
+            <Route path="/chat" element={<Chat />} />
             <Route path="/historico" element={<Historico />} />
             <Route path="/mural" element={<Mural />} />
             <Route path="/conquistas" element={<Conquistas />} />

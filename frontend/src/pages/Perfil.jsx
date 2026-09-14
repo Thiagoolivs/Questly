@@ -145,12 +145,12 @@ export default function Perfil() {
   const s = me?.stats
   const stats = s
     ? [
-        { label: 'Dias concluídos', value: s.completed_days, emoji: '✅' },
-        { label: 'Sequência atual', value: s.streak, emoji: '🔥' },
-        { label: 'Melhor sequência', value: s.best_streak, emoji: '🏅' },
-        { label: 'Dias perfeitos', value: s.perfect_days, emoji: '⭐' },
-        { label: 'Pontos totais', value: s.total, emoji: '💎' },
-        { label: 'Conclusão', value: s.completion_pct + '%', emoji: '📈' },
+        { label: 'Dias concluídos', value: s.completed_days, icon: 'check' },
+        { label: 'Sequência atual', value: s.streak, icon: 'flame' },
+        { label: 'Melhor sequência', value: s.best_streak, icon: 'trophy' },
+        { label: 'Dias perfeitos', value: s.perfect_days, icon: 'star' },
+        { label: 'Pontos totais', value: s.total, icon: 'target' },
+        { label: 'Conclusão', value: s.completion_pct + '%', icon: 'activity' },
       ]
     : []
 
@@ -305,6 +305,7 @@ export default function Perfil() {
           <div className="stat-grid">
             {stats.map((st) => (
               <div className="stat-box" key={st.label}>
+                <div className="stat-emoji"><Icon name={st.icon} size={18} /></div>
                 <div className="stat-value">{st.value}</div>
                 <div className="muted xsmall">{st.label}</div>
               </div>

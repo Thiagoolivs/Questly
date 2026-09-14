@@ -25,7 +25,7 @@ export default function Tarefas() {
   const [busy, setBusy] = useState(false)
   const [zoom, setZoom] = useState(null)
   const [show, setShow] = useState(false)
-  const [form, setForm] = useState({ emoji: '🗓️', icon: null, title: '', kind: 'once', date: '', time: '', weekdays: [] })
+  const [form, setForm] = useState({ icon: 'calendar', title: '', kind: 'once', date: '', time: '', weekdays: [] })
 
   const load = useCallback(() => {
     if (!groupId) return
@@ -73,14 +73,13 @@ export default function Tarefas() {
     run(async () => {
       await api.createTask(groupId, {
         title: form.title.trim(),
-        emoji: form.emoji || '🗓️',
-        icon: form.icon,
+        icon: form.icon || 'calendar',
         kind: form.kind,
         date: form.kind === 'once' ? form.date : null,
         time: form.time || null,
         weekdays: form.kind === 'weekly' ? form.weekdays : [],
       })
-      setForm({ emoji: '🗓️', icon: null, title: '', kind: 'once', date: '', time: '', weekdays: [] })
+      setForm({ icon: 'calendar', title: '', kind: 'once', date: '', time: '', weekdays: [] })
       setShow(false)
     })
   }
@@ -93,7 +92,7 @@ export default function Tarefas() {
   const TaskRow = ({ t, canComplete }) => (
     <div className={'habit-row ' + (t.checked_today ? 'done' : '')}>
       <div className="habit habit-toggle" onClick={canComplete ? () => toggle(t.id) : undefined} style={{ cursor: canComplete ? 'pointer' : 'default' }}>
-        <span className="habit-emoji">{t.icon ? <Icon name={t.icon} size={17} /> : t.emoji}</span>
+        <span className="habit-emoji"><Icon name={t.icon || 'calendar'} size={17} /></span>
         <span className="habit-main-col">
           <span className="habit-label">{t.title}</span>
           <span className="muted xsmall">{taskWhen(t)}</span>
@@ -122,7 +121,7 @@ export default function Tarefas() {
         <section className="card">
           <div className="card-title">Nova tarefa</div>
           <div className="add-habit">
-            <IconPicker emoji={form.emoji} icon={form.icon} onPick={({ emoji, icon }) => setForm({ ...form, emoji: emoji || '🗓️', icon })} />
+            <IconPicker icon={form.icon} onPick={({ icon }) => setForm({ ...form, icon })} />
             <input className="add-habit-label" placeholder="Ex: Consulta médica / Treino especial" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
           </div>
           <div className="chips">

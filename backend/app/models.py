@@ -322,3 +322,109 @@ class PasswordReset(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime)
     used: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class CalendarActivity(Base):
+    """Atividade agendada pelo usuário na sua agenda pessoal."""
+    __tablename__ = "calendar_activities"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    group_id: Mapped[Optional[int]] = mapped_column(ForeignKey("groups.id"), nullable=True, index=True)
+    title: Mapped[str] = mapped_column(String(120))
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    category: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+    start_datetime: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    end_datetime: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    duration_min: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    recurrence_rule: Mapped[dict] = mapped_column(JSON, default=dict)
+    reminder_minutes: Mapped[list] = mapped_column(JSON, default=list)
+    visibility: Mapped[str] = mapped_column(String(10), default="private")  # private | group
+    status: Mapped[str] = mapped_column(String(10), default="pending")  # pending | done | skipped
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class Routine(Base):
+    """Rotina = conjunto nomeado de passos/hábitos."""
+    __tablename__ = "routines"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    name: Mapped[str] = mapped_column(String(80))
+    category: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+    frequency: Mapped[dict] = mapped_column(JSON, default=dict)
+    time_slot: Mapped[Optional[str]] = mapped_column(String(20), nullable=True) # morning, afternoon, evening, etc
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class RoutineStep(Base):
+    """Passo individual dentro de uma rotina."""
+    __tablename__ = "routine_steps"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    routine_id: Mapped[int] = mapped_column(ForeignKey("routines.id"), index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    order: Mapped[int] = mapped_column(Integer, default=0)
+    duration_min: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    is_required: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class Habit(Base):
+    """Hábito recorrente do usuário (diferente de rotina)."""
+    __tablename__ = "habits"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    name: Mapped[str] = mapped_column(String(80))
+    category: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+    icon: Mapped[Optional[str]] = mapped_column(String(24), nullable=True)
+    frequency: Mapped[str] = mapped_column(String(20), default="daily") # daily | weekdays | custom
+    custom_days: Mapped[list] = mapped_column(JSON, default=list)
+    time: Mapped[Optional[str]] = mapped_column(String(5), nullable=True)
+    goal_qty: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    goal_unit: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    reminder_minutes: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class HabitLog(Base):
+    """Registro de conclusão de um hábito num dia."""
+    __tablename__ = "habit_logs"
+    __table_args__ = (UniqueConstraint("habit_id", "date", name="uq_habit_date"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    habit_id: Mapped[int] = mapped_column(ForeignKey("habits.id"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    date: Mapped[date] = mapped_column(Date, index=True)
+    completed: Mapped[bool] = mapped_column(Boolean, default=False)
+    value: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class RoutineLog(Base):
+    """Registro de execução de uma rotina num dia."""
+    __tablename__ = "routine_logs"
+    __table_args__ = (UniqueConstraint("routine_id", "date", name="uq_routine_date"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    routine_id: Mapped[int] = mapped_column(ForeignKey("routines.id"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    date: Mapped[date] = mapped_column(Date, index=True)
+    steps_done: Mapped[list] = mapped_column(JSON, default=list) # IDs dos passos concluídos
+    completed: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class ActivityLinkedRoutine(Base):
+    """Vincula uma rotina a uma atividade (antes/depois)."""
+    __tablename__ = "activity_linked_routines"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    activity_id: Mapped[int] = mapped_column(ForeignKey("calendar_activities.id"), index=True)
+    routine_id: Mapped[int] = mapped_column(ForeignKey("routines.id"), index=True)
+    timing: Mapped[str] = mapped_column(String(10), default="before") # before | after
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

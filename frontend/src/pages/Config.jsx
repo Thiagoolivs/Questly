@@ -35,7 +35,7 @@ export default function Config() {
   const [s, setS] = useState(null)
   const [menu, setMenu] = useState([])
   const [selected, setSelected] = useState(new Set())
-  const [newHabit, setNewHabit] = useState({ emoji: '✅', icon: null, label: '' })
+  const [newHabit, setNewHabit] = useState({ icon: 'check', label: '' })
   const [saved, setSaved] = useState(false)
   const [err, setErr] = useState(null)
   const [genBusy, setGenBusy] = useState(false)
@@ -76,10 +76,10 @@ export default function Config() {
     let key = slug(label) || 'habito'
     const keys = new Set(menu.map((h) => h.key))
     while (keys.has(key)) key += '_' + Math.floor(Math.random() * 1000)
-    const h = { key, label, emoji: (newHabit.emoji || '✅').trim() || '✅', icon: newHabit.icon || null, category: 'Personalizado' }
+    const h = { key, label, icon: newHabit.icon || 'check', category: 'Personalizado' }
     setMenu([...menu, h])
     setSelected(new Set([...selected, key]))
-    setNewHabit({ emoji: '✅', icon: null, label: '' })
+    setNewHabit({ icon: 'check', label: '' })
   }
 
   async function save() {
@@ -241,9 +241,8 @@ export default function Config() {
 
         <div className="add-habit">
           <IconPicker
-            emoji={newHabit.emoji}
             icon={newHabit.icon}
-            onPick={({ emoji, icon }) => setNewHabit({ ...newHabit, emoji: emoji || '✅', icon })}
+            onPick={({ icon }) => setNewHabit({ ...newHabit, icon })}
           />
           <input
             className="add-habit-label"

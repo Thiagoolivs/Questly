@@ -11,3 +11,5 @@ psycopg[binary]==3.2.1
 # IA (desafios + contador de calorias). Opcionais: usados se a chave existir.
 groq==0.13.0
 openai>=1.40,<2
+
+alembic==1.13.2
