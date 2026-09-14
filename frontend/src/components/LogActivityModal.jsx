@@ -1,9 +1,8 @@
-import { useState, useRef } from 'react'
+import { useState } from 'react'
 import { api } from '../api.js'
 import { useApp } from '../store.jsx'
 import Icon from './Icon.jsx'
-import format from 'date-fns/format'
-import ImageUpload from './ImageUpload.jsx'
+import { pickImage, fileToCompressedDataURL } from '../utils/image.js'
 
 const MODALITIES = [
   { id: 'corrida', label: 'Corrida', emoji: '🏃', fields: ['distance', 'duration', 'intensity'] },
@@ -16,7 +15,12 @@ const MODALITIES = [
 export default function LogActivityModal({ onClose, onSuccess }) {
   const { currentGroup, refreshFeed } = useApp()
   const [modality, setModality] = useState(MODALITIES[0].id)
-  const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'))
+  
+  // yyyy-mm-dd
+  const [date, setDate] = useState(() => {
+    const d = new Date()
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  })
   const [distance, setDistance] = useState('')
   const [duration, setDuration] = useState('')
   const [intensity, setIntensity] = useState('moderado')
@@ -26,6 +30,13 @@ export default function LogActivityModal({ onClose, onSuccess }) {
   const [err, setErr] = useState('')
 
   const activeModality = MODALITIES.find((m) => m.id === modality)
+
+  async function handlePickImage() {
+    const f = await pickImage()
+    if (!f) return
+    const compressed = await fileToCompressedDataURL(f)
+    setProofImage(compressed)
+  }
 
   async function submit(e) {
     e.preventDefault()
@@ -123,7 +134,17 @@ export default function LogActivityModal({ onClose, onSuccess }) {
 
           <label className="field">
             <span>Foto da Atividade (opcional)</span>
-            <ImageUpload value={proofImage} onChange={setProofImage} compress />
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+              {proofImage && <img src={proofImage} alt="Preview" style={{ width: 60, height: 60, objectFit: 'cover', borderRadius: 8 }} />}
+              <button type="button" className="btn ghost" onClick={handlePickImage}>
+                <Icon name="image" size={16} /> Escolher Foto
+              </button>
+              {proofImage && (
+                <button type="button" className="btn ghost icon-btn" onClick={() => setProofImage(null)}>
+                  <Icon name="x" size={16} />
+                </button>
+              )}
+            </div>
           </label>
 
           {err && <div className="err-msg">{err}</div>}
