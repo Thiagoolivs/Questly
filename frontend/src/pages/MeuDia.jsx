@@ -48,7 +48,7 @@ function WeekStrip({ selectedDate, onDateSelect }) {
 }
 
 export default function MeuDia() {
-  const { state, me, groupId, refresh, loading, error } = useApp()
+  const { state, me, user, refresh, loading, error } = useApp()
   const [busy, setBusy] = useState(false)
   const [selectedDate, setSelectedDate] = useState(new Date())
 
@@ -58,9 +58,8 @@ export default function MeuDia() {
   const [events, setEvents] = useState([])
 
   useEffect(() => {
-    if (!groupId) return
     loadDayData()
-  }, [groupId, selectedDate])
+  }, [selectedDate])
 
   async function loadDayData() {
     setBusy(true)
@@ -82,7 +81,7 @@ export default function MeuDia() {
 
   if (loading) return <div className="screen center muted">Carregando…</div>
   if (error) return <div className="screen center"><p className="error">Erro ao carregar</p><button className="btn" onClick={refresh}>Tentar de novo</button></div>
-  if (!state || !me) return <div className="screen center muted">Sem dados.</div>
+  if (!user) return <div className="screen center muted">Sem dados do usuário.</div>
 
   const dateStr = selectedDate.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'short' })
 
@@ -105,13 +104,13 @@ export default function MeuDia() {
     <div className="screen">
       <header className="topbar" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div>
-          <div className="brand">{state.group?.name || 'Questly'}</div>
+          <div className="brand">{state?.group?.name || 'Questly'}</div>
           <div className="muted small" style={{ textTransform: 'capitalize' }}>{dateStr}</div>
         </div>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-          <div className="streak-chip" title="Sequência atual"><Icon name="flame" size={15} /> {me.stats?.streak || 0}</div>
+          <div className="streak-chip" title="Sequência atual"><Icon name="flame" size={15} /> {me?.stats?.streak || 0}</div>
           <Link to="/perfil">
-            <Avatar user={me.user} size={36} />
+            <Avatar user={user} size={36} />
           </Link>
         </div>
       </header>
