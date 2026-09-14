@@ -51,18 +51,18 @@ export default function Grupo() {
           
           <div className="ranking-list">
             {rankingData.ranking.map((r, i) => (
-              <div key={r.user_id} className="ranking-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
+              <div key={r.id} className="ranking-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <div className="rank-pos" style={{ fontWeight: 'bold', fontSize: '1.2rem', width: 24 }}>#{i+1}</div>
                   <div>
-                    <div style={{ fontWeight: 600 }}>{r.name} <span className="muted xsmall">Lvl {r.level}</span></div>
+                    <div style={{ fontWeight: 600 }}>{r.name} <span className="muted xsmall">🔥 {r.stats?.streak || 0} dias</span></div>
                     <div className="muted xsmall">
-                      🔥 Esforço: {r.effort_score} | 🗓️ Hábito: {r.consistency_score}
+                      Dias Concluídos: {r.stats?.completed_days || 0} | Perfeitos: {r.stats?.perfect_days || 0}
                     </div>
                   </div>
                 </div>
                 <div style={{ fontWeight: 'bold', color: 'var(--primary)' }}>
-                  {r.total_score} pts
+                  {r.stats?.total || 0} pts
                 </div>
               </div>
             ))}
