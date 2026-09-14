@@ -59,6 +59,11 @@ export const api = {
   resetPassword: (b) => req('/api/auth/reset-password', { method: 'POST', body: b, auth: false }),
   me: () => req('/api/auth/me'),
   updateMe: (b) => req('/api/users/me', { method: 'PUT', body: b }),
+  // --- placeholders para fase 2/3 incompletas ---
+  routines: () => Promise.resolve([]),
+  habits: () => Promise.resolve([]),
+  calendar: () => Promise.resolve([]),
+  updateHabit: (id, b) => Promise.resolve({ id, ...b }),
   // --- grupos ---
   groups: () => req('/api/groups'),
   createGroup: (b) => req('/api/groups', { method: 'POST', body: b }),
