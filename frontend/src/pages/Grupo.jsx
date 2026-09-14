@@ -4,6 +4,7 @@ import { useApp } from '../store.jsx'
 import { api } from '../api.js'
 import PlayerSwitch from '../components/PlayerSwitch.jsx'
 import Icon from '../components/Icon.jsx'
+import Grupos from './Grupos.jsx'
 
 /**
  * Grupo — Ranking e Visão Geral (Fase 3).
@@ -30,6 +31,10 @@ export default function Grupo() {
     } finally {
       setBusy(false)
     }
+  }
+
+  if (!group?.id) {
+    return <Grupos />
   }
 
   return (

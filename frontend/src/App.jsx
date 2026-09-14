@@ -30,12 +30,11 @@ export default function App() {
   )
 }
 
-// Decide o que mostrar conforme a sessão: login → escolha de grupo → app.
+// Decide o que mostrar conforme a sessão: login → app.
 function Gate() {
-  const { booting, token, groupId } = useApp()
+  const { booting, token } = useApp()
   if (booting) return <div className="screen center muted">Carregando…</div>
   if (!token) return <Auth />
-  if (!groupId) return <Grupos />
   return <Shell />
 }
 
