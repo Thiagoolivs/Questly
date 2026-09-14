@@ -66,6 +66,7 @@ class Group(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(80))
     invite_code: Mapped[str] = mapped_column(String(12), unique=True, index=True)
+    group_type: Mapped[str] = mapped_column(String(16), default="group")  # 'individual' | 'couple' | 'group'
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     memberships: Mapped[list["Membership"]] = relationship(
@@ -428,3 +429,51 @@ class ActivityLinkedRoutine(Base):
     routine_id: Mapped[int] = mapped_column(ForeignKey("routines.id"), index=True)
     timing: Mapped[str] = mapped_column(String(10), default="before") # before | after
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class ActivityRecord(Base):
+    """Registro de atividade realizada com parâmetros estruturados."""
+    __tablename__ = "activity_records"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    group_id: Mapped[Optional[int]] = mapped_column(ForeignKey("groups.id"), nullable=True, index=True)
+    date: Mapped[date] = mapped_column(Date, index=True)
+    modality: Mapped[str] = mapped_column(String(40))
+    category: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+    params: Mapped[dict] = mapped_column(JSON, default=dict)
+    effort_score: Mapped[float] = mapped_column(Float, default=0.0)
+    xp_earned: Mapped[int] = mapped_column(Integer, default=0)
+    score_earned: Mapped[int] = mapped_column(Integer, default=0)
+    proof_image: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class UserProgress(Base):
+    """Progresso pessoal acumulado (XP + métricas)."""
+    __tablename__ = "user_progress"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), unique=True, index=True)
+    total_xp: Mapped[int] = mapped_column(Integer, default=0)
+    level: Mapped[int] = mapped_column(Integer, default=1)
+    effort_total: Mapped[float] = mapped_column(Float, default=0.0)
+    consistency_total: Mapped[float] = mapped_column(Float, default=0.0)
+    challenges_total: Mapped[int] = mapped_column(Integer, default=0)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class CompetitiveScore(Base):
+    """Score competitivo dentro de um grupo (ranking)."""
+    __tablename__ = "competitive_scores"
+    __table_args__ = (UniqueConstraint("membership_id", "period_start", "period_end", name="uq_member_period"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    membership_id: Mapped[int] = mapped_column(ForeignKey("memberships.id"), index=True)
+    period_start: Mapped[date] = mapped_column(Date, index=True)
+    period_end: Mapped[date] = mapped_column(Date, index=True)
+    effort_score: Mapped[float] = mapped_column(Float, default=0.0)
+    consistency_score: Mapped[float] = mapped_column(Float, default=0.0)
+    challenge_score: Mapped[float] = mapped_column(Float, default=0.0)
+    total_score: Mapped[float] = mapped_column(Float, default=0.0)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

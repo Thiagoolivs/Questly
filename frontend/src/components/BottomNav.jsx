@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import Icon from './Icon.jsx'
+import LogActivityModal from './LogActivityModal.jsx'
 
 const itemsLeft = [
   {
@@ -30,6 +31,7 @@ const itemsRight = [
 
 export default function BottomNav() {
   const [showFabMenu, setShowFabMenu] = useState(false)
+  const [showLogActivity, setShowLogActivity] = useState(false)
 
   return (
     <>
@@ -82,9 +84,17 @@ export default function BottomNav() {
                 <div className="fab-icon-wrap"><Icon name="check-circle" size={20} /></div>
                 <span>Novo Hábito</span>
               </button>
+              <button className="fab-option" onClick={() => { setShowFabMenu(false); setShowLogActivity(true); }}>
+                <div className="fab-icon-wrap"><Icon name="activity" size={20} /></div>
+                <span>Registrar Atividade</span>
+              </button>
             </div>
           </div>
         </div>
+      )}
+
+      {showLogActivity && (
+        <LogActivityModal onClose={() => setShowLogActivity(false)} />
       )}
     </>
   )

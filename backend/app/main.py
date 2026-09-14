@@ -19,6 +19,7 @@ from . import ai
 from . import mailer
 from . import nutrition
 from . import scoring
+from . import scoring_v2
 from .auth import (
     create_token,
     generate_invite_code,
@@ -783,7 +784,7 @@ def create_group(payload: GroupCreate, user: User = Depends(get_current_user), d
     code = generate_invite_code()
     while db.query(Group).filter(Group.invite_code == code).first():
         code = generate_invite_code()
-    group = Group(name=payload.name.strip(), invite_code=code)
+    group = Group(name=payload.name.strip(), invite_code=code, group_type=payload.group_type)
     db.add(group)
     db.flush()
     db.add(Settings(group_id=group.id, start_date=date.today(), duration_days=30, fixed_habits=DEFAULT_HABITS))
@@ -1118,6 +1119,8 @@ def list_joint(gid: int, day: str | None = None, user: User = Depends(get_curren
 def create_joint(gid: int, payload: JointActivityCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     validate_image(payload.image)
     membership = get_membership(db, user, gid)
+    if membership.group.group_type != "couple":
+        raise HTTPException(400, "Atividades em dupla só estão disponíveis para grupos do tipo Casal.")
     s = get_group_settings(db, gid)
     today = today_of(s)
     d = parse_date(payload.date, today)
@@ -1597,7 +1600,132 @@ def create_message(gid: int, payload: MessageCreate, user: User = Depends(get_cu
     return serialize_message(m, {membership.id: membership})
 
 
-# --- rotas: grupo (feed de atividades) -------------------------------------
+@app.post("/api/groups/{gid}/activity-record")
+def create_activity_record(gid: int, payload: s.ActivityRecordCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    membership = get_membership(db, user, gid)
+    
+    # Validações e conversões de datas
+    s_obj = get_group_settings(db, gid)
+    today = today_of(s_obj)
+    d = parse_date(payload.date, today)
+    ensure_today(d, today)
+
+    if payload.proof_image:
+        validate_image(payload.proof_image)
+
+    # Computar esforço (scoring_v2)
+    effort = scoring_v2.compute_effort_score(payload.params, payload.modality)
+    
+    # Criar registro
+    ar = m.ActivityRecord(
+        user_id=user.id,
+        group_id=gid,
+        date=d,
+        modality=payload.modality,
+        category=payload.category,
+        params=payload.params,
+        effort_score=effort,
+        xp_earned=int(effort * 10), # 1 ponto = 10 XP (exemplo simples)
+        score_earned=int(effort),
+        proof_image=payload.proof_image
+    )
+    db.add(ar)
+    
+    # Atualizar UserProgress
+    up = db.query(m.UserProgress).filter(m.UserProgress.user_id == user.id).first()
+    if not up:
+        up = m.UserProgress(user_id=user.id)
+        db.add(up)
+    up.total_xp += ar.xp_earned
+    up.effort_total += ar.effort_score
+    # lógica simplista para level (cada 1000 XP = 1 lvl)
+    up.level = max(1, up.total_xp // 1000 + 1)
+    
+    # Atualizar CompetitiveScore (simplificado, para o período atual: mês inteiro)
+    period_start = d.replace(day=1)
+    
+    # workaround para último dia do mês
+    import calendar
+    _, last_day = calendar.monthrange(d.year, d.month)
+    period_end = d.replace(day=last_day)
+    
+    cs = db.query(m.CompetitiveScore).filter(
+        m.CompetitiveScore.membership_id == membership.id,
+        m.CompetitiveScore.period_start == period_start,
+        m.CompetitiveScore.period_end == period_end
+    ).first()
+    
+    if not cs:
+        cs = m.CompetitiveScore(
+            membership_id=membership.id,
+            period_start=period_start,
+            period_end=period_end
+        )
+        db.add(cs)
+        
+    cs.effort_score += ar.effort_score
+    cs.total_score = cs.effort_score + cs.consistency_score + cs.challenge_score
+    
+    db.commit()
+    db.refresh(ar)
+    
+    # Registrar no feed geral do grupo
+    text = f"{membership.user.name} registrou {payload.modality}! (+{ar.score_earned} pts)"
+    emoji = "🏃" if "corrida" in payload.modality.lower() else "💪"
+    upsert_activity(db, gid, membership, "record", emoji, text, ref=f"record:{ar.id}", image=ar.proof_image, day=d)
+    
+    return {
+        "id": ar.id,
+        "modality": ar.modality,
+        "effort_score": ar.effort_score,
+        "xp_earned": ar.xp_earned
+    }
+
+
+# --- rotas: grupo (ranking e feed) -------------------------------------
+@app.get("/api/groups/{gid}/ranking")
+def get_ranking(gid: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    membership = get_membership(db, user, gid)
+    
+    # Período atual (mês simplificado)
+    today = date.today()
+    period_start = today.replace(day=1)
+    
+    import calendar
+    _, last_day = calendar.monthrange(today.year, today.month)
+    period_end = today.replace(day=last_day)
+    
+    # Membros do grupo
+    members = group_members(db, gid)
+    
+    ranking = []
+    for m_obj in members:
+        # Pega o score competitivo do período
+        cs = db.query(m.CompetitiveScore).filter(
+            m.CompetitiveScore.membership_id == m_obj.id,
+            m.CompetitiveScore.period_start == period_start,
+            m.CompetitiveScore.period_end == period_end
+        ).first()
+        
+        # Pega o user progress (para Level)
+        up = db.query(m.UserProgress).filter(m.UserProgress.user_id == m_obj.user_id).first()
+        level = up.level if up else 1
+        
+        ranking.append({
+            "membership_id": m_obj.id,
+            "user_id": m_obj.user.id,
+            "name": m_obj.user.name,
+            "level": level,
+            "effort_score": cs.effort_score if cs else 0,
+            "consistency_score": cs.consistency_score if cs else 0,
+            "challenge_score": cs.challenge_score if cs else 0,
+            "total_score": cs.total_score if cs else 0,
+        })
+        
+    ranking.sort(key=lambda x: x["total_score"], reverse=True)
+    return {"period": f"{period_start.strftime('%B %Y')}", "ranking": ranking}
+
+
 @app.get("/api/groups/{gid}/activities")
 def list_activities(gid: int, limit: int = 40, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     me = get_membership(db, user, gid)

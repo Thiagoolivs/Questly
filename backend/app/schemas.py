@@ -53,6 +53,7 @@ class UserUpdate(BaseModel):
 # --- grupos ----------------------------------------------------------------
 class GroupCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=80)
+    group_type: Literal["individual", "couple", "group"] = "group"
 
 
 class GroupJoin(BaseModel):
@@ -278,3 +279,47 @@ class RoutineLogUpdate(BaseModel):
     date: str
     steps_done: Optional[list[int]] = None  # List of step IDs completed
     completed: Optional[bool] = None
+
+
+# --- Fase 3: Scoring V2 e Atividades ---------------------------------------
+
+class ActivityRecordCreate(BaseModel):
+    date: str
+    modality: str = Field(..., max_length=40)
+    category: Optional[str] = None
+    params: dict = Field(default_factory=dict)
+    proof_image: Optional[str] = None
+
+
+class ActivityRecordResponse(BaseModel):
+    id: int
+    user_id: int
+    group_id: Optional[int]
+    date: str
+    modality: str
+    category: Optional[str]
+    params: dict
+    effort_score: float
+    xp_earned: int
+    score_earned: int
+    proof_image: Optional[str]
+
+
+class UserProgressResponse(BaseModel):
+    id: int
+    user_id: int
+    total_xp: int
+    level: int
+    effort_total: float
+    consistency_total: float
+    challenges_total: int
+
+
+class CompetitiveScoreResponse(BaseModel):
+    membership_id: int
+    period_start: str
+    period_end: str
+    effort_score: float
+    consistency_score: float
+    challenge_score: float
+    total_score: float

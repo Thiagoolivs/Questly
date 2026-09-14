@@ -89,6 +89,7 @@ export const api = {
   messages: (g, afterId = 0) => req(`/api/groups/${g}/messages${afterId ? `?after_id=${afterId}` : ''}`),
   sendMessage: (g, b) => req(`/api/groups/${g}/messages`, { method: 'POST', body: b }),
   activities: (g) => req(`/api/groups/${g}/activities`),
+  createActivityRecord: (g, b) => req(`/api/groups/${g}/activity-record`, { method: 'POST', body: b }),
   reactActivity: (g, aid, b) => req(`/api/groups/${g}/activities/${aid}/react`, { method: 'POST', body: b }),
   radar: (g) => req(`/api/groups/${g}/radar`),
   gallery: (g) => req(`/api/groups/${g}/gallery`),

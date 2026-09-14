@@ -11,6 +11,7 @@ export default function Grupos() {
   const invite = pendingInvite()
   const [tab, setTab] = useState(invite ? 'join' : 'create') // create | join
   const [name, setName] = useState('')
+  const [groupType, setGroupType] = useState('group') // 'individual' | 'couple' | 'group'
   const [code, setCode] = useState(invite || '')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(null)
@@ -33,7 +34,7 @@ export default function Grupos() {
     }
   }
 
-  const create = () => run(() => api.createGroup({ name: name.trim() }))
+  const create = () => run(() => api.createGroup({ name: name.trim(), group_type: groupType }))
   const join = (c) => run(() => api.joinGroup({ invite_code: (c || code).trim() }))
 
   // Veio por link de convite: entra automaticamente no grupo.
@@ -98,7 +99,15 @@ export default function Grupos() {
         {tab === 'create' ? (
           <>
             <label className="field">
-              <span>Nome do grupo</span>
+              <span>Tipo de perfil</span>
+              <select value={groupType} onChange={(e) => setGroupType(e.target.value)}>
+                <option value="individual">Apenas eu (Individual)</option>
+                <option value="couple">Casal (Atividades em dupla)</option>
+                <option value="group">Grupo de amigos / accountability</option>
+              </select>
+            </label>
+            <label className="field">
+              <span>Nome do grupo/perfil</span>
               <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex: Família 💜" />
             </label>
             <button className="btn full btn-primary" disabled={busy || !name.trim()} onClick={create}>
