@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import { useApp } from '../store.jsx'
 import { api } from '../api.js'
 import Icon from '../components/Icon.jsx'
@@ -102,12 +103,17 @@ export default function MeuDia() {
 
   return (
     <div className="screen">
-      <header className="topbar">
+      <header className="topbar" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div>
           <div className="brand">{state.group?.name || 'Questly'}</div>
           <div className="muted small" style={{ textTransform: 'capitalize' }}>{dateStr}</div>
         </div>
-        <div className="streak-chip" title="Sequência atual"><Icon name="flame" size={15} /> {me.stats.streak}</div>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+          <div className="streak-chip" title="Sequência atual"><Icon name="flame" size={15} /> {me.stats?.streak || 0}</div>
+          <Link to="/perfil">
+            <Avatar user={me.user} size={36} />
+          </Link>
+        </div>
       </header>
 
       <WeekStrip selectedDate={selectedDate} onDateSelect={setSelectedDate} />
