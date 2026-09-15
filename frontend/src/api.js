@@ -123,6 +123,15 @@ export const api = {
   // --- Meu Dia: agenda + rotinas + hábitos do dia numa chamada (Fase 4) ---
   today: (day) => req(`/api/today${qs(day)}`),
   modalities: () => req('/api/modalities'),
+  // --- treino com IA (Fase 5) ---
+  trainingPlans: () => req('/api/training/plans'),
+  trainingPlan: (id) => req(`/api/training/plans/${id}`),
+  createTrainingPlan: (b) => req('/api/training/plans', { method: 'POST', body: b }),
+  adaptTrainingPlan: (id, b) => req(`/api/training/plans/${id}/adapt`, { method: 'POST', body: b }),
+  deleteTrainingPlan: (id) => req(`/api/training/plans/${id}`, { method: 'DELETE' }),
+  toggleTrainingItem: (sid, b) => req(`/api/training/sessions/${sid}/item`, { method: 'POST', body: b }),
+  updateTrainingSession: (sid, b) => req(`/api/training/sessions/${sid}`, { method: 'PUT', body: b }),
+  createRoutineWithAI: (b) => req('/api/routines/ai', { method: 'POST', body: b }),
   logHabit: (id, b = {}) => req(`/api/habits/${id}/log`, { method: 'POST', body: b }),
   logRoutineStep: (id, b) => req(`/api/routines/${id}/log`, { method: 'POST', body: b }),
   restDays: () => req('/api/rest-days'),

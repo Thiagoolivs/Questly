@@ -220,7 +220,7 @@ export default function Perfil() {
             {stats.map((st) => (
               <Card key={st.label} padding="md" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--space-2)' }}>
                 <Icon name={st.icon} size={24} color="var(--blue-glow)" />
-                <div style={{ fontFamily: 'var(--font-numeric)', fontSize: 'var(--fs-title-3)', fontWeight: 'var(--fw-bold)', color: 'var(--text-primary)' }}>
+                <div style={{ fontFamily: 'var(--font-ui)', fontVariantNumeric: 'tabular-nums', fontSize: 'var(--fs-title-3)', fontWeight: 'var(--fw-bold)', color: 'var(--text-primary)' }}>
                   {st.value}
                 </div>
                 <div style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-caption)', color: 'var(--text-tertiary)', textAlign: 'center' }}>
@@ -269,7 +269,7 @@ export default function Perfil() {
             <div style={{ background: 'var(--surface-sunken)', borderRadius: 'var(--radius-md)', padding: 'var(--space-3)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div>
                 <div style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-caption)', color: 'var(--text-tertiary)' }}>Código de convite</div>
-                <div style={{ fontFamily: 'var(--font-numeric)', fontSize: 'var(--fs-body)', fontWeight: 'var(--fw-bold)', color: 'var(--text-primary)', letterSpacing: 1 }}>
+                <div style={{ fontFamily: 'var(--font-ui)', fontVariantNumeric: 'tabular-nums', fontSize: 'var(--fs-body)', fontWeight: 'var(--fw-bold)', color: 'var(--text-primary)', letterSpacing: 1 }}>
                   {group?.invite_code}
                 </div>
               </div>

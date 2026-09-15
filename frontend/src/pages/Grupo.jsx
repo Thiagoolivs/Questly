@@ -76,7 +76,7 @@ export default function Grupo() {
                   left={
                     <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
                       <span style={{ 
-                        fontFamily: 'var(--font-numeric)', fontSize: 'var(--fs-body)', fontWeight: 'var(--fw-bold)', 
+                        fontFamily: 'var(--font-ui)', fontVariantNumeric: 'tabular-nums', fontSize: 'var(--fs-body)', fontWeight: 'var(--fw-bold)', 
                         color: i === 0 ? 'var(--warning)' : i === 1 ? 'var(--text-secondary)' : i === 2 ? '#b08d57' : 'var(--text-tertiary)',
                         width: 24, textAlign: 'center'
                       }}>
@@ -86,7 +86,7 @@ export default function Grupo() {
                     </div>
                   }
                   right={
-                    <div style={{ fontFamily: 'var(--font-numeric)', fontSize: 'var(--fs-body)', fontWeight: 'var(--fw-bold)', color: 'var(--blue-glow)' }}>
+                    <div style={{ fontFamily: 'var(--font-ui)', fontVariantNumeric: 'tabular-nums', fontSize: 'var(--fs-body)', fontWeight: 'var(--fw-bold)', color: 'var(--blue-glow)' }}>
                       {r.stats?.total || 0} pts
                     </div>
                   }

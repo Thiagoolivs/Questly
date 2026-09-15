@@ -496,3 +496,52 @@ class RestDay(Base):
     date: Mapped[date] = mapped_column(Date, index=True)
     reason: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class TrainingPlan(Base):
+    """Plano de treino estruturado (gerado por IA ou escrito pela pessoa).
+
+    O plano é o que a IA entrega em vez de um texto de chat: semanas, sessões
+    e itens marcáveis. Quem executa vê checklist e progresso, não um conselho.
+    """
+
+    __tablename__ = "training_plans"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    modality: Mapped[str] = mapped_column(String(40))
+    goal: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    level: Mapped[str] = mapped_column(String(20), default="iniciante")
+    days_per_week: Mapped[int] = mapped_column(Integer, default=3)
+    weeks: Mapped[int] = mapped_column(Integer, default=4)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    source: Mapped[str] = mapped_column(String(10), default="ai")  # ai | user
+    status: Mapped[str] = mapped_column(String(12), default="active")  # active | done | archived
+    start_date: Mapped[date] = mapped_column(Date, default=date.today)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class TrainingSession(Base):
+    """Uma sessão do plano: os itens ficam em JSON porque são a folha da árvore.
+
+    Virar tabela só somaria joins — nada consulta exercício isolado, eles são
+    sempre lidos e marcados junto com a sessão.
+    """
+
+    __tablename__ = "training_sessions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    plan_id: Mapped[int] = mapped_column(ForeignKey("training_plans.id"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    week: Mapped[int] = mapped_column(Integer, default=1)
+    order: Mapped[int] = mapped_column(Integer, default=0)
+    title: Mapped[str] = mapped_column(String(120))
+    focus: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    duration_min: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    # [{"name": ..., "detail": ..., "done": false}]
+    items: Mapped[list] = mapped_column(JSON, default=list)
+    status: Mapped[str] = mapped_column(String(12), default="pending")  # pending | done | skipped
+    scheduled_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True, index=True)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

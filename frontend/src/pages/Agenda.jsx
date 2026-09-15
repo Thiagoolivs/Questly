@@ -32,7 +32,13 @@ const RECORRENCIA = [
   { value: 'weekly', label: 'Toda semana' },
 ]
 
-const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+const dois = (n) => String(n).padStart(2, '0')
+const iso = (d) => `${d.getFullYear()}-${dois(d.getMonth() + 1)}-${dois(d.getDate())}`
+
+// O backend guarda data/hora como horário local ingênuo (o fuso é o do grupo).
+// Mandar toISOString() converteria para UTC e jogaria um compromisso das 22h
+// para o dia seguinte, então a hora vai como está no relógio de quem marcou.
+const isoLocal = (d) => `${iso(d)}T${dois(d.getHours())}:${dois(d.getMinutes())}:00`
 
 function inicioDaSemana(d) {
   const x = new Date(d)
@@ -133,7 +139,7 @@ export default function Agenda() {
                 }}
               >
                 <span style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-micro)' }}>{DIAS[d.getDay()]}</span>
-                <span style={{ fontFamily: 'var(--font-numeric)', fontSize: 'var(--fs-body)', fontWeight: 'var(--fw-semibold)' }}>
+                <span style={{ fontFamily: 'var(--font-ui)', fontVariantNumeric: 'tabular-nums', fontSize: 'var(--fs-body)', fontWeight: 'var(--fw-semibold)' }}>
                   {d.getDate()}
                 </span>
               </button>
@@ -235,7 +241,7 @@ function Compromisso({ evento, onMudou, onErro }) {
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-5)' }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}>
-            <span style={{ fontFamily: 'var(--font-numeric)', fontSize: 'var(--fs-body-sm)', color: 'var(--blue-glow)' }}>
+            <span style={{ fontFamily: 'var(--font-ui)', fontVariantNumeric: 'tabular-nums', fontSize: 'var(--fs-body-sm)', color: 'var(--blue-glow)' }}>
               {hora ?? 'Sem hora'}
             </span>
             {evento.visibility === 'group' && <Icon name="users" size={14} color="var(--text-tertiary)" />}
@@ -294,8 +300,8 @@ function NovoCompromisso({ data, onFechar, onCriado }) {
       await api.createCalendarActivity({
         title: titulo.trim(),
         category: categoria,
-        start_datetime: inicio.toISOString(),
-        end_datetime: minutos ? new Date(inicio.getTime() + minutos * 60000).toISOString() : null,
+        start_datetime: isoLocal(inicio),
+        end_datetime: minutos ? isoLocal(new Date(inicio.getTime() + minutos * 60000)) : null,
         duration_min: minutos || null,
         recurrence_rule: repete ? { type: repete } : {},
         reminder_minutes: lembrete === '' ? [] : [Number(lembrete)],

@@ -2171,9 +2171,24 @@ def list_calendar(user: User = Depends(get_current_user), db: Session = Depends(
     items = db.query(m.CalendarActivity).filter(m.CalendarActivity.user_id == user.id).all()
     return {"activities": items}
 
+def _com_datas(dados: dict) -> dict:
+    """Converte os campos de data/hora que chegam como texto ISO.
+
+    Sem isto o SQLAlchemy recebe str numa coluna DateTime e estoura — era o que
+    derrubava qualquer criação de compromisso com horário.
+    """
+    for campo in ("start_datetime", "end_datetime"):
+        if dados.get(campo) is not None:
+            dados[campo] = parse_datetime(dados[campo])
+    return dados
+
+
 @app.post("/api/calendar")
 def create_calendar(payload: s.CalendarActivityCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    item = m.CalendarActivity(user_id=user.id, **payload.model_dump(exclude_unset=True))
+    dados = _com_datas(payload.model_dump(exclude_unset=True))
+    item = m.CalendarActivity(user_id=user.id, **dados)
+    if item.start_datetime and item.end_datetime and item.end_datetime < item.start_datetime:
+        raise HTTPException(400, "O fim do compromisso precisa ser depois do início.")
     db.add(item)
     db.commit()
     db.refresh(item)
@@ -2184,8 +2199,10 @@ def update_calendar(item_id: int, payload: s.CalendarActivityUpdate, user: User 
     item = db.query(m.CalendarActivity).filter(m.CalendarActivity.id == item_id, m.CalendarActivity.user_id == user.id).first()
     if not item:
         raise HTTPException(404, "Atividade não encontrada.")
-    for key, value in payload.model_dump(exclude_unset=True).items():
+    for key, value in _com_datas(payload.model_dump(exclude_unset=True)).items():
         setattr(item, key, value)
+    if item.start_datetime and item.end_datetime and item.end_datetime < item.start_datetime:
+        raise HTTPException(400, "O fim do compromisso precisa ser depois do início.")
     db.commit()
     db.refresh(item)
     return item
@@ -2581,6 +2598,271 @@ def list_modalities(user: User = Depends(get_current_user)):
     pedir um campo que o cálculo ignora — nem esquecer um que ele usa.
     """
     return {"modalities": scoring_v2.modality_catalog()}
+
+
+# --- Fase 5: treino com IA -------------------------------------------------
+def _own_plan(db: Session, user: User, plan_id: int) -> m.TrainingPlan:
+    plano = db.query(m.TrainingPlan).filter(
+        m.TrainingPlan.id == plan_id, m.TrainingPlan.user_id == user.id
+    ).first()
+    if not plano:
+        raise HTTPException(404, "Plano não encontrado.")
+    return plano
+
+
+def serialize_plan(db: Session, plano: m.TrainingPlan, com_sessoes: bool = True) -> dict:
+    sessoes = db.query(m.TrainingSession).filter(
+        m.TrainingSession.plan_id == plano.id
+    ).order_by(m.TrainingSession.week, m.TrainingSession.order).all()
+
+    feitas = len([x for x in sessoes if x.status == "done"])
+    out = {
+        "id": plano.id,
+        "modality": plano.modality,
+        "goal": plano.goal,
+        "level": plano.level,
+        "days_per_week": plano.days_per_week,
+        "weeks": plano.weeks,
+        "notes": plano.notes,
+        "source": plano.source,
+        "status": plano.status,
+        "start_date": plano.start_date.isoformat() if plano.start_date else None,
+        "progress": {
+            "total": len(sessoes),
+            "done": feitas,
+            "percent": round(feitas / len(sessoes) * 100) if sessoes else 0,
+        },
+    }
+    if com_sessoes:
+        out["sessions"] = [{
+            "id": x.id,
+            "week": x.week,
+            "order": x.order,
+            "title": x.title,
+            "focus": x.focus,
+            "duration_min": x.duration_min,
+            "items": x.items or [],
+            "status": x.status,
+            "scheduled_date": x.scheduled_date.isoformat() if x.scheduled_date else None,
+        } for x in sessoes]
+    return out
+
+
+def _materializar_plano(db: Session, plano: m.TrainingPlan, estrutura: dict) -> None:
+    """Transforma o JSON da IA nas sessões do plano (substituindo as pendentes).
+
+    As sessões já concluídas ficam: adaptar o plano no meio do caminho não pode
+    apagar o que a pessoa já fez.
+    """
+    db.query(m.TrainingSession).filter(
+        m.TrainingSession.plan_id == plano.id,
+        m.TrainingSession.status != "done",
+    ).delete(synchronize_session=False)
+
+    plano.notes = estrutura.get("notes") or plano.notes
+    for semana in estrutura["weeks"]:
+        for i, sessao in enumerate(semana["sessions"]):
+            db.add(m.TrainingSession(
+                plan_id=plano.id,
+                user_id=plano.user_id,
+                week=semana["week"],
+                order=i,
+                title=sessao["title"],
+                focus=sessao.get("focus"),
+                duration_min=sessao.get("duration_min"),
+                items=sessao["items"],
+            ))
+
+
+@app.get("/api/training/plans")
+def list_training_plans(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    planos = db.query(m.TrainingPlan).filter(
+        m.TrainingPlan.user_id == user.id
+    ).order_by(m.TrainingPlan.created_at.desc()).all()
+    return {
+        "plans": [serialize_plan(db, p, com_sessoes=False) for p in planos],
+        "ai_enabled": ai.ai_enabled(),
+    }
+
+
+@app.get("/api/training/plans/{plan_id}")
+def read_training_plan(plan_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return serialize_plan(db, _own_plan(db, user, plan_id))
+
+
+@app.post("/api/training/plans")
+def create_training_plan(payload: s.TrainingPlanCreate,
+                         user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """A IA devolve o plano inteiro montado — semanas, sessões e itens."""
+    if not ai.ai_enabled():
+        raise HTTPException(503, "A IA não está configurada neste ambiente.")
+
+    # O que o app já sabe da pessoa entra no pedido: plano de treino que ignora
+    # objetivo e peso é conselho genérico, não plano.
+    contexto = [payload.constraints] if payload.constraints else []
+    if user.objetivo:
+        contexto.append(f"objetivo declarado: {user.objetivo}")
+
+    try:
+        estrutura = ai.generate_training_plan(
+            modality=payload.modality,
+            goal=payload.goal or user.objetivo,
+            level=payload.level,
+            days_per_week=payload.days_per_week,
+            weeks=payload.weeks,
+            constraints="; ".join(contexto) or None,
+        )
+    except ValueError as e:
+        raise HTTPException(502, str(e))
+
+    plano = m.TrainingPlan(
+        user_id=user.id,
+        modality=payload.modality,
+        goal=payload.goal or user.objetivo,
+        level=payload.level,
+        days_per_week=payload.days_per_week,
+        weeks=len(estrutura["weeks"]),
+        source="ai",
+        start_date=date.today(),
+    )
+    db.add(plano)
+    db.flush()
+    _materializar_plano(db, plano, estrutura)
+    db.commit()
+    db.refresh(plano)
+    return serialize_plan(db, plano)
+
+
+@app.post("/api/training/plans/{plan_id}/adapt")
+def adapt_training_plan(plan_id: int, payload: s.TrainingAdaptRequest,
+                        user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Refaz o que falta do plano a partir do que a pessoa relatou.
+
+    O plano vivo é o ponto: se está pesado demais ou fácil demais, a IA remonta
+    o restante em vez de a pessoa abandonar e começar outro.
+    """
+    if not ai.ai_enabled():
+        raise HTTPException(503, "A IA não está configurada neste ambiente.")
+    plano = _own_plan(db, user, plan_id)
+
+    feitas = db.query(m.TrainingSession).filter(
+        m.TrainingSession.plan_id == plano.id, m.TrainingSession.status == "done"
+    ).count()
+    restantes = max(1, plano.weeks - (feitas // max(1, plano.days_per_week)))
+
+    try:
+        estrutura = ai.generate_training_plan(
+            modality=plano.modality,
+            goal=plano.goal,
+            level=plano.level,
+            days_per_week=plano.days_per_week,
+            weeks=restantes,
+            constraints=(
+                f"Adaptação de um plano em andamento. Sessões já concluídas: {feitas}. "
+                f"A pessoa relatou: {payload.feedback}"
+            ),
+        )
+    except ValueError as e:
+        raise HTTPException(502, str(e))
+
+    _materializar_plano(db, plano, estrutura)
+    db.commit()
+    db.refresh(plano)
+    return serialize_plan(db, plano)
+
+
+@app.post("/api/training/sessions/{session_id}/item")
+def toggle_training_item(session_id: int, payload: s.TrainingItemToggle,
+                         user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Marca um item da sessão. A sessão fecha sozinha quando todos saem."""
+    sessao = db.query(m.TrainingSession).filter(
+        m.TrainingSession.id == session_id, m.TrainingSession.user_id == user.id
+    ).first()
+    if not sessao:
+        raise HTTPException(404, "Sessão não encontrada.")
+
+    itens = [dict(x) for x in (sessao.items or [])]
+    if payload.item_index >= len(itens):
+        raise HTTPException(400, "Item inexistente nesta sessão.")
+
+    atual = bool(itens[payload.item_index].get("done"))
+    itens[payload.item_index]["done"] = (not atual) if payload.done is None else payload.done
+    sessao.items = itens
+
+    tudo = bool(itens) and all(x.get("done") for x in itens)
+    if tudo and sessao.status != "done":
+        sessao.status = "done"
+        sessao.completed_at = datetime.utcnow()
+    elif not tudo and sessao.status == "done":
+        sessao.status = "pending"
+        sessao.completed_at = None
+
+    db.commit()
+    db.refresh(sessao)
+    return {
+        "id": sessao.id,
+        "items": sessao.items,
+        "status": sessao.status,
+        "plan": serialize_plan(db, _own_plan(db, user, sessao.plan_id), com_sessoes=False),
+    }
+
+
+@app.put("/api/training/sessions/{session_id}")
+def update_training_session(session_id: int, payload: s.TrainingSessionUpdate,
+                            user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    sessao = db.query(m.TrainingSession).filter(
+        m.TrainingSession.id == session_id, m.TrainingSession.user_id == user.id
+    ).first()
+    if not sessao:
+        raise HTTPException(404, "Sessão não encontrada.")
+
+    if payload.status is not None:
+        sessao.status = payload.status
+        sessao.completed_at = datetime.utcnow() if payload.status == "done" else None
+        if payload.status == "done":
+            sessao.items = [{**x, "done": True} for x in (sessao.items or [])]
+    if payload.scheduled_date is not None:
+        sessao.scheduled_date = parse_date(payload.scheduled_date, date.today())
+    db.commit()
+    db.refresh(sessao)
+    return {"id": sessao.id, "status": sessao.status,
+            "scheduled_date": sessao.scheduled_date.isoformat() if sessao.scheduled_date else None}
+
+
+@app.delete("/api/training/plans/{plan_id}")
+def delete_training_plan(plan_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    plano = _own_plan(db, user, plan_id)
+    db.query(m.TrainingSession).filter(m.TrainingSession.plan_id == plano.id).delete()
+    db.delete(plano)
+    db.commit()
+    return {"ok": True}
+
+
+@app.post("/api/routines/ai")
+def create_routine_with_ai(payload: s.RoutineFromAI,
+                           user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """A IA também monta rotina: mesma estrutura de passos que a pessoa criaria."""
+    if not ai.ai_enabled():
+        raise HTTPException(503, "A IA não está configurada neste ambiente.")
+    try:
+        gerada = ai.generate_routine(payload.name, payload.context, payload.steps)
+    except ValueError as e:
+        raise HTTPException(502, str(e))
+
+    rotina = m.Routine(user_id=user.id, name=gerada["name"], frequency={"type": "daily"})
+    db.add(rotina)
+    db.flush()
+    for i, passo in enumerate(gerada["steps"]):
+        db.add(m.RoutineStep(
+            routine_id=rotina.id,
+            name=passo["name"],
+            order=i,
+            duration_min=passo["duration_min"],
+            is_required=passo["is_required"],
+        ))
+    db.commit()
+    db.refresh(rotina)
+    return {"id": rotina.id, "name": rotina.name, "steps": gerada["steps"]}
 
 # --- frontend estático (SPA) -----------------------------------------------
 # Em produção o backend também serve o frontend já buildado (dist), então tudo

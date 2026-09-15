@@ -138,7 +138,7 @@ export default function Feed() {
                         
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 'var(--space-2)' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-                            <span style={{ fontFamily: 'var(--font-numeric)', fontSize: 'var(--fs-caption)', color: 'var(--text-tertiary)' }}>
+                            <span style={{ fontFamily: 'var(--font-ui)', fontVariantNumeric: 'tabular-nums', fontSize: 'var(--fs-caption)', color: 'var(--text-tertiary)' }}>
                               {timeAgo(a.created_at)}
                             </span>
                             {rx.total > 0 && (
@@ -146,7 +146,7 @@ export default function Feed() {
                                 {Object.keys(rx.counts).map((k) => (
                                   <span key={k} style={{ fontSize: 14 }}>{emojiOf(k)}</span>
                                 ))}
-                                <span style={{ fontFamily: 'var(--font-numeric)', fontSize: 'var(--fs-caption)', color: 'var(--text-secondary)' }}>
+                                <span style={{ fontFamily: 'var(--font-ui)', fontVariantNumeric: 'tabular-nums', fontSize: 'var(--fs-caption)', color: 'var(--text-secondary)' }}>
                                   {rx.total}
                                 </span>
                               </div>

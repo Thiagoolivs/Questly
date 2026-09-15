@@ -16,6 +16,10 @@ import Perfil from './pages/Perfil.jsx'
 import Agenda from './pages/Agenda.jsx'
 import Registrar from './pages/Registrar.jsx'
 import Desafio from './pages/Desafio.jsx'
+import Treino from './pages/Treino.jsx'
+import Nutricao from './pages/Nutricao.jsx'
+import Rotinas from './pages/Rotinas.jsx'
+import Habitos from './pages/Habitos.jsx'
 import Tarefas from './pages/Tarefas.jsx'
 import Chat from './pages/Chat.jsx'
 import Mural from './pages/Mural.jsx'
@@ -82,7 +86,18 @@ function Shell() {
     <BrowserRouter>
       <TourHost />
       <div className="app-shell">
-        <main className="content" style={{ paddingBottom: '80px', minHeight: '100vh', overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
+        {/* A TabBar flutua sobre o conteúdo (fixa a 16px do fim, 56px de altura),
+            então a página precisa reservar esse espaço — senão a última ação
+            de cada tela fica embaixo dela. */}
+        <main
+          className="content"
+          style={{
+            paddingBottom: 'calc(96px + env(safe-area-inset-bottom, 0px))',
+            minHeight: '100vh',
+            overflowY: 'auto',
+            WebkitOverflowScrolling: 'touch',
+          }}
+        >
           <Routes>
             {/* 5 abas principais */}
             <Route path="/" element={<MeuDia />} />
@@ -94,6 +109,10 @@ function Shell() {
             <Route path="/agenda" element={<Agenda />} />
             <Route path="/registrar" element={<Registrar />} />
             <Route path="/desafio" element={<Desafio />} />
+            <Route path="/treino" element={<Treino />} />
+            <Route path="/nutricao" element={<Nutricao />} />
+            <Route path="/rotinas" element={<Rotinas />} />
+            <Route path="/habitos" element={<Habitos />} />
             <Route path="/tarefas" element={<Tarefas />} />
             <Route path="/chat" element={<Chat />} />
             <Route path="/mural" element={<Mural />} />

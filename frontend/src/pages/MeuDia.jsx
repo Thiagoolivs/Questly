@@ -268,7 +268,7 @@ export default function MeuDia() {
                   style={{
                     width: 46,
                     flex: 'none',
-                    fontFamily: 'var(--font-numeric)',
+                    fontFamily: 'var(--font-ui)', fontVariantNumeric: 'tabular-nums',
                     fontSize: 'var(--fs-body-sm)',
                     color: ev.start ? 'var(--text-primary)' : 'var(--text-tertiary)',
                   }}
@@ -334,7 +334,7 @@ export default function MeuDia() {
                   </span>
                   <span
                     style={{
-                      fontFamily: 'var(--font-numeric)',
+                      fontFamily: 'var(--font-ui)', fontVariantNumeric: 'tabular-nums',
                       fontSize: 'var(--fs-body-sm)',
                       color: r.completed ? 'var(--success)' : 'var(--text-tertiary)',
                     }}
@@ -366,7 +366,7 @@ export default function MeuDia() {
                       {step.duration_min ? (
                         <span
                           style={{
-                            fontFamily: 'var(--font-numeric)',
+                            fontFamily: 'var(--font-ui)', fontVariantNumeric: 'tabular-nums',
                             fontSize: 'var(--fs-micro)',
                             color: 'var(--text-tertiary)',
                           }}
@@ -418,7 +418,7 @@ export default function MeuDia() {
                 {h.time ? (
                   <span
                     style={{
-                      fontFamily: 'var(--font-numeric)',
+                      fontFamily: 'var(--font-ui)', fontVariantNumeric: 'tabular-nums',
                       fontSize: 'var(--fs-body-sm)',
                       color: 'var(--text-tertiary)',
                     }}

@@ -352,3 +352,36 @@ class RoutineStepToggle(BaseModel):
     date: Optional[str] = None
     step_id: int
     done: Optional[bool] = None
+
+
+# --- Fase 5: treino com IA --------------------------------------------------
+
+class TrainingPlanCreate(BaseModel):
+    modality: str = Field(..., max_length=40)
+    goal: Optional[str] = Field(None, max_length=200)
+    level: Literal["iniciante", "intermediario", "avancado"] = "iniciante"
+    days_per_week: int = Field(3, ge=1, le=7)
+    weeks: int = Field(4, ge=1, le=12)
+    constraints: Optional[str] = Field(None, max_length=200)
+
+
+class TrainingItemToggle(BaseModel):
+    item_index: int = Field(..., ge=0)
+    done: Optional[bool] = None
+
+
+class TrainingSessionUpdate(BaseModel):
+    status: Optional[Literal["pending", "done", "skipped"]] = None
+    scheduled_date: Optional[str] = None
+
+
+class TrainingAdaptRequest(BaseModel):
+    """Pede à IA para refazer o restante do plano a partir do que aconteceu."""
+
+    feedback: str = Field(..., min_length=3, max_length=300)
+
+
+class RoutineFromAI(BaseModel):
+    name: str = Field(..., min_length=1, max_length=60)
+    context: Optional[str] = Field(None, max_length=200)
+    steps: int = Field(5, ge=2, le=12)
