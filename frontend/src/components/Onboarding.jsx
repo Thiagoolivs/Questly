@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import Icon from './Icon.jsx'
 import InstallGuide from './InstallGuide.jsx'
-import { openSection } from './Section.jsx'
 
 // v2: quem já tinha visto o modal antigo (chave `questly.onboarded`) precisa
 // ver o tour novo uma vez — por isso a chave é versionada.
@@ -102,10 +101,9 @@ export default function Onboarding({ onClose }) {
     onClose?.()
   }, [onClose])
 
-  // Leva para a rota do passo e abre o bloco (Section) se estiver recolhido.
+  // Leva para a rota do passo.
   useEffect(() => {
     if (step.route && location.pathname !== step.route) navigate(step.route)
-    if (step.section) openSection(step.section)
   }, [i]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Acha o alvo (esperando a página renderizar), centraliza e mede.

@@ -4,7 +4,7 @@ import logging
 import os
 import re
 import secrets
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time as dtime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -1948,18 +1948,6 @@ def gallery(gid: int, weeks_limit: int = 8, user: User = Depends(get_current_use
     return {"weeks": result}
 
 
-@app.get("/api/groups/{gid}/ranking")
-def ranking(gid: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    get_membership(db, user, gid)
-    s = get_group_settings(db, gid)
-    today = today_of(s)
-    members = group_members(db, gid)
-    joint = joint_points_map(db, gid)
-    rows = [member_payload(s, m, joint, today) for m in members]
-    rows.sort(key=lambda r: r["stats"]["total"], reverse=True)
-    return {"ranking": rows, "casal_perfect_days": casal_perfect_days(s, members, today)}
-
-
 @app.get("/api/groups/{gid}/state")
 def state(gid: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Payload agregado que abastece a tela inicial em uma única chamada."""
@@ -2142,6 +2130,298 @@ def delete_habit(habit_id: int, user: User = Depends(get_current_user), db: Sess
         db.commit()
     return {"ok": True}
 
+
+
+# --- Fase 4: dia pessoal (hábitos, rotinas, agenda, descanso) --------------
+# Convenção de dia da semana nos campos `custom_days`/`frequency.days`:
+# 0=domingo … 6=sábado (igual ao getDay() do JS), para o front não precisar converter.
+def _js_dow(d: date) -> int:
+    return (d.weekday() + 1) % 7
+
+
+def habit_due_on(habit: m.Habit, d: date) -> bool:
+    """Um hábito vence hoje conforme sua frequência."""
+    freq = (habit.frequency or "daily").lower()
+    if freq == "daily":
+        return True
+    if freq == "weekdays":
+        return d.weekday() < 5  # seg–sex
+    if freq == "custom":
+        return _js_dow(d) in (habit.custom_days or [])
+    return True
+
+
+def routine_due_on(routine: m.Routine, d: date) -> bool:
+    """Rotinas guardam frequência como {"type": ..., "days": [...]}."""
+    freq = routine.frequency or {}
+    kind = (freq.get("type") or "daily").lower()
+    if kind == "daily":
+        return True
+    if kind == "weekdays":
+        return d.weekday() < 5
+    if kind == "custom":
+        return _js_dow(d) in (freq.get("days") or [])
+    return True
+
+
+def is_rest_day(db: Session, user_id: int, d: date) -> bool:
+    return db.query(m.RestDay).filter(
+        m.RestDay.user_id == user_id, m.RestDay.date == d
+    ).first() is not None
+
+
+def _habit_log(db: Session, habit: m.Habit, d: date) -> m.HabitLog:
+    log = db.query(m.HabitLog).filter(
+        m.HabitLog.habit_id == habit.id, m.HabitLog.date == d
+    ).first()
+    if not log:
+        log = m.HabitLog(habit_id=habit.id, user_id=habit.user_id, date=d, completed=False)
+        db.add(log)
+        db.flush()
+    return log
+
+
+def _routine_log(db: Session, routine: m.Routine, d: date) -> m.RoutineLog:
+    log = db.query(m.RoutineLog).filter(
+        m.RoutineLog.routine_id == routine.id, m.RoutineLog.date == d
+    ).first()
+    if not log:
+        log = m.RoutineLog(routine_id=routine.id, user_id=routine.user_id, date=d,
+                           steps_done=[], completed=False)
+        db.add(log)
+        db.flush()
+    return log
+
+
+def _own_habit(db: Session, user: User, habit_id: int) -> m.Habit:
+    habit = db.query(m.Habit).filter(
+        m.Habit.id == habit_id, m.Habit.user_id == user.id
+    ).first()
+    if not habit:
+        raise HTTPException(404, "Hábito não encontrado.")
+    return habit
+
+
+def _own_routine(db: Session, user: User, routine_id: int) -> m.Routine:
+    routine = db.query(m.Routine).filter(
+        m.Routine.id == routine_id, m.Routine.user_id == user.id
+    ).first()
+    if not routine:
+        raise HTTPException(404, "Rotina não encontrada.")
+    return routine
+
+
+@app.post("/api/habits/{habit_id}/log")
+def log_habit(habit_id: int, payload: s.HabitLogToggle,
+              user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Marca/desmarca um hábito num dia. É isto que alimenta a consistência."""
+    habit = _own_habit(db, user, habit_id)
+    d = parse_date(payload.date, date.today())
+    log = _habit_log(db, habit, d)
+    log.completed = (not log.completed) if payload.completed is None else payload.completed
+    if payload.value is not None:
+        log.value = payload.value
+    db.commit()
+    db.refresh(log)
+    return {"habit_id": habit.id, "date": log.date.isoformat(),
+            "completed": log.completed, "value": log.value}
+
+
+@app.post("/api/routines/{routine_id}/log")
+def log_routine_step(routine_id: int, payload: s.RoutineStepToggle,
+                     user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Marca/desmarca um passo da rotina. A rotina fecha quando os obrigatórios saem."""
+    routine = _own_routine(db, user, routine_id)
+    step = db.query(m.RoutineStep).filter(
+        m.RoutineStep.id == payload.step_id, m.RoutineStep.routine_id == routine.id
+    ).first()
+    if not step:
+        raise HTTPException(404, "Passo não encontrado nesta rotina.")
+
+    d = parse_date(payload.date, date.today())
+    log = _routine_log(db, routine, d)
+    done = set(log.steps_done or [])
+    want = (step.id not in done) if payload.done is None else payload.done
+    done.add(step.id) if want else done.discard(step.id)
+    log.steps_done = sorted(done)
+
+    required = [
+        st.id for st in db.query(m.RoutineStep)
+        .filter(m.RoutineStep.routine_id == routine.id, m.RoutineStep.is_required.is_(True)).all()
+    ]
+    log.completed = bool(required) and all(sid in done for sid in required)
+    db.commit()
+    db.refresh(log)
+    return {"routine_id": routine.id, "date": log.date.isoformat(),
+            "steps_done": log.steps_done, "completed": log.completed}
+
+
+@app.get("/api/rest-days")
+def list_rest_days(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    rows = db.query(m.RestDay).filter(m.RestDay.user_id == user.id).order_by(m.RestDay.date.desc()).all()
+    return {"rest_days": [{"date": r.date.isoformat(), "reason": r.reason} for r in rows]}
+
+
+@app.post("/api/rest-days")
+def add_rest_day(payload: s.RestDayCreate,
+                 user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Descanso planejado: o dia deixa de contar como falha na consistência."""
+    d = parse_date(payload.date, date.today())
+    row = db.query(m.RestDay).filter(m.RestDay.user_id == user.id, m.RestDay.date == d).first()
+    if not row:
+        row = m.RestDay(user_id=user.id, date=d)
+        db.add(row)
+    row.reason = payload.reason
+    db.commit()
+    return {"date": d.isoformat(), "reason": row.reason}
+
+
+@app.delete("/api/rest-days/{day}")
+def remove_rest_day(day: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    d = parse_date(day, date.today())
+    db.query(m.RestDay).filter(m.RestDay.user_id == user.id, m.RestDay.date == d).delete()
+    db.commit()
+    return {"ok": True}
+
+
+@app.get("/api/today")
+def my_day(day: str | None = None, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Tudo que o usuário precisa fazer hoje, numa chamada só.
+
+    É o payload do Meu Dia: agenda, rotinas e hábitos do dia já cruzados com o
+    que foi registrado. Não depende de grupo — o Questly funciona sozinho.
+    """
+    d = parse_date(day, date.today())
+    resting = is_rest_day(db, user.id, d)
+
+    # Agenda do dia (inclui itens sem horário definido, que viram "sem hora").
+    day_start = datetime.combine(d, dtime.min)
+    day_end = datetime.combine(d, dtime.max)
+    events = db.query(m.CalendarActivity).filter(
+        m.CalendarActivity.user_id == user.id,
+        m.CalendarActivity.start_datetime >= day_start,
+        m.CalendarActivity.start_datetime <= day_end,
+    ).order_by(m.CalendarActivity.start_datetime).all()
+
+    linked = {}
+    if events:
+        for row in db.query(m.ActivityLinkedRoutine).filter(
+            m.ActivityLinkedRoutine.activity_id.in_([e.id for e in events])
+        ).all():
+            linked.setdefault(row.activity_id, []).append(
+                {"routine_id": row.routine_id, "timing": row.timing}
+            )
+
+    agenda = [{
+        "id": e.id,
+        "title": e.title,
+        "description": e.description,
+        "category": e.category,
+        "start": e.start_datetime.isoformat() if e.start_datetime else None,
+        "end": e.end_datetime.isoformat() if e.end_datetime else None,
+        "duration_min": e.duration_min,
+        "visibility": e.visibility,
+        "status": e.status,
+        "reminder_minutes": e.reminder_minutes or [],
+        "routines": linked.get(e.id, []),
+    } for e in events]
+
+    # Hábitos que vencem hoje + o que já foi marcado.
+    habits_all = db.query(m.Habit).filter(
+        m.Habit.user_id == user.id, m.Habit.active.is_(True)
+    ).all()
+    due_habits = [h for h in habits_all if habit_due_on(h, d)]
+    hlogs = {
+        l.habit_id: l for l in db.query(m.HabitLog).filter(
+            m.HabitLog.user_id == user.id, m.HabitLog.date == d
+        ).all()
+    }
+    habits = [{
+        "id": h.id,
+        "name": h.name,
+        "category": h.category,
+        "icon": h.icon,
+        "time": h.time,
+        "goal_qty": h.goal_qty,
+        "goal_unit": h.goal_unit,
+        "completed": bool(hlogs[h.id].completed) if h.id in hlogs else False,
+        "value": hlogs[h.id].value if h.id in hlogs else None,
+    } for h in due_habits]
+
+    # Rotinas que vencem hoje, com passos e progresso.
+    routines_all = db.query(m.Routine).filter(
+        m.Routine.user_id == user.id, m.Routine.active.is_(True)
+    ).order_by(m.Routine.order).all()
+    due_routines = [r for r in routines_all if routine_due_on(r, d)]
+    rlogs = {
+        l.routine_id: l for l in db.query(m.RoutineLog).filter(
+            m.RoutineLog.user_id == user.id, m.RoutineLog.date == d
+        ).all()
+    }
+    steps_by_routine = {}
+    if due_routines:
+        for st in db.query(m.RoutineStep).filter(
+            m.RoutineStep.routine_id.in_([r.id for r in due_routines])
+        ).order_by(m.RoutineStep.order).all():
+            steps_by_routine.setdefault(st.routine_id, []).append(st)
+
+    routines = []
+    for r in due_routines:
+        done = set((rlogs[r.id].steps_done or []) if r.id in rlogs else [])
+        steps = steps_by_routine.get(r.id, [])
+        routines.append({
+            "id": r.id,
+            "name": r.name,
+            "category": r.category,
+            "time_slot": r.time_slot,
+            "completed": bool(rlogs[r.id].completed) if r.id in rlogs else False,
+            "steps": [{
+                "id": st.id,
+                "name": st.name,
+                "duration_min": st.duration_min,
+                "is_required": st.is_required,
+                "done": st.id in done,
+            } for st in steps],
+            "done_count": len([st for st in steps if st.id in done]),
+            "total_count": len(steps),
+        })
+
+    records = db.query(m.ActivityRecord).filter(
+        m.ActivityRecord.user_id == user.id, m.ActivityRecord.date == d
+    ).all()
+
+    progress = db.query(m.UserProgress).filter(m.UserProgress.user_id == user.id).first()
+
+    # O "feito de hoje" ignora o que já está fechado; num dia de descanso
+    # planejado nada fica pendente, por isso ele não conta como falha.
+    open_habits = len([h for h in habits if not h["completed"]])
+    open_routines = len([r for r in routines if not r["completed"]])
+    open_events = len([e for e in agenda if e["status"] == "pending"])
+    total_items = len(habits) + len(routines) + len(agenda)
+    done_items = total_items - (open_habits + open_routines + open_events)
+
+    return {
+        "date": d.isoformat(),
+        "rest_day": resting,
+        "agenda": agenda,
+        "habits": habits,
+        "routines": routines,
+        "records": [{
+            "id": r.id,
+            "modality": r.modality,
+            "category": r.category,
+            "params": r.params,
+            "xp_earned": r.xp_earned,
+            "score_earned": r.score_earned,
+        } for r in records],
+        "summary": {
+            "total": total_items,
+            "done": done_items,
+            "pending": 0 if resting else (open_habits + open_routines + open_events),
+            "xp": progress.total_xp if progress else 0,
+            "level": progress.level if progress else 1,
+        },
+    }
 
 # --- frontend estático (SPA) -----------------------------------------------
 # Em produção o backend também serve o frontend já buildado (dist), então tudo

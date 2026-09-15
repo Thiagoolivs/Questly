@@ -323,3 +323,26 @@ class CompetitiveScoreResponse(BaseModel):
     consistency_score: float
     challenge_score: float
     total_score: float
+
+
+# --- Fase 4: dia agregado, descanso planejado ------------------------------
+
+class RestDayCreate(BaseModel):
+    date: str
+    reason: Optional[str] = Field(default=None, max_length=120)
+
+
+class HabitLogToggle(BaseModel):
+    """Marca/desmarca um hábito num dia. Sem `completed` o valor é invertido."""
+
+    date: Optional[str] = None
+    completed: Optional[bool] = None
+    value: Optional[float] = None
+
+
+class RoutineStepToggle(BaseModel):
+    """Marca/desmarca um passo de rotina num dia."""
+
+    date: Optional[str] = None
+    step_id: int
+    done: Optional[bool] = None

@@ -477,3 +477,16 @@ class CompetitiveScore(Base):
     challenge_score: Mapped[float] = mapped_column(Float, default=0.0)
     total_score: Mapped[float] = mapped_column(Float, default=0.0)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class RestDay(Base):
+    """Descanso planejado pelo usuário. Não conta como falha nem quebra consistência."""
+
+    __tablename__ = "rest_days"
+    __table_args__ = (UniqueConstraint("user_id", "date", name="uq_user_rest_date"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    date: Mapped[date] = mapped_column(Date, index=True)
+    reason: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
