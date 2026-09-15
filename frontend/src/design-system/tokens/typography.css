@@ -1,6 +1,8 @@
 :root{
-  --font-ui:"Inter",-apple-system,"Helvetica Neue",Arial,sans-serif;
-  --font-numeric:"Doto","Inter",monospace; /* dot-matrix display numerals */
+  /* "… Variable" é como o @fontsource registra as variáveis empacotadas; os
+     nomes sem sufixo ficam como reserva para quem já tiver a fonte instalada. */
+  --font-ui:"Inter Variable","Inter",-apple-system,"Helvetica Neue",Arial,sans-serif;
+  --font-numeric:"Doto Variable","Doto","Inter Variable",monospace; /* dot-matrix display numerals */
 
   --fw-light:300; /* @kind font */
   --fw-regular:400; /* @kind font */

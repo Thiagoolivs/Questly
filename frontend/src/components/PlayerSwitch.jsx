@@ -1,5 +1,5 @@
 import { useApp } from '../store.jsx'
-import Avatar from './Avatar.jsx'
+import { Avatar } from '../design-system/components/index.js'
 
 // Alterna qual MEMBRO do grupo está sendo visualizado nas telas de leitura
 // (histórico, conquistas). As ações do dia sempre valem para o próprio usuário.

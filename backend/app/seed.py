@@ -37,12 +37,21 @@ _NEW_COLUMNS = {
         "mood_note": "TEXT",
         "water_ml": "INTEGER",
     },
+    "activities": {
+        # O feed passou a desenhar ícone em vez de emoji; a coluna antiga fica
+        # para os itens já publicados não perderem o que mostravam.
+        "icon": "VARCHAR(24)",
+    },
     "settings": {
         "timezone": "VARCHAR(40)",
         "challenge_pool": "JSON",
         "challenge_pool_updated": "TIMESTAMP",
         "custom_challenges": "JSON",
         "disabled_areas": "JSON",
+        # Janela do desafio com hora. Ficam nulas nos grupos antigos; o backend
+        # deriva a janela de start_date + duration_days enquanto for o caso.
+        "challenge_start": "TIMESTAMP",
+        "challenge_end": "TIMESTAMP",
     },
     "activities": {
         "image": "TEXT",

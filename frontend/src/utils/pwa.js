@@ -98,7 +98,7 @@ export function installGuide(platform = detectPlatform()) {
           'Escolha "Abrir no Safari".',
           'No Safari: Compartilhar ↑ → "Adicionar à Tela de Início".',
         ],
-        note: 'É uma limitação do iPhone, não do Questly. 🙂',
+        note: 'É uma limitação do iPhone, não do Questly.',
       }
     case 'android':
       return {

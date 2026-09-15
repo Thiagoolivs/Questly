@@ -481,3 +481,196 @@ def estimate_meal_text(text: str) -> dict:
             "(sem faixas, sem '~', sem unidades)."
         )
         return _clean_meal(_extract_json(_ask(retry)))
+
+
+# --- planos de treino e rotinas (texto estruturado) ------------------------
+# A IA aqui não conversa: ela devolve estrutura que o app executa. O que sai
+# daqui vira checklist com progresso, não um parágrafo de conselho.
+
+MAX_WEEKS = 12
+MAX_SESSIONS_PER_WEEK = 7
+MAX_ITEMS_PER_SESSION = 12
+
+_TRAINING_PROMPT = (
+    "Você é um treinador que monta planos de treino em português do Brasil.\n"
+    "Monte um plano de {weeks} semana(s), {days} sessão(ões) por semana, para "
+    "{modality}, nível {level}.\n"
+    "Objetivo da pessoa: {goal}\n"
+    "{constraints}"
+    "\nRegras:\n"
+    "- Progrida ao longo das semanas; não repita a mesma semana.\n"
+    "- Cada sessão precisa de foco claro e itens executáveis e específicos.\n"
+    "- Em 'detail' ponha séries/repetições/tempo/distância — nunca deixe vago.\n"
+    "- Nada de emoji.\n\n"
+    "Responda APENAS com um objeto JSON, sem texto fora dele:\n"
+    '{{"notes": "orientação curta sobre o plano", "weeks": ['
+    '{{"week": 1, "sessions": ['
+    '{{"title": "nome curto", "focus": "foco", "duration_min": 60, '
+    '"items": [{{"name": "exercício", "detail": "4x8 com 2min de pausa"}}]}}'
+    "]}}]}}"
+)
+
+_ROUTINE_PROMPT = (
+    "Você monta rotinas curtas (checklists) em português do Brasil.\n"
+    "Monte a rotina '{name}' com {steps} passos.\n"
+    "Contexto: {context}\n\n"
+    "Regras: passos curtos, na ordem de execução, cada um com duração em "
+    "minutos. Nada de emoji.\n\n"
+    "Responda APENAS com um objeto JSON, sem texto fora dele:\n"
+    '{{"name": "nome da rotina", "steps": ['
+    '{{"name": "passo", "duration_min": 5, "is_required": true}}]}}'
+)
+
+
+def _text_json(prompt: str, max_tokens: int = 4096, temperature: float = 0.7) -> dict:
+    """Pede um JSON ao provedor de texto disponível e devolve já decodificado."""
+    provider = _provider("text")
+    if provider is None:
+        raise ValueError("Nenhum provedor de IA configurado.")
+    if provider == "gemini":
+        content = _gemini_json("text", prompt, temperature=temperature)
+    else:
+        content = _complete_json(
+            provider,
+            "text",
+            [
+                {"role": "system", "content": "Você responde SEMPRE com um único objeto JSON válido, sem texto extra."},
+                {"role": "user", "content": prompt},
+            ],
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+    return _extract_json(content)
+
+
+def _clean_text(value, limit: int = MAX_TEXT_LEN) -> str:
+    """Texto da IA não entra cru: sem emoji, sem quebra de linha, com limite."""
+    text = str(value or "").strip()
+    text = re.sub(r"[\U0001F000-\U0001FAFF☀-➿️]", "", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text[:limit]
+
+
+def _clean_training_plan(data: dict, weeks: int, days: int) -> dict:
+    """Valida e poda o que a IA devolveu.
+
+    A IA erra formato com frequência; aceitar cru significa tela quebrada ou
+    plano com 40 exercícios numa sessão. O que não couber é cortado aqui.
+    """
+    semanas_saida = []
+    for bruto in (data.get("weeks") or [])[:min(weeks, MAX_WEEKS)]:
+        if not isinstance(bruto, dict):
+            continue
+        sessoes = []
+        for s in (bruto.get("sessions") or [])[:min(days, MAX_SESSIONS_PER_WEEK)]:
+            if not isinstance(s, dict):
+                continue
+            itens = []
+            for it in (s.get("items") or [])[:MAX_ITEMS_PER_SESSION]:
+                if isinstance(it, str):
+                    it = {"name": it}
+                if not isinstance(it, dict):
+                    continue
+                nome = _clean_text(it.get("name"), 80)
+                if not nome:
+                    continue
+                itens.append({
+                    "name": nome,
+                    "detail": _clean_text(it.get("detail"), 120),
+                    "done": False,
+                })
+            titulo = _clean_text(s.get("title"), 80)
+            if not titulo or not itens:
+                continue
+            sessoes.append({
+                "title": titulo,
+                "focus": _clean_text(s.get("focus"), 60),
+                "duration_min": _clamp_int(s.get("duration_min") or 60, 5, 300),
+                "items": itens,
+            })
+        if sessoes:
+            semanas_saida.append({"week": len(semanas_saida) + 1, "sessions": sessoes})
+
+    return {"notes": _clean_text(data.get("notes"), 400), "weeks": semanas_saida}
+
+
+def generate_training_plan(
+    modality: str,
+    goal: str | None,
+    level: str = "iniciante",
+    days_per_week: int = 3,
+    weeks: int = 4,
+    constraints: str | None = None,
+) -> dict:
+    """Plano estruturado: ``{"notes": str, "weeks": [{week, sessions[]}]}``."""
+    weeks = max(1, min(int(weeks or 4), MAX_WEEKS))
+    days_per_week = max(1, min(int(days_per_week or 3), MAX_SESSIONS_PER_WEEK))
+    prompt = _TRAINING_PROMPT.format(
+        weeks=weeks,
+        days=days_per_week,
+        modality=_clean_text(modality, 40) or "treino geral",
+        level=_clean_text(level, 20) or "iniciante",
+        goal=_clean_text(goal, 200) or "condicionamento geral",
+        constraints=(
+            f"Restrições a respeitar: {_clean_text(constraints, 200)}\n"
+            if constraints else ""
+        ),
+    )
+    plano = _clean_training_plan(_text_json(prompt), weeks, days_per_week)
+    if not plano["weeks"]:
+        raise ValueError("A IA não retornou um plano de treino válido.")
+    return plano
+
+
+def generate_routine(name: str, context: str | None = None, steps: int = 5) -> dict:
+    """Rotina estruturada: ``{"name": str, "steps": [{name, duration_min, is_required}]}``."""
+    steps = max(2, min(int(steps or 5), 12))
+    prompt = _ROUTINE_PROMPT.format(
+        name=_clean_text(name, 60) or "rotina",
+        steps=steps,
+        context=_clean_text(context, 200) or "sem contexto adicional",
+    )
+    data = _text_json(prompt, max_tokens=1200)
+
+    passos = []
+    for bruto in (data.get("steps") or [])[:steps]:
+        if isinstance(bruto, str):
+            bruto = {"name": bruto}
+        if not isinstance(bruto, dict):
+            continue
+        nome = _clean_text(bruto.get("name"), 120)
+        if not nome:
+            continue
+        passos.append({
+            "name": nome,
+            "duration_min": _clamp_int(bruto.get("duration_min") or 5, 1, 180),
+            "is_required": bool(bruto.get("is_required", True)),
+        })
+    if not passos:
+        raise ValueError("A IA não retornou uma rotina válida.")
+    return {"name": _clean_text(data.get("name"), 60) or _clean_text(name, 60), "steps": passos}
+
+
+# --- leitura do dia --------------------------------------------------------
+_INSIGHT_PROMPT = (
+    "Você acompanha alguém num app de bem-estar e escreve UMA frase curta "
+    "sobre o dia dela, em português do Brasil.\n\n"
+    "Dados reais dos últimos dias:\n{dados}\n\n"
+    "Regras:\n"
+    "- Uma frase só, no máximo 140 caracteres.\n"
+    "- Fale do que os dados mostram, não do que você imagina.\n"
+    "- Se houver descanso planejado, trate como escolha, nunca como falha.\n"
+    "- Segunda pessoa, direto, sem bajulação e sem emoji.\n"
+    "- Se algo está pendente hoje, aponte o próximo passo concreto.\n\n"
+    'Responda APENAS com JSON: {{"text": "sua frase"}}'
+)
+
+
+def generate_daily_insight(dados: dict) -> str:
+    """Uma frase sobre o dia, a partir do que a pessoa de fato registrou."""
+    linhas = "\n".join(f"- {k}: {v}" for k, v in dados.items())
+    data = _text_json(_INSIGHT_PROMPT.format(dados=linhas), max_tokens=300, temperature=0.6)
+    texto = _clean_text(data.get("text"), 280)
+    if not texto:
+        raise ValueError("A IA não retornou uma leitura válida.")
+    return texto

@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useApp } from '../store.jsx'
 import { api } from '../api.js'
-import { Card, ListRow, Icon, Avatar, Chip } from '../design-system/components/index.js'
+import { Avatar, Button, Card, Chip, Icon, IconButton, ListRow } from '../design-system/components/index.js'
+import { shareInvite } from '../utils/invite.js'
 import Grupos from './Grupos.jsx'
 
 export default function Grupo() {
@@ -43,8 +44,31 @@ export default function Grupo() {
             Ranking e atividades em grupo.
           </p>
         </div>
-        <Chip icon="users" label={group?.member_count?.toString() ?? '—'} variant="glass" />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+          <Chip>{group?.member_count ?? 0} {group?.member_count === 1 ? 'pessoa' : 'pessoas'}</Chip>
+          <Link to="/grupo/config" aria-label="Configurações do grupo">
+            <IconButton icon="settings" label="Configurações do grupo" size={32} />
+          </Link>
+        </div>
       </header>
+
+      {group.rules?.invite && (
+        <Card style={{ marginBottom: 'var(--space-8)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-5)' }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-micro)', color: 'var(--text-tertiary)' }}>
+                Código de convite
+              </div>
+              <div style={{ fontFamily: 'var(--font-ui)', fontVariantNumeric: 'tabular-nums', fontSize: 'var(--fs-title-3)', fontWeight: 'var(--fw-semibold)', color: 'var(--text-primary)', letterSpacing: '.08em' }}>
+                {group.invite_code}
+              </div>
+            </div>
+            <Button size="sm" variant="secondary" iconLeft="share" onClick={() => shareInvite(group.invite_code, group.name)}>
+              Convidar
+            </Button>
+          </div>
+        </Card>
+      )}
 
       {rankingData && (
         <div style={{ marginBottom: 'var(--space-8)' }}>
@@ -69,14 +93,18 @@ export default function Grupo() {
                   title={
                     <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
                       {r.name}
-                      {r.stats?.streak > 0 && <span style={{ color: 'var(--warning)', fontSize: 'var(--fs-label)' }}>🔥 {r.stats.streak}</span>}
+                      {r.stats?.streak > 0 && (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, color: 'var(--warning)', fontSize: 'var(--fs-label)' }}>
+                          <Icon name="flame" size={13} color="var(--warning)" /> {r.stats.streak}
+                        </span>
+                      )}
                     </div>
                   }
                   subtitle={`Concluídos: ${r.stats?.completed_days || 0} · Perfeitos: ${r.stats?.perfect_days || 0}`}
                   left={
                     <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
                       <span style={{ 
-                        fontFamily: 'var(--font-numeric)', fontSize: 'var(--fs-body)', fontWeight: 'var(--fw-bold)', 
+                        fontFamily: 'var(--font-ui)', fontVariantNumeric: 'tabular-nums', fontSize: 'var(--fs-body)', fontWeight: 'var(--fw-bold)', 
                         color: i === 0 ? 'var(--warning)' : i === 1 ? 'var(--text-secondary)' : i === 2 ? '#b08d57' : 'var(--text-tertiary)',
                         width: 24, textAlign: 'center'
                       }}>
@@ -86,7 +114,7 @@ export default function Grupo() {
                     </div>
                   }
                   right={
-                    <div style={{ fontFamily: 'var(--font-numeric)', fontSize: 'var(--fs-body)', fontWeight: 'var(--fw-bold)', color: 'var(--blue-glow)' }}>
+                    <div style={{ fontFamily: 'var(--font-ui)', fontVariantNumeric: 'tabular-nums', fontSize: 'var(--fs-body)', fontWeight: 'var(--fw-bold)', color: 'var(--blue-glow)' }}>
                       {r.stats?.total || 0} pts
                     </div>
                   }

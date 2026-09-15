@@ -1,4 +1,7 @@
-/* LGrow webfonts. Inter (UI) + Doto (numeric/decorative dot-matrix).
-   Both fonts are served from Google Fonts; no binaries were supplied with the
-   source case study, so no local files are shipped. */
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300..800&family=Doto:wght@400..900&display=swap");
+/* LGrow webfonts: Inter (UI) + Doto (numérica/decorativa dot-matrix).
+
+   O design system original puxava as duas do Google Fonts em runtime. Num PWA
+   instalado isso quebra offline e some a tipografia inteira, então elas vêm do
+   pacote (@fontsource-variable), empacotadas junto com o app. */
+@import "@fontsource-variable/inter/index.css";
+@import "@fontsource-variable/doto/index.css";

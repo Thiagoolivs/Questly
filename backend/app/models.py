@@ -35,7 +35,9 @@ class User(Base):
     # Vínculo com conta Google (sub do token). Nulo para contas só e-mail/senha.
     google_sub: Mapped[Optional[str]] = mapped_column(String(64), unique=True, nullable=True)
     name: Mapped[str] = mapped_column(String(60))
-    avatar: Mapped[str] = mapped_column(String(8), default="🎮")
+    # Avatar por emoji saiu da interface: o Avatar do design system desenha a
+    # foto ou as iniciais do nome. A coluna fica para não quebrar dados antigos.
+    avatar: Mapped[str] = mapped_column(String(8), default="")
     photo: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # data URL base64 (opcional)
     objetivo: Mapped[str] = mapped_column(String(200), default="")
     peso: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
@@ -132,6 +134,12 @@ class Settings(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     group_id: Mapped[int] = mapped_column(ForeignKey("groups.id"), unique=True, index=True)
     timezone: Mapped[str] = mapped_column(String(40), default="America/Sao_Paulo")
+    # O desafio do grupo tem janela com hora, não só contagem de dias: "começa
+    # segunda 6h e termina no dia 30 às 23h59" é o que as pessoas combinam.
+    # start_date/duration_days seguem derivados da janela, porque o cálculo de
+    # dia (scoring.day_number) e os grupos já existentes dependem deles.
+    challenge_start: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    challenge_end: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     start_date: Mapped[date] = mapped_column(Date, default=date.today)
     duration_days: Mapped[int] = mapped_column(Integer, default=30)
     water_goal_l: Mapped[float] = mapped_column(Float, default=2.5)
@@ -180,7 +188,10 @@ class Activity(Base):
     group_id: Mapped[int] = mapped_column(ForeignKey("groups.id"), index=True)
     membership_id: Mapped[int] = mapped_column(ForeignKey("memberships.id"))
     kind: Mapped[str] = mapped_column(String(20))  # challenge | joint | habit | task
-    emoji: Mapped[str] = mapped_column(String(8), default="🎯")
+    # emoji ficou como legado dos itens antigos; o feed novo desenha `icon`
+    # (nome lucide), porque emoji virou exclusividade das reações e do chat.
+    emoji: Mapped[str] = mapped_column(String(8), default="")
+    icon: Mapped[Optional[str]] = mapped_column(String(24), nullable=True)
     text: Mapped[str] = mapped_column(Text, default="")
     image: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # foto opcional
     ref: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)  # p/ upsert/dedupe
@@ -197,7 +208,7 @@ class Goal(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     group_id: Mapped[int] = mapped_column(ForeignKey("groups.id"), index=True)
     title: Mapped[str] = mapped_column(String(120))
-    emoji: Mapped[str] = mapped_column(String(8), default="🎯")
+    emoji: Mapped[str] = mapped_column(String(8), default="")  # legado: use `icon`
     icon: Mapped[Optional[str]] = mapped_column(String(24), nullable=True)  # nome de ícone SVG (opcional)
     start_date: Mapped[date] = mapped_column(Date, default=date.today)
     duration_days: Mapped[int] = mapped_column(Integer, default=30)
@@ -226,7 +237,7 @@ class ScheduledTask(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     group_id: Mapped[int] = mapped_column(ForeignKey("groups.id"), index=True)
     title: Mapped[str] = mapped_column(String(120))
-    emoji: Mapped[str] = mapped_column(String(8), default="🗓️")
+    emoji: Mapped[str] = mapped_column(String(8), default="")  # legado: use `icon`
     icon: Mapped[Optional[str]] = mapped_column(String(24), nullable=True)
     kind: Mapped[str] = mapped_column(String(10), default="once")  # once | weekly
     date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)  # para 'once'
@@ -272,7 +283,7 @@ class JointActivity(Base):
     group_id: Mapped[int] = mapped_column(ForeignKey("groups.id"), index=True)
     date: Mapped[date] = mapped_column(Date, index=True)
     label: Mapped[str] = mapped_column(String(120))
-    emoji: Mapped[str] = mapped_column(String(8), default="💞")
+    emoji: Mapped[str] = mapped_column(String(8), default="")  # legado: use `icon`
     icon: Mapped[Optional[str]] = mapped_column(String(24), nullable=True)
     points: Mapped[int] = mapped_column(Integer, default=20)
     image: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # comprovação opcional
@@ -477,3 +488,100 @@ class CompetitiveScore(Base):
     challenge_score: Mapped[float] = mapped_column(Float, default=0.0)
     total_score: Mapped[float] = mapped_column(Float, default=0.0)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class RestDay(Base):
+    """Descanso planejado pelo usuário. Não conta como falha nem quebra consistência."""
+
+    __tablename__ = "rest_days"
+    __table_args__ = (UniqueConstraint("user_id", "date", name="uq_user_rest_date"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    date: Mapped[date] = mapped_column(Date, index=True)
+    reason: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class TrainingPlan(Base):
+    """Plano de treino estruturado (gerado por IA ou escrito pela pessoa).
+
+    O plano é o que a IA entrega em vez de um texto de chat: semanas, sessões
+    e itens marcáveis. Quem executa vê checklist e progresso, não um conselho.
+    """
+
+    __tablename__ = "training_plans"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    modality: Mapped[str] = mapped_column(String(40))
+    goal: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    level: Mapped[str] = mapped_column(String(20), default="iniciante")
+    days_per_week: Mapped[int] = mapped_column(Integer, default=3)
+    weeks: Mapped[int] = mapped_column(Integer, default=4)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    source: Mapped[str] = mapped_column(String(10), default="ai")  # ai | user
+    status: Mapped[str] = mapped_column(String(12), default="active")  # active | done | archived
+    start_date: Mapped[date] = mapped_column(Date, default=date.today)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class TrainingSession(Base):
+    """Uma sessão do plano: os itens ficam em JSON porque são a folha da árvore.
+
+    Virar tabela só somaria joins — nada consulta exercício isolado, eles são
+    sempre lidos e marcados junto com a sessão.
+    """
+
+    __tablename__ = "training_sessions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    plan_id: Mapped[int] = mapped_column(ForeignKey("training_plans.id"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    week: Mapped[int] = mapped_column(Integer, default=1)
+    order: Mapped[int] = mapped_column(Integer, default=0)
+    title: Mapped[str] = mapped_column(String(120))
+    focus: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    duration_min: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    # [{"name": ..., "detail": ..., "done": false}]
+    items: Mapped[list] = mapped_column(JSON, default=list)
+    status: Mapped[str] = mapped_column(String(12), default="pending")  # pending | done | skipped
+    scheduled_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True, index=True)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class ActivityComment(Base):
+    """Comentário de um membro num item do feed.
+
+    Reação diz que viu; comentário diz o quê. As duas coisas convivem — a
+    reação continua sendo o gesto rápido, com emoji.
+    """
+
+    __tablename__ = "activity_comments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    activity_id: Mapped[int] = mapped_column(ForeignKey("activities.id"), index=True)
+    membership_id: Mapped[int] = mapped_column(ForeignKey("memberships.id"), index=True)
+    text: Mapped[str] = mapped_column(String(500))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
+class DailyInsight(Base):
+    """Leitura do dia feita pela IA sobre o que a pessoa realmente fez.
+
+    Guardada por dia porque é cara e não muda a cada refresh: o Meu Dia é a
+    tela mais aberta do app, e gerar a cada visita seria desperdício.
+    """
+
+    __tablename__ = "daily_insights"
+    __table_args__ = (UniqueConstraint("user_id", "date", name="uq_user_insight_date"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    date: Mapped[date] = mapped_column(Date, index=True)
+    text: Mapped[str] = mapped_column(String(300))
+    # O que a IA viu ao escrever — útil para depurar sugestão estranha.
+    context: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

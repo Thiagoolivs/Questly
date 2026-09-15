@@ -4,7 +4,8 @@ import logging
 import os
 import re
 import secrets
-from datetime import date, datetime, timedelta
+import calendar
+from datetime import date, datetime, time as dtime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -32,7 +33,7 @@ from .auth import (
 )
 from . import push as pushmod
 from .data import (
-    CATEGORY_EMOJI,
+    CATEGORY_ICON,
     CATEGORY_ORDER,
     DEFAULT_HABITS,
     DIFFICULTIES,
@@ -236,6 +237,25 @@ def parse_date(value: str | None, default: date | None = None) -> date:
         raise HTTPException(400, f"Data inválida: {value!r} (use YYYY-MM-DD).")
 
 
+def month_bounds(d: date) -> tuple[date, date]:
+    """Primeiro e último dia do mês de `d` — o período do ranking."""
+    last = calendar.monthrange(d.year, d.month)[1]
+    return d.replace(day=1), d.replace(day=last)
+
+
+def parse_datetime(value: str | None, default: datetime | None = None) -> datetime:
+    """Lê um ISO 8601 e devolve datetime ingênuo (o fuso é o do grupo)."""
+    if not value:
+        if default is None:
+            raise HTTPException(400, "Data e hora são obrigatórias.")
+        return default
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        raise HTTPException(400, f"Data/hora inválida: {value!r} (use ISO 8601).")
+    return parsed.replace(tzinfo=None)
+
+
 def validate_image(image: str | None) -> None:
     if image and len(image) > MAX_IMAGE_CHARS:
         raise HTTPException(413, "Imagem muito grande. Tente uma foto menor.")
@@ -314,13 +334,32 @@ def group_members(db: Session, group_id: int) -> list[Membership]:
     )
 
 
+# O tipo escolhido na criação decide o que o espaço é. Um espaço individual não
+# tem com quem competir; um casal tem atividade em dupla; um grupo tem ranking,
+# mas não dupla — dupla dentro de grupo sempre vira panelinha de dois.
+GROUP_RULES = {
+    "individual": {"max_members": 1, "joint": False, "ranking": False, "invite": False},
+    "couple": {"max_members": 2, "joint": True, "ranking": True, "invite": True},
+    "group": {"max_members": 50, "joint": False, "ranking": True, "invite": True},
+}
+DEFAULT_GROUP_RULES = GROUP_RULES["group"]
+
+
+def group_rules(group: Group) -> dict:
+    return GROUP_RULES.get(getattr(group, "group_type", None) or "group", DEFAULT_GROUP_RULES)
+
+
 def group_summary(group: Group, role: str, member_count: int) -> dict:
+    rules = group_rules(group)
     return {
         "id": group.id,
         "name": group.name,
         "invite_code": group.invite_code,
         "role": role,
         "member_count": member_count,
+        "group_type": getattr(group, "group_type", None) or "group",
+        # A interface se adapta por aqui em vez de repetir a regra por tela.
+        "rules": rules,
     }
 
 
@@ -395,7 +434,6 @@ def serialize_message(m: Message, members_by_id: dict) -> dict:
         "membership_id": m.membership_id,
         "player_id": m.membership_id,  # compat com o frontend antigo
         "name": u.name if u else "?",
-        "avatar": u.avatar if u else "❓",
         "photo": u.photo if u else None,
         "text": m.text,
         "image": m.image,
@@ -412,7 +450,7 @@ def notify_group_others(db: Session, group_id: int, actor_user_id: int, title: s
         pushmod.send_to_user(db, uid, title, body, url)
 
 
-def upsert_activity(db: Session, gid: int, membership: Membership, kind: str, emoji: str, text: str,
+def upsert_activity(db: Session, gid: int, membership: Membership, kind: str, icon: str, text: str,
                     ref: str | None = None, image: str | None = None, day: date | None = None) -> None:
     """Registra/atualiza um evento no feed. Com `ref`, faz upsert por dia
     (evita duplicar ao remarcar o mesmo item) e sobe o evento pro topo."""
@@ -426,21 +464,31 @@ def upsert_activity(db: Session, gid: int, membership: Membership, kind: str, em
             .first()
         )
     if existing:
-        existing.emoji = emoji
+        existing.icon = icon
         existing.text = text
         existing.image = image
         existing.created_at = datetime.utcnow()
     else:
-        db.add(Activity(group_id=gid, membership_id=membership.id, kind=kind, emoji=emoji,
+        db.add(Activity(group_id=gid, membership_id=membership.id, kind=kind, icon=icon,
                         text=text, image=image, ref=ref, day=day))
     db.commit()
 
 
-def _purge_activity_reactions(db: Session, activity_query) -> None:
-    """Apaga as reações dos itens de feed prestes a serem removidos."""
+def _purge_activity_children(db: Session, activity_query) -> None:
+    """Apaga reações e comentários dos itens de feed prestes a sumir.
+
+    Vive num lugar só porque os dois caminhos de remoção passam por aqui —
+    esquecer um deles deixaria comentário órfão apontando para item inexistente.
+    """
     ids = [a.id for a in activity_query.all()]
-    if ids:
-        db.query(ActivityReaction).filter(ActivityReaction.activity_id.in_(ids)).delete(synchronize_session=False)
+    if not ids:
+        return
+    db.query(ActivityReaction).filter(
+        ActivityReaction.activity_id.in_(ids)
+    ).delete(synchronize_session=False)
+    db.query(m.ActivityComment).filter(
+        m.ActivityComment.activity_id.in_(ids)
+    ).delete(synchronize_session=False)
 
 
 def remove_activity(db: Session, gid: int, membership: Membership, ref: str, day: date | None = None) -> None:
@@ -449,7 +497,7 @@ def remove_activity(db: Session, gid: int, membership: Membership, ref: str, day
         Activity.group_id == gid, Activity.membership_id == membership.id,
         Activity.ref == ref, Activity.day == day,
     )
-    _purge_activity_reactions(db, q)
+    _purge_activity_children(db, q)
     q.delete(synchronize_session=False)
     db.commit()
 
@@ -460,7 +508,7 @@ def remove_activities_by_ref(db: Session, gid: int, ref: str) -> None:
     Usado quando o item de origem é excluído (tarefa agendada, atividade em dupla),
     para que ele não continue aparecendo no feed."""
     q = db.query(Activity).filter(Activity.group_id == gid, Activity.ref == ref)
-    _purge_activity_reactions(db, q)
+    _purge_activity_children(db, q)
     q.delete(synchronize_session=False)
     db.commit()
 
@@ -481,21 +529,46 @@ def reactions_map(db: Session, activity_ids: list[int], me_id: int) -> dict:
     return out
 
 
-def serialize_activity(a: Activity, members_by_id: dict, reactions: dict | None = None) -> dict:
+def comments_map(db: Session, activity_ids: list[int], members_by_id: dict) -> dict:
+    """Para cada activity: lista de comentários em ordem cronológica."""
+    out: dict[int, list] = {aid: [] for aid in activity_ids}
+    if not activity_ids:
+        return out
+    rows = (
+        db.query(m.ActivityComment)
+        .filter(m.ActivityComment.activity_id.in_(activity_ids))
+        .order_by(m.ActivityComment.id)
+        .all()
+    )
+    for c in rows:
+        mem = members_by_id.get(c.membership_id)
+        out.setdefault(c.activity_id, []).append({
+            "id": c.id,
+            "text": c.text,
+            "author": mem.user.name if mem and mem.user else "?",
+            "photo": mem.user.photo if mem and mem.user else None,
+            "membership_id": c.membership_id,
+            "created_at": c.created_at.isoformat() + "Z",
+        })
+    return out
+
+
+def serialize_activity(a: Activity, members_by_id: dict, reactions: dict | None = None,
+                       comments: dict | None = None) -> dict:
     mem = members_by_id.get(a.membership_id)
     u = mem.user if mem else None
     return {
         "id": a.id,
         "kind": a.kind,
-        "emoji": a.emoji,
+        "icon": a.icon,
         "text": a.text,
         "image": a.image,
         "author": u.name if u else "?",
-        "avatar": u.avatar if u else "❓",
         "photo": u.photo if u else None,
         "day": a.day.isoformat() if a.day else None,
         "created_at": a.created_at.isoformat() + "Z",
         "reactions": (reactions or {}).get(a.id) or {"counts": {}, "mine": None, "total": 0},
+        "comments": (comments or {}).get(a.id) or [],
     }
 
 
@@ -540,12 +613,55 @@ def _clean_custom_challenges(raw: dict) -> dict:
     return out
 
 
+def challenge_window(s: Settings) -> tuple[datetime, datetime]:
+    """Início e fim do desafio do grupo, com hora.
+
+    Grupos criados antes da janela só têm start_date + duration_days; para eles
+    a janela é derivada (começa 00:00 do primeiro dia, termina 23:59:59 do
+    último), então nada precisa ser migrado à mão.
+    """
+    start = getattr(s, "challenge_start", None)
+    end = getattr(s, "challenge_end", None)
+    if start and end:
+        return start, end
+    inicio = start or datetime.combine(s.start_date, dtime.min)
+    fim = end or datetime.combine(
+        s.start_date + timedelta(days=max(1, s.duration_days) - 1), dtime.max
+    )
+    return inicio, fim
+
+
+def challenge_status(s: Settings, now: datetime | None = None) -> str:
+    """'scheduled' antes de começar, 'active' durante, 'ended' depois."""
+    now = now or datetime.now(_zone(getattr(s, "timezone", None))).replace(tzinfo=None)
+    inicio, fim = challenge_window(s)
+    if now < inicio:
+        return "scheduled"
+    if now > fim:
+        return "ended"
+    return "active"
+
+
+def ensure_challenge_active(s: Settings) -> None:
+    """Fora da janela não se registra desafio — nem antes, nem depois."""
+    estado = challenge_status(s)
+    if estado == "scheduled":
+        inicio, _ = challenge_window(s)
+        raise HTTPException(400, f"O desafio começa em {inicio.strftime('%d/%m às %H:%M')}.")
+    if estado == "ended":
+        _, fim = challenge_window(s)
+        raise HTTPException(400, f"O desafio terminou em {fim.strftime('%d/%m às %H:%M')}.")
+
+
 def settings_public(s: Settings) -> dict:
     updated = getattr(s, "challenge_pool_updated", None)
     return {
         "timezone": getattr(s, "timezone", None) or DEFAULT_TZ,
         "start_date": s.start_date.isoformat(),
         "duration_days": s.duration_days,
+        "challenge_start": challenge_window(s)[0].isoformat(),
+        "challenge_end": challenge_window(s)[1].isoformat(),
+        "challenge_status": challenge_status(s),
         "water_goal_l": s.water_goal_l,
         "steps_goal": s.steps_goal,
         "protein_goal_g": s.protein_goal_g,
@@ -787,7 +903,16 @@ def create_group(payload: GroupCreate, user: User = Depends(get_current_user), d
     group = Group(name=payload.name.strip(), invite_code=code, group_type=payload.group_type)
     db.add(group)
     db.flush()
-    db.add(Settings(group_id=group.id, start_date=date.today(), duration_days=30, fixed_habits=DEFAULT_HABITS))
+    inicio = datetime.combine(date.today(), dtime.min)
+    fim = datetime.combine(date.today() + timedelta(days=29), dtime.max)
+    db.add(Settings(
+        group_id=group.id,
+        challenge_start=inicio,
+        challenge_end=fim,
+        start_date=inicio.date(),
+        duration_days=30,
+        fixed_habits=DEFAULT_HABITS,
+    ))
     db.add(Membership(user_id=user.id, group_id=group.id, role="owner"))
     db.commit()
     db.refresh(group)
@@ -802,6 +927,12 @@ def join_group(payload: GroupJoin, user: User = Depends(get_current_user), db: S
         raise HTTPException(404, "Código de convite inválido.")
     existing = get_membership_or_none(db, user, group.id)
     if existing is None:
+        rules = group_rules(group)
+        atuais = db.query(Membership).filter(Membership.group_id == group.id).count()
+        if not rules["invite"]:
+            raise HTTPException(400, "Este é um espaço individual e não aceita outras pessoas.")
+        if atuais >= rules["max_members"]:
+            raise HTTPException(400, f"Este espaço já está completo ({rules['max_members']} pessoas).")
         db.add(Membership(user_id=user.id, group_id=group.id, role="member"))
         db.commit()
     count = db.query(Membership).filter(Membership.group_id == group.id).count()
@@ -843,6 +974,23 @@ def update_settings(gid: int, payload: SettingsUpdate, user: User = Depends(get_
         if len(off) >= len(CATEGORY_ORDER):
             raise HTTPException(400, "Deixe pelo menos uma área ativa.")
         data["disabled_areas"] = off
+
+    # A janela manda: quando vem, start_date e duration_days são recalculados a
+    # partir dela, para o resto do app (day_number, metas) continuar coerente.
+    if "challenge_start" in data or "challenge_end" in data:
+        inicio_atual, fim_atual = challenge_window(s)
+        inicio = parse_datetime(data.pop("challenge_start", None), inicio_atual)
+        fim = parse_datetime(data.pop("challenge_end", None), fim_atual)
+        if fim <= inicio:
+            raise HTTPException(400, "O fim do desafio precisa ser depois do início.")
+        if (fim - inicio).days > 365:
+            raise HTTPException(400, "O desafio pode durar no máximo 365 dias.")
+        s.challenge_start = inicio
+        s.challenge_end = fim
+        s.start_date = inicio.date()
+        s.duration_days = max(1, (fim.date() - inicio.date()).days + 1)
+        data.pop("duration_days", None)
+
     for field, value in data.items():
         setattr(s, field, value)
     db.commit()
@@ -852,14 +1000,31 @@ def update_settings(gid: int, payload: SettingsUpdate, user: User = Depends(get_
 # --- rotas: grupo (desafios/dia) -------------------------------------------
 @app.get("/api/groups/{gid}/challenges/today")
 def challenges_today(gid: int, day: str | None = None, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    get_membership(db, user, gid)
+    membership = get_membership(db, user, gid)
     s = get_group_settings(db, gid)
     d = parse_date(day, today_of(s))
+    inicio, fim = challenge_window(s)
+
+    # Os desafios são por pessoa: as trocas que ela fez mudam o que aparece, e
+    # o que ela já comprovou vem marcado — senão a tela oferece "cumprir" algo
+    # que já está cumprido.
+    entry = next((e for e in membership.days if e.date == d), None)
+    rerolls = (entry.challenge_rerolls or {}) if entry else {}
+    proofs = (entry.challenge_proofs or {}) if entry else {}
+
+    desafios = [
+        {**ch, "done": bool(proofs.get(ch["category"]))}
+        for ch in scoring.daily_challenges(s, d, rerolls)
+    ]
+
     return {
         "date": d.isoformat(),
         "day_number": scoring.day_number(s, d),
         "duration_days": s.duration_days,
-        "challenges": scoring.daily_challenges(s, d),
+        "challenge_start": inicio.isoformat(),
+        "challenge_end": fim.isoformat(),
+        "challenge_status": challenge_status(s),
+        "challenges": desafios,
         "motd": scoring.motd(d),
     }
 
@@ -936,7 +1101,7 @@ def _habit_info(settings: Settings, key: str) -> dict:
     for h in (settings.fixed_habits or DEFAULT_HABITS):
         if h.get("key") == key:
             return h
-    return {"key": key, "label": key, "emoji": "✅"}
+    return {"key": key, "label": key, "icon": "check-circle"}
 
 
 @app.post("/api/groups/{gid}/day/toggle")
@@ -967,8 +1132,8 @@ def toggle(gid: int, req: ToggleRequest, user: User = Depends(get_current_user),
     result = _day_result(db, s, membership, entry, d)
     # Hábito concluído → vai pro feed (com foto, se houver).
     img = (entry.habit_proofs or {}).get(req.habit_key)
-    upsert_activity(db, gid, membership, "habit", h.get("emoji", "✅"),
-                    f"{membership.user.name} cumpriu: {h.get('label', req.habit_key)}",
+    upsert_activity(db, gid, membership, "habit", h.get("icon", "check-circle"),
+                    f"cumpriu: {h.get('label', req.habit_key)}",
                     ref=ref, image=img, day=d)
     return result
 
@@ -996,8 +1161,8 @@ def set_habit_photo(gid: int, req: HabitPhotoRequest, user: User = Depends(get_c
     # Mantém o item do feed em sincronia com a foto (se o hábito está feito).
     if req.habit_key in (entry.habits_done or []):
         h = _habit_info(s, req.habit_key)
-        upsert_activity(db, gid, membership, "habit", h.get("emoji", "✅"),
-                        f"{membership.user.name} cumpriu: {h.get('label', req.habit_key)}",
+        upsert_activity(db, gid, membership, "habit", h.get("icon", "check-circle"),
+                        f"cumpriu: {h.get('label', req.habit_key)}",
                         ref=f"habit:{req.habit_key}", image=req.image, day=d)
     return result
 
@@ -1025,6 +1190,7 @@ def set_challenge(gid: int, req: ChallengeProofRequest, user: User = Depends(get
     s = get_group_settings(db, gid)
     if req.category not in scoring.active_categories(s):
         raise HTTPException(400, "Área inválida.")
+    ensure_challenge_active(s)
     today = today_of(s)
     d = parse_date(req.date, today)
     ensure_today(d, today)
@@ -1046,13 +1212,14 @@ def set_challenge(gid: int, req: ChallengeProofRequest, user: User = Depends(get
     result = _day_result(db, s, membership, entry, d)
 
     ref = f"challenge:{req.category}"
-    emoji = CATEGORY_EMOJI.get(req.category, "🎯")
+    icone = CATEGORY_ICON.get(req.category, "target")
     if req.image:
-        extra = " (juntos 💞)" if req.together else ""
-        text = f"{membership.user.name} fechou o desafio de {req.category}!{extra}"
-        upsert_activity(db, gid, membership, "challenge", emoji, text, ref=ref, image=req.image, day=d)
+        extra = " (juntos)" if req.together else ""
+        text = f"fechou o desafio de {req.category}{extra}"
+        upsert_activity(db, gid, membership, "challenge", icone, text, ref=ref, image=req.image, day=d)
         if not was_done:
-            notify_group_others(db, gid, membership.user_id, membership.group.name, f"{emoji} {text}", "/")
+            notify_group_others(db, gid, membership.user_id, membership.group.name,
+                                f"{membership.user.name} {text}", "/")
     else:
         remove_activity(db, gid, membership, ref, day=d)
     return result
@@ -1119,8 +1286,8 @@ def list_joint(gid: int, day: str | None = None, user: User = Depends(get_curren
 def create_joint(gid: int, payload: JointActivityCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     validate_image(payload.image)
     membership = get_membership(db, user, gid)
-    if membership.group.group_type != "couple":
-        raise HTTPException(400, "Atividades em dupla só estão disponíveis para grupos do tipo Casal.")
+    if not group_rules(membership.group)["joint"]:
+        raise HTTPException(400, "Atividade em dupla existe só em espaço de Casal.")
     s = get_group_settings(db, gid)
     today = today_of(s)
     d = parse_date(payload.date, today)
@@ -1129,8 +1296,7 @@ def create_joint(gid: int, payload: JointActivityCreate, user: User = Depends(ge
         group_id=gid,
         date=d,
         label=payload.label.strip(),
-        emoji=(payload.emoji or "💞").strip() or "💞",
-        icon=payload.icon,
+        icon=(payload.icon or "heart").strip() or "heart",
         points=JOINT_ACTIVITY_POINTS,
         image=payload.image,
         created_by=membership.id,
@@ -1138,9 +1304,10 @@ def create_joint(gid: int, payload: JointActivityCreate, user: User = Depends(ge
     db.add(a)
     db.commit()
     db.refresh(a)
-    text = f"{membership.user.name} registrou em dupla: {a.label} (+{a.points} pra vocês!)"
-    upsert_activity(db, gid, membership, "joint", a.emoji, text, ref=f"joint:{a.id}", image=a.image, day=d)
-    notify_group_others(db, gid, membership.user_id, membership.group.name, f"💞 {text}", "/")
+    text = f"registrou em dupla: {a.label} (+{a.points} para os dois)"
+    upsert_activity(db, gid, membership, "joint", a.icon, text, ref=f"joint:{a.id}", image=a.image, day=d)
+    notify_group_others(db, gid, membership.user_id, membership.group.name,
+                        f"{membership.user.name} {text}", "/")
     return serialize_joint(a, {membership.id: membership})
 
 
@@ -1224,8 +1391,7 @@ def create_goal(gid: int, payload: GoalCreate, user: User = Depends(get_current_
     goal = Goal(
         group_id=gid,
         title=payload.title.strip(),
-        emoji=(payload.emoji or "🎯").strip() or "🎯",
-        icon=payload.icon,
+        icon=(payload.icon or "target").strip() or "target",
         start_date=today,
         duration_days=payload.duration_days,
         created_by=me.id,
@@ -1338,8 +1504,7 @@ def create_task(gid: int, payload: TaskCreate, user: User = Depends(get_current_
     task = ScheduledTask(
         group_id=gid,
         title=payload.title.strip(),
-        emoji=(payload.emoji or "🗓️").strip() or "🗓️",
-        icon=payload.icon,
+        icon=(payload.icon or "calendar").strip() or "calendar",
         kind=payload.kind,
         date=parse_date(payload.date) if (payload.kind == "once" and payload.date) else None,
         time=parse_time(payload.time),
@@ -1379,7 +1544,7 @@ def complete_task(gid: int, task_id: int, req: TaskCompleteRequest, user: User =
     else:
         db.add(TaskCompletion(task_id=task_id, membership_id=me.id, date=d, image=req.image))
     db.commit()
-    upsert_activity(db, gid, me, "task", task.emoji, f"{me.user.name} concluiu a tarefa: {task.title}",
+    upsert_activity(db, gid, me, "task", task.icon, f"concluiu a tarefa: {task.title}",
                     ref=ref, image=req.image, day=d)
     return serialize_task(db, task, group_members(db, gid), me, d)
 
@@ -1595,16 +1760,21 @@ def create_message(gid: int, payload: MessageCreate, user: User = Depends(get_cu
     db.add(m)
     db.commit()
     db.refresh(m)
-    preview = m.text if m.text else "📷 Foto"
-    notify_group_others(db, gid, membership.user_id, f"💬 {membership.user.name}", preview[:120], "/chat")
+    preview = m.text if m.text else "Enviou uma foto"
+    notify_group_others(db, gid, membership.user_id, membership.user.name, preview[:120], "/chat")
     return serialize_message(m, {membership.id: membership})
 
 
 @app.post("/api/groups/{gid}/activity-record")
 def create_activity_record(gid: int, payload: s.ActivityRecordCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Registra o que a pessoa realmente fez.
+
+    O XP é pessoal e vai inteiro. Já o que entra no ranking passa pelos limites
+    do scoring_v2 (retorno decrescente por repetição + teto diário), senão quem
+    registra mais vence, e não quem se esforça mais.
+    """
     membership = get_membership(db, user, gid)
-    
-    # Validações e conversões de datas
+
     s_obj = get_group_settings(db, gid)
     today = today_of(s_obj)
     d = parse_date(payload.date, today)
@@ -1613,72 +1783,90 @@ def create_activity_record(gid: int, payload: s.ActivityRecordCreate, user: User
     if payload.proof_image:
         validate_image(payload.proof_image)
 
-    # Computar esforço (scoring_v2)
-    effort = scoring_v2.compute_effort_score(payload.params, payload.modality)
-    
-    # Criar registro
+    params, notes = scoring_v2.normalize_params(payload.params, payload.modality)
+    effort = scoring_v2.compute_effort_score(params, payload.modality)
+    if effort <= 0:
+        raise HTTPException(400, "Informe ao menos a duração da atividade.")
+
+    # Quanto desse esforço conta para o ranking, dado o que já foi registrado hoje.
+    same_today = db.query(m.ActivityRecord).filter(
+        m.ActivityRecord.user_id == user.id,
+        m.ActivityRecord.date == d,
+        m.ActivityRecord.modality == payload.modality,
+    ).count()
+    effort_today = sum(
+        r.score_earned for r in db.query(m.ActivityRecord).filter(
+            m.ActivityRecord.user_id == user.id, m.ActivityRecord.date == d
+        ).all()
+    )
+    competitive = scoring_v2.competitive_effort(effort, same_today, effort_today)
+
     ar = m.ActivityRecord(
         user_id=user.id,
         group_id=gid,
         date=d,
         modality=payload.modality,
         category=payload.category,
-        params=payload.params,
+        params=params,
         effort_score=effort,
-        xp_earned=int(effort * 10), # 1 ponto = 10 XP (exemplo simples)
-        score_earned=int(effort),
-        proof_image=payload.proof_image
+        xp_earned=scoring_v2.xp_for(effort),
+        score_earned=int(competitive),
+        proof_image=payload.proof_image,
     )
     db.add(ar)
-    
-    # Atualizar UserProgress
+
     up = db.query(m.UserProgress).filter(m.UserProgress.user_id == user.id).first()
     if not up:
-        up = m.UserProgress(user_id=user.id)
+        # Os defaults das colunas só valem no INSERT; recém-instanciado o objeto
+        # ainda tem None nos contadores, e `None += n` estoura no primeiro
+        # registro de cada usuário.
+        up = m.UserProgress(user_id=user.id, total_xp=0, effort_total=0.0, level=1)
         db.add(up)
-    up.total_xp += ar.xp_earned
-    up.effort_total += ar.effort_score
-    # lógica simplista para level (cada 1000 XP = 1 lvl)
-    up.level = max(1, up.total_xp // 1000 + 1)
-    
-    # Atualizar CompetitiveScore (simplificado, para o período atual: mês inteiro)
-    period_start = d.replace(day=1)
-    
-    # workaround para último dia do mês
-    import calendar
-    _, last_day = calendar.monthrange(d.year, d.month)
-    period_end = d.replace(day=last_day)
-    
+    up.total_xp = (up.total_xp or 0) + ar.xp_earned
+    up.effort_total = (up.effort_total or 0.0) + ar.effort_score
+    up.level = scoring_v2.level_for(up.total_xp)
+
+    period_start, period_end = month_bounds(d)
     cs = db.query(m.CompetitiveScore).filter(
         m.CompetitiveScore.membership_id == membership.id,
         m.CompetitiveScore.period_start == period_start,
-        m.CompetitiveScore.period_end == period_end
+        m.CompetitiveScore.period_end == period_end,
     ).first()
-    
     if not cs:
         cs = m.CompetitiveScore(
             membership_id=membership.id,
             period_start=period_start,
-            period_end=period_end
+            period_end=period_end,
+            effort_score=0.0,
+            consistency_score=0.0,
+            challenge_score=0.0,
         )
         db.add(cs)
-        
-    cs.effort_score += ar.effort_score
-    cs.total_score = cs.effort_score + cs.consistency_score + cs.challenge_score
-    
+
+    cs.effort_score = (cs.effort_score or 0.0) + competitive
+    cs.consistency_score = cs.consistency_score or 0.0
+    cs.challenge_score = cs.challenge_score or 0.0
+    cs.total_score = scoring_v2.total_competitive(
+        cs.effort_score, cs.consistency_score, cs.challenge_score
+    )
+
     db.commit()
     db.refresh(ar)
-    
-    # Registrar no feed geral do grupo
-    text = f"{membership.user.name} registrou {payload.modality}! (+{ar.score_earned} pts)"
-    emoji = "🏃" if "corrida" in payload.modality.lower() else "💪"
-    upsert_activity(db, gid, membership, "record", emoji, text, ref=f"record:{ar.id}", image=ar.proof_image, day=d)
-    
+
+    text = f"registrou {payload.modality} (+{ar.score_earned} pts)"
+    upsert_activity(db, gid, membership, "record", "activity", text,
+                    ref=f"record:{ar.id}", image=ar.proof_image, day=d)
+
     return {
         "id": ar.id,
         "modality": ar.modality,
         "effort_score": ar.effort_score,
-        "xp_earned": ar.xp_earned
+        "xp_earned": ar.xp_earned,
+        "score_earned": ar.score_earned,
+        # O que foi limitado é dito na cara: pontuação silenciosamente cortada
+        # parece bug.
+        "capped": round(effort - competitive, 2),
+        "notes": notes,
     }
 
 
@@ -1687,14 +1875,8 @@ def create_activity_record(gid: int, payload: s.ActivityRecordCreate, user: User
 def get_ranking(gid: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     membership = get_membership(db, user, gid)
     
-    # Período atual (mês simplificado)
-    today = date.today()
-    period_start = today.replace(day=1)
-    
-    import calendar
-    _, last_day = calendar.monthrange(today.year, today.month)
-    period_end = today.replace(day=last_day)
-    
+    period_start, period_end = month_bounds(date.today())
+
     # Membros do grupo
     members = group_members(db, gid)
     
@@ -1737,9 +1919,11 @@ def list_activities(gid: int, limit: int = 40, user: User = Depends(get_current_
         .limit(min(limit, 200))
         .all()
     )
-    rmap = reactions_map(db, [a.id for a in rows], me.id)
+    ids = [a.id for a in rows]
+    rmap = reactions_map(db, ids, me.id)
+    cmap = comments_map(db, ids, members_by_id)
     return {
-        "activities": [serialize_activity(a, members_by_id, rmap) for a in rows],
+        "activities": [serialize_activity(a, members_by_id, rmap, cmap) for a in rows],
         "reaction_types": FEED_REACTIONS,
     }
 
@@ -1842,7 +2026,7 @@ def radar(gid: int, user: User = Depends(get_current_user), db: Session = Depend
             "avatar": m.user.avatar,
             "values": [counts[c] for c in cats],
         })
-    return {"categories": cats, "emojis": [CATEGORY_EMOJI[c] for c in cats], "members": out}
+    return {"categories": cats, "icons": [CATEGORY_ICON[c] for c in cats], "members": out}
 
 
 @app.get("/api/groups/{gid}/gallery")
@@ -1870,7 +2054,7 @@ def gallery(gid: int, weeks_limit: int = 8, user: User = Depends(get_current_use
                     "date": e.date.isoformat(),
                     "author": m.user.name,
                     "kind": "challenge",
-                    "emoji": CATEGORY_EMOJI.get(cat, "🎯"),
+                    "icon": CATEGORY_ICON.get(cat, "target"),
                     "label": cat,
                     "image": img,
                 })
@@ -1882,7 +2066,7 @@ def gallery(gid: int, weeks_limit: int = 8, user: User = Depends(get_current_use
                     "date": e.date.isoformat(),
                     "author": m.user.name,
                     "kind": "habit",
-                    "emoji": h.get("emoji", "✅"),
+                    "emoji": h.get("icon", "check-circle"),
                     "label": h.get("label", key),
                     "image": img,
                 })
@@ -1948,18 +2132,6 @@ def gallery(gid: int, weeks_limit: int = 8, user: User = Depends(get_current_use
     return {"weeks": result}
 
 
-@app.get("/api/groups/{gid}/ranking")
-def ranking(gid: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    get_membership(db, user, gid)
-    s = get_group_settings(db, gid)
-    today = today_of(s)
-    members = group_members(db, gid)
-    joint = joint_points_map(db, gid)
-    rows = [member_payload(s, m, joint, today) for m in members]
-    rows.sort(key=lambda r: r["stats"]["total"], reverse=True)
-    return {"ranking": rows, "casal_perfect_days": casal_perfect_days(s, members, today)}
-
-
 @app.get("/api/groups/{gid}/state")
 def state(gid: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Payload agregado que abastece a tela inicial em uma única chamada."""
@@ -1980,7 +2152,7 @@ def state(gid: int, user: User = Depends(get_current_user), db: Session = Depend
                 partner["name"] if partner else None,
             )
         else:
-            row["nudge"] = {"emoji": "🏁", "text": "Desafio concluído! 🎉"}
+            row["nudge"] = {"icon": "flag", "text": "Desafio concluído!"}
 
     leaderboard = sorted(player_rows, key=lambda r: r["stats"]["total"], reverse=True)
 
@@ -2013,7 +2185,7 @@ def state(gid: int, user: User = Depends(get_current_user), db: Session = Depend
         "players": player_rows,
         "leaderboard": leaderboard,
         "casal_perfect_days": casal_perfect_days(s, members, today),
-        "category_emoji": CATEGORY_EMOJI,
+        "category_icon": CATEGORY_ICON,
         "joint": {
             "points_each": JOINT_ACTIVITY_POINTS,
             "activities": [serialize_joint(a, members_by_id) for a in joint_today],
@@ -2034,9 +2206,24 @@ def list_calendar(user: User = Depends(get_current_user), db: Session = Depends(
     items = db.query(m.CalendarActivity).filter(m.CalendarActivity.user_id == user.id).all()
     return {"activities": items}
 
+def _com_datas(dados: dict) -> dict:
+    """Converte os campos de data/hora que chegam como texto ISO.
+
+    Sem isto o SQLAlchemy recebe str numa coluna DateTime e estoura — era o que
+    derrubava qualquer criação de compromisso com horário.
+    """
+    for campo in ("start_datetime", "end_datetime"):
+        if dados.get(campo) is not None:
+            dados[campo] = parse_datetime(dados[campo])
+    return dados
+
+
 @app.post("/api/calendar")
 def create_calendar(payload: s.CalendarActivityCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    item = m.CalendarActivity(user_id=user.id, **payload.model_dump(exclude_unset=True))
+    dados = _com_datas(payload.model_dump(exclude_unset=True))
+    item = m.CalendarActivity(user_id=user.id, **dados)
+    if item.start_datetime and item.end_datetime and item.end_datetime < item.start_datetime:
+        raise HTTPException(400, "O fim do compromisso precisa ser depois do início.")
     db.add(item)
     db.commit()
     db.refresh(item)
@@ -2047,8 +2234,10 @@ def update_calendar(item_id: int, payload: s.CalendarActivityUpdate, user: User 
     item = db.query(m.CalendarActivity).filter(m.CalendarActivity.id == item_id, m.CalendarActivity.user_id == user.id).first()
     if not item:
         raise HTTPException(404, "Atividade não encontrada.")
-    for key, value in payload.model_dump(exclude_unset=True).items():
+    for key, value in _com_datas(payload.model_dump(exclude_unset=True)).items():
         setattr(item, key, value)
+    if item.start_datetime and item.end_datetime and item.end_datetime < item.start_datetime:
+        raise HTTPException(400, "O fim do compromisso precisa ser depois do início.")
     db.commit()
     db.refresh(item)
     return item
@@ -2142,6 +2331,717 @@ def delete_habit(habit_id: int, user: User = Depends(get_current_user), db: Sess
         db.commit()
     return {"ok": True}
 
+
+
+# --- Fase 4: dia pessoal (hábitos, rotinas, agenda, descanso) --------------
+# Convenção de dia da semana nos campos `custom_days`/`frequency.days`:
+# 0=domingo … 6=sábado (igual ao getDay() do JS), para o front não precisar converter.
+def _js_dow(d: date) -> int:
+    return (d.weekday() + 1) % 7
+
+
+def habit_due_on(habit: m.Habit, d: date) -> bool:
+    """Um hábito vence hoje conforme sua frequência."""
+    freq = (habit.frequency or "daily").lower()
+    if freq == "daily":
+        return True
+    if freq == "weekdays":
+        return d.weekday() < 5  # seg–sex
+    if freq == "custom":
+        return _js_dow(d) in (habit.custom_days or [])
+    return True
+
+
+def routine_due_on(routine: m.Routine, d: date) -> bool:
+    """Rotinas guardam frequência como {"type": ..., "days": [...]}."""
+    freq = routine.frequency or {}
+    kind = (freq.get("type") or "daily").lower()
+    if kind == "daily":
+        return True
+    if kind == "weekdays":
+        return d.weekday() < 5
+    if kind == "custom":
+        return _js_dow(d) in (freq.get("days") or [])
+    return True
+
+
+def is_rest_day(db: Session, user_id: int, d: date) -> bool:
+    return db.query(m.RestDay).filter(
+        m.RestDay.user_id == user_id, m.RestDay.date == d
+    ).first() is not None
+
+
+def _habit_log(db: Session, habit: m.Habit, d: date) -> m.HabitLog:
+    log = db.query(m.HabitLog).filter(
+        m.HabitLog.habit_id == habit.id, m.HabitLog.date == d
+    ).first()
+    if not log:
+        log = m.HabitLog(habit_id=habit.id, user_id=habit.user_id, date=d, completed=False)
+        db.add(log)
+        db.flush()
+    return log
+
+
+def _routine_log(db: Session, routine: m.Routine, d: date) -> m.RoutineLog:
+    log = db.query(m.RoutineLog).filter(
+        m.RoutineLog.routine_id == routine.id, m.RoutineLog.date == d
+    ).first()
+    if not log:
+        log = m.RoutineLog(routine_id=routine.id, user_id=routine.user_id, date=d,
+                           steps_done=[], completed=False)
+        db.add(log)
+        db.flush()
+    return log
+
+
+def _own_habit(db: Session, user: User, habit_id: int) -> m.Habit:
+    habit = db.query(m.Habit).filter(
+        m.Habit.id == habit_id, m.Habit.user_id == user.id
+    ).first()
+    if not habit:
+        raise HTTPException(404, "Hábito não encontrado.")
+    return habit
+
+
+def _own_routine(db: Session, user: User, routine_id: int) -> m.Routine:
+    routine = db.query(m.Routine).filter(
+        m.Routine.id == routine_id, m.Routine.user_id == user.id
+    ).first()
+    if not routine:
+        raise HTTPException(404, "Rotina não encontrada.")
+    return routine
+
+
+@app.post("/api/habits/{habit_id}/log")
+def log_habit(habit_id: int, payload: s.HabitLogToggle,
+              user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Marca/desmarca um hábito num dia. É isto que alimenta a consistência."""
+    habit = _own_habit(db, user, habit_id)
+    d = parse_date(payload.date, date.today())
+    log = _habit_log(db, habit, d)
+    log.completed = (not log.completed) if payload.completed is None else payload.completed
+    if payload.value is not None:
+        log.value = payload.value
+    db.commit()
+    db.refresh(log)
+    return {"habit_id": habit.id, "date": log.date.isoformat(),
+            "completed": log.completed, "value": log.value}
+
+
+@app.post("/api/routines/{routine_id}/log")
+def log_routine_step(routine_id: int, payload: s.RoutineStepToggle,
+                     user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Marca/desmarca um passo da rotina. A rotina fecha quando os obrigatórios saem."""
+    routine = _own_routine(db, user, routine_id)
+    step = db.query(m.RoutineStep).filter(
+        m.RoutineStep.id == payload.step_id, m.RoutineStep.routine_id == routine.id
+    ).first()
+    if not step:
+        raise HTTPException(404, "Passo não encontrado nesta rotina.")
+
+    d = parse_date(payload.date, date.today())
+    log = _routine_log(db, routine, d)
+    done = set(log.steps_done or [])
+    want = (step.id not in done) if payload.done is None else payload.done
+    done.add(step.id) if want else done.discard(step.id)
+    log.steps_done = sorted(done)
+
+    required = [
+        st.id for st in db.query(m.RoutineStep)
+        .filter(m.RoutineStep.routine_id == routine.id, m.RoutineStep.is_required.is_(True)).all()
+    ]
+    log.completed = bool(required) and all(sid in done for sid in required)
+    db.commit()
+    db.refresh(log)
+    return {"routine_id": routine.id, "date": log.date.isoformat(),
+            "steps_done": log.steps_done, "completed": log.completed}
+
+
+@app.get("/api/rest-days")
+def list_rest_days(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    rows = db.query(m.RestDay).filter(m.RestDay.user_id == user.id).order_by(m.RestDay.date.desc()).all()
+    return {"rest_days": [{"date": r.date.isoformat(), "reason": r.reason} for r in rows]}
+
+
+@app.post("/api/rest-days")
+def add_rest_day(payload: s.RestDayCreate,
+                 user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Descanso planejado: o dia deixa de contar como falha na consistência."""
+    d = parse_date(payload.date, date.today())
+    row = db.query(m.RestDay).filter(m.RestDay.user_id == user.id, m.RestDay.date == d).first()
+    if not row:
+        row = m.RestDay(user_id=user.id, date=d)
+        db.add(row)
+    row.reason = payload.reason
+    db.commit()
+    return {"date": d.isoformat(), "reason": row.reason}
+
+
+@app.delete("/api/rest-days/{day}")
+def remove_rest_day(day: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    d = parse_date(day, date.today())
+    db.query(m.RestDay).filter(m.RestDay.user_id == user.id, m.RestDay.date == d).delete()
+    db.commit()
+    return {"ok": True}
+
+
+@app.get("/api/today")
+def my_day(day: str | None = None, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Tudo que o usuário precisa fazer hoje, numa chamada só.
+
+    É o payload do Meu Dia: agenda, rotinas e hábitos do dia já cruzados com o
+    que foi registrado. Não depende de grupo — o Questly funciona sozinho.
+    """
+    d = parse_date(day, date.today())
+    resting = is_rest_day(db, user.id, d)
+
+    # Agenda do dia (inclui itens sem horário definido, que viram "sem hora").
+    day_start = datetime.combine(d, dtime.min)
+    day_end = datetime.combine(d, dtime.max)
+    events = db.query(m.CalendarActivity).filter(
+        m.CalendarActivity.user_id == user.id,
+        m.CalendarActivity.start_datetime >= day_start,
+        m.CalendarActivity.start_datetime <= day_end,
+    ).order_by(m.CalendarActivity.start_datetime).all()
+
+    linked = {}
+    if events:
+        for row in db.query(m.ActivityLinkedRoutine).filter(
+            m.ActivityLinkedRoutine.activity_id.in_([e.id for e in events])
+        ).all():
+            linked.setdefault(row.activity_id, []).append(
+                {"routine_id": row.routine_id, "timing": row.timing}
+            )
+
+    agenda = [{
+        "id": e.id,
+        "title": e.title,
+        "description": e.description,
+        "category": e.category,
+        "start": e.start_datetime.isoformat() if e.start_datetime else None,
+        "end": e.end_datetime.isoformat() if e.end_datetime else None,
+        "duration_min": e.duration_min,
+        "visibility": e.visibility,
+        "status": e.status,
+        "reminder_minutes": e.reminder_minutes or [],
+        "routines": linked.get(e.id, []),
+    } for e in events]
+
+    # Hábitos que vencem hoje + o que já foi marcado.
+    habits_all = db.query(m.Habit).filter(
+        m.Habit.user_id == user.id, m.Habit.active.is_(True)
+    ).all()
+    due_habits = [h for h in habits_all if habit_due_on(h, d)]
+    hlogs = {
+        l.habit_id: l for l in db.query(m.HabitLog).filter(
+            m.HabitLog.user_id == user.id, m.HabitLog.date == d
+        ).all()
+    }
+    habits = [{
+        "id": h.id,
+        "name": h.name,
+        "category": h.category,
+        "icon": h.icon,
+        "time": h.time,
+        "goal_qty": h.goal_qty,
+        "goal_unit": h.goal_unit,
+        "completed": bool(hlogs[h.id].completed) if h.id in hlogs else False,
+        "value": hlogs[h.id].value if h.id in hlogs else None,
+    } for h in due_habits]
+
+    # Rotinas que vencem hoje, com passos e progresso.
+    routines_all = db.query(m.Routine).filter(
+        m.Routine.user_id == user.id, m.Routine.active.is_(True)
+    ).order_by(m.Routine.order).all()
+    due_routines = [r for r in routines_all if routine_due_on(r, d)]
+    rlogs = {
+        l.routine_id: l for l in db.query(m.RoutineLog).filter(
+            m.RoutineLog.user_id == user.id, m.RoutineLog.date == d
+        ).all()
+    }
+    steps_by_routine = {}
+    if due_routines:
+        for st in db.query(m.RoutineStep).filter(
+            m.RoutineStep.routine_id.in_([r.id for r in due_routines])
+        ).order_by(m.RoutineStep.order).all():
+            steps_by_routine.setdefault(st.routine_id, []).append(st)
+
+    routines = []
+    for r in due_routines:
+        done = set((rlogs[r.id].steps_done or []) if r.id in rlogs else [])
+        steps = steps_by_routine.get(r.id, [])
+        routines.append({
+            "id": r.id,
+            "name": r.name,
+            "category": r.category,
+            "time_slot": r.time_slot,
+            "completed": bool(rlogs[r.id].completed) if r.id in rlogs else False,
+            "steps": [{
+                "id": st.id,
+                "name": st.name,
+                "duration_min": st.duration_min,
+                "is_required": st.is_required,
+                "done": st.id in done,
+            } for st in steps],
+            "done_count": len([st for st in steps if st.id in done]),
+            "total_count": len(steps),
+        })
+
+    records = db.query(m.ActivityRecord).filter(
+        m.ActivityRecord.user_id == user.id, m.ActivityRecord.date == d
+    ).all()
+
+    progress = db.query(m.UserProgress).filter(m.UserProgress.user_id == user.id).first()
+
+    # O "feito de hoje" ignora o que já está fechado; num dia de descanso
+    # planejado nada fica pendente, por isso ele não conta como falha.
+    open_habits = len([h for h in habits if not h["completed"]])
+    open_routines = len([r for r in routines if not r["completed"]])
+    open_events = len([e for e in agenda if e["status"] == "pending"])
+    total_items = len(habits) + len(routines) + len(agenda)
+    done_items = total_items - (open_habits + open_routines + open_events)
+
+    return {
+        "date": d.isoformat(),
+        "rest_day": resting,
+        "agenda": agenda,
+        "habits": habits,
+        "routines": routines,
+        "records": [{
+            "id": r.id,
+            "modality": r.modality,
+            "category": r.category,
+            "params": r.params,
+            "xp_earned": r.xp_earned,
+            "score_earned": r.score_earned,
+        } for r in records],
+        "summary": {
+            "total": total_items,
+            "done": done_items,
+            "pending": 0 if resting else (open_habits + open_routines + open_events),
+            "xp": progress.total_xp if progress else 0,
+            "level": progress.level if progress else 1,
+        },
+    }
+
+
+@app.get("/api/modalities")
+def list_modalities(user: User = Depends(get_current_user)):
+    """Modalidades e seus parâmetros, direto de quem calcula a pontuação.
+
+    O formulário de registro se monta a partir daqui, então não há como ele
+    pedir um campo que o cálculo ignora — nem esquecer um que ele usa.
+    """
+    return {"modalities": scoring_v2.modality_catalog()}
+
+
+# --- Fase 5: treino com IA -------------------------------------------------
+def _own_plan(db: Session, user: User, plan_id: int) -> m.TrainingPlan:
+    plano = db.query(m.TrainingPlan).filter(
+        m.TrainingPlan.id == plan_id, m.TrainingPlan.user_id == user.id
+    ).first()
+    if not plano:
+        raise HTTPException(404, "Plano não encontrado.")
+    return plano
+
+
+def serialize_plan(db: Session, plano: m.TrainingPlan, com_sessoes: bool = True) -> dict:
+    sessoes = db.query(m.TrainingSession).filter(
+        m.TrainingSession.plan_id == plano.id
+    ).order_by(m.TrainingSession.week, m.TrainingSession.order).all()
+
+    feitas = len([x for x in sessoes if x.status == "done"])
+    out = {
+        "id": plano.id,
+        "modality": plano.modality,
+        "goal": plano.goal,
+        "level": plano.level,
+        "days_per_week": plano.days_per_week,
+        "weeks": plano.weeks,
+        "notes": plano.notes,
+        "source": plano.source,
+        "status": plano.status,
+        "start_date": plano.start_date.isoformat() if plano.start_date else None,
+        "progress": {
+            "total": len(sessoes),
+            "done": feitas,
+            "percent": round(feitas / len(sessoes) * 100) if sessoes else 0,
+        },
+    }
+    if com_sessoes:
+        out["sessions"] = [{
+            "id": x.id,
+            "week": x.week,
+            "order": x.order,
+            "title": x.title,
+            "focus": x.focus,
+            "duration_min": x.duration_min,
+            "items": x.items or [],
+            "status": x.status,
+            "scheduled_date": x.scheduled_date.isoformat() if x.scheduled_date else None,
+        } for x in sessoes]
+    return out
+
+
+def _materializar_plano(db: Session, plano: m.TrainingPlan, estrutura: dict) -> None:
+    """Transforma o JSON da IA nas sessões do plano (substituindo as pendentes).
+
+    As sessões já concluídas ficam: adaptar o plano no meio do caminho não pode
+    apagar o que a pessoa já fez.
+    """
+    db.query(m.TrainingSession).filter(
+        m.TrainingSession.plan_id == plano.id,
+        m.TrainingSession.status != "done",
+    ).delete(synchronize_session=False)
+
+    plano.notes = estrutura.get("notes") or plano.notes
+    for semana in estrutura["weeks"]:
+        for i, sessao in enumerate(semana["sessions"]):
+            db.add(m.TrainingSession(
+                plan_id=plano.id,
+                user_id=plano.user_id,
+                week=semana["week"],
+                order=i,
+                title=sessao["title"],
+                focus=sessao.get("focus"),
+                duration_min=sessao.get("duration_min"),
+                items=sessao["items"],
+            ))
+
+
+@app.get("/api/training/plans")
+def list_training_plans(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    planos = db.query(m.TrainingPlan).filter(
+        m.TrainingPlan.user_id == user.id
+    ).order_by(m.TrainingPlan.created_at.desc()).all()
+    return {
+        "plans": [serialize_plan(db, p, com_sessoes=False) for p in planos],
+        "ai_enabled": ai.ai_enabled(),
+    }
+
+
+@app.get("/api/training/plans/{plan_id}")
+def read_training_plan(plan_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return serialize_plan(db, _own_plan(db, user, plan_id))
+
+
+@app.post("/api/training/plans")
+def create_training_plan(payload: s.TrainingPlanCreate,
+                         user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """A IA devolve o plano inteiro montado — semanas, sessões e itens."""
+    if not ai.ai_enabled():
+        raise HTTPException(503, "A IA não está configurada neste ambiente.")
+
+    # O que o app já sabe da pessoa entra no pedido: plano de treino que ignora
+    # objetivo e peso é conselho genérico, não plano.
+    contexto = [payload.constraints] if payload.constraints else []
+    if user.objetivo:
+        contexto.append(f"objetivo declarado: {user.objetivo}")
+
+    try:
+        estrutura = ai.generate_training_plan(
+            modality=payload.modality,
+            goal=payload.goal or user.objetivo,
+            level=payload.level,
+            days_per_week=payload.days_per_week,
+            weeks=payload.weeks,
+            constraints="; ".join(contexto) or None,
+        )
+    except ValueError as e:
+        raise HTTPException(502, str(e))
+
+    plano = m.TrainingPlan(
+        user_id=user.id,
+        modality=payload.modality,
+        goal=payload.goal or user.objetivo,
+        level=payload.level,
+        days_per_week=payload.days_per_week,
+        weeks=len(estrutura["weeks"]),
+        source="ai",
+        start_date=date.today(),
+    )
+    db.add(plano)
+    db.flush()
+    _materializar_plano(db, plano, estrutura)
+    db.commit()
+    db.refresh(plano)
+    return serialize_plan(db, plano)
+
+
+@app.post("/api/training/plans/{plan_id}/adapt")
+def adapt_training_plan(plan_id: int, payload: s.TrainingAdaptRequest,
+                        user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Refaz o que falta do plano a partir do que a pessoa relatou.
+
+    O plano vivo é o ponto: se está pesado demais ou fácil demais, a IA remonta
+    o restante em vez de a pessoa abandonar e começar outro.
+    """
+    if not ai.ai_enabled():
+        raise HTTPException(503, "A IA não está configurada neste ambiente.")
+    plano = _own_plan(db, user, plan_id)
+
+    feitas = db.query(m.TrainingSession).filter(
+        m.TrainingSession.plan_id == plano.id, m.TrainingSession.status == "done"
+    ).count()
+    restantes = max(1, plano.weeks - (feitas // max(1, plano.days_per_week)))
+
+    try:
+        estrutura = ai.generate_training_plan(
+            modality=plano.modality,
+            goal=plano.goal,
+            level=plano.level,
+            days_per_week=plano.days_per_week,
+            weeks=restantes,
+            constraints=(
+                f"Adaptação de um plano em andamento. Sessões já concluídas: {feitas}. "
+                f"A pessoa relatou: {payload.feedback}"
+            ),
+        )
+    except ValueError as e:
+        raise HTTPException(502, str(e))
+
+    _materializar_plano(db, plano, estrutura)
+    db.commit()
+    db.refresh(plano)
+    return serialize_plan(db, plano)
+
+
+@app.post("/api/training/sessions/{session_id}/item")
+def toggle_training_item(session_id: int, payload: s.TrainingItemToggle,
+                         user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Marca um item da sessão. A sessão fecha sozinha quando todos saem."""
+    sessao = db.query(m.TrainingSession).filter(
+        m.TrainingSession.id == session_id, m.TrainingSession.user_id == user.id
+    ).first()
+    if not sessao:
+        raise HTTPException(404, "Sessão não encontrada.")
+
+    itens = [dict(x) for x in (sessao.items or [])]
+    if payload.item_index >= len(itens):
+        raise HTTPException(400, "Item inexistente nesta sessão.")
+
+    atual = bool(itens[payload.item_index].get("done"))
+    itens[payload.item_index]["done"] = (not atual) if payload.done is None else payload.done
+    sessao.items = itens
+
+    tudo = bool(itens) and all(x.get("done") for x in itens)
+    if tudo and sessao.status != "done":
+        sessao.status = "done"
+        sessao.completed_at = datetime.utcnow()
+    elif not tudo and sessao.status == "done":
+        sessao.status = "pending"
+        sessao.completed_at = None
+
+    db.commit()
+    db.refresh(sessao)
+    return {
+        "id": sessao.id,
+        "items": sessao.items,
+        "status": sessao.status,
+        "plan": serialize_plan(db, _own_plan(db, user, sessao.plan_id), com_sessoes=False),
+    }
+
+
+@app.put("/api/training/sessions/{session_id}")
+def update_training_session(session_id: int, payload: s.TrainingSessionUpdate,
+                            user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    sessao = db.query(m.TrainingSession).filter(
+        m.TrainingSession.id == session_id, m.TrainingSession.user_id == user.id
+    ).first()
+    if not sessao:
+        raise HTTPException(404, "Sessão não encontrada.")
+
+    if payload.status is not None:
+        sessao.status = payload.status
+        sessao.completed_at = datetime.utcnow() if payload.status == "done" else None
+        if payload.status == "done":
+            sessao.items = [{**x, "done": True} for x in (sessao.items or [])]
+    if payload.scheduled_date is not None:
+        sessao.scheduled_date = parse_date(payload.scheduled_date, date.today())
+    db.commit()
+    db.refresh(sessao)
+    return {"id": sessao.id, "status": sessao.status,
+            "scheduled_date": sessao.scheduled_date.isoformat() if sessao.scheduled_date else None}
+
+
+@app.delete("/api/training/plans/{plan_id}")
+def delete_training_plan(plan_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    plano = _own_plan(db, user, plan_id)
+    db.query(m.TrainingSession).filter(m.TrainingSession.plan_id == plano.id).delete()
+    db.delete(plano)
+    db.commit()
+    return {"ok": True}
+
+
+@app.post("/api/routines/ai")
+def create_routine_with_ai(payload: s.RoutineFromAI,
+                           user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """A IA também monta rotina: mesma estrutura de passos que a pessoa criaria."""
+    if not ai.ai_enabled():
+        raise HTTPException(503, "A IA não está configurada neste ambiente.")
+    try:
+        gerada = ai.generate_routine(payload.name, payload.context, payload.steps)
+    except ValueError as e:
+        raise HTTPException(502, str(e))
+
+    rotina = m.Routine(user_id=user.id, name=gerada["name"], frequency={"type": "daily"})
+    db.add(rotina)
+    db.flush()
+    for i, passo in enumerate(gerada["steps"]):
+        db.add(m.RoutineStep(
+            routine_id=rotina.id,
+            name=passo["name"],
+            order=i,
+            duration_min=passo["duration_min"],
+            is_required=passo["is_required"],
+        ))
+    db.commit()
+    db.refresh(rotina)
+    return {"id": rotina.id, "name": rotina.name, "steps": gerada["steps"]}
+
+
+# --- Fase 6: comentários no feed -------------------------------------------
+def _activity_do_grupo(db: Session, gid: int, aid: int) -> Activity:
+    item = db.query(Activity).filter(Activity.id == aid, Activity.group_id == gid).first()
+    if not item:
+        raise HTTPException(404, "Item do feed não encontrado.")
+    return item
+
+
+@app.get("/api/groups/{gid}/activities/{aid}/comments")
+def list_comments(gid: int, aid: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    get_membership(db, user, gid)
+    _activity_do_grupo(db, gid, aid)
+    members_by_id = {x.id: x for x in group_members(db, gid)}
+    return {"comments": comments_map(db, [aid], members_by_id)[aid]}
+
+
+@app.post("/api/groups/{gid}/activities/{aid}/comments")
+def add_comment(gid: int, aid: int, payload: s.CommentCreate,
+                user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    membership = get_membership(db, user, gid)
+    _activity_do_grupo(db, gid, aid)
+
+    comentario = m.ActivityComment(
+        activity_id=aid,
+        membership_id=membership.id,
+        text=payload.text.strip(),
+    )
+    db.add(comentario)
+    db.commit()
+    db.refresh(comentario)
+
+    members_by_id = {x.id: x for x in group_members(db, gid)}
+    return {"comments": comments_map(db, [aid], members_by_id)[aid]}
+
+
+@app.delete("/api/groups/{gid}/activities/{aid}/comments/{cid}")
+def delete_comment(gid: int, aid: int, cid: int,
+                   user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Só o autor apaga o próprio comentário."""
+    membership = get_membership(db, user, gid)
+    comentario = db.query(m.ActivityComment).filter(
+        m.ActivityComment.id == cid, m.ActivityComment.activity_id == aid
+    ).first()
+    if not comentario:
+        raise HTTPException(404, "Comentário não encontrado.")
+    if comentario.membership_id != membership.id:
+        raise HTTPException(403, "Só dá para apagar o próprio comentário.")
+
+    db.delete(comentario)
+    db.commit()
+    members_by_id = {x.id: x for x in group_members(db, gid)}
+    return {"comments": comments_map(db, [aid], members_by_id)[aid]}
+
+
+# --- IA lendo o que de fato aconteceu --------------------------------------
+def _resumo_para_ia(db: Session, user: User, d: date) -> dict:
+    """O que a pessoa realmente fez — a matéria-prima da leitura do dia.
+
+    É aqui que a IA deixa de ser chatbot: ela não pergunta como foi, ela lê.
+    """
+    inicio = d - timedelta(days=6)
+
+    habitos = db.query(m.Habit).filter(
+        m.Habit.user_id == user.id, m.Habit.active.is_(True)
+    ).all()
+    logs = db.query(m.HabitLog).filter(
+        m.HabitLog.user_id == user.id, m.HabitLog.date >= inicio, m.HabitLog.date <= d
+    ).all()
+    descansos = db.query(m.RestDay).filter(
+        m.RestDay.user_id == user.id, m.RestDay.date >= inicio, m.RestDay.date <= d
+    ).count()
+
+    # Consistência olha só os dias em que algo era esperado, e desconta o
+    # descanso planejado — descansar de propósito não é falha.
+    esperados = len([h for h in habitos if habit_due_on(h, d)]) * 7
+    feitos = len([x for x in logs if x.completed])
+    consistencia = scoring_v2.compute_consistency_score(esperados, feitos, descansos)
+
+    registros = db.query(m.ActivityRecord).filter(
+        m.ActivityRecord.user_id == user.id,
+        m.ActivityRecord.date >= inicio,
+        m.ActivityRecord.date <= d,
+    ).all()
+    modalidades = sorted({r.modality for r in registros})
+
+    dia = my_day(day=d.isoformat(), user=user, db=db)
+    plano = db.query(m.TrainingPlan).filter(
+        m.TrainingPlan.user_id == user.id, m.TrainingPlan.status == "active"
+    ).first()
+
+    dados = {
+        "pendente hoje": dia["summary"]["pending"],
+        "concluído hoje": f"{dia['summary']['done']} de {dia['summary']['total']}",
+        "hoje é descanso planejado": "sim" if dia["rest_day"] else "não",
+        "consistência de hábitos (7 dias)": f"{consistencia:.0f}%",
+        "treinos registrados (7 dias)": len(registros),
+        "modalidades (7 dias)": ", ".join(modalidades) or "nenhuma",
+        "dias de descanso planejados (7 dias)": descansos,
+        "objetivo declarado": user.objetivo or "não informado",
+    }
+    if plano:
+        progresso = serialize_plan(db, plano, com_sessoes=False)["progress"]
+        dados["plano de treino"] = (
+            f"{plano.modality}, {progresso['done']} de {progresso['total']} sessões"
+        )
+    if dia["agenda"]:
+        dados["agenda de hoje"] = ", ".join(e["title"] for e in dia["agenda"][:3])
+    return dados
+
+
+@app.get("/api/today/insight")
+def daily_insight(day: str | None = None, refresh: bool = False,
+                  user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Uma frase da IA sobre o dia, a partir dos dados reais da pessoa.
+
+    Gerada uma vez por dia: o Meu Dia é a tela mais aberta do app, e refazer a
+    cada visita seria desperdício sem ganho nenhum.
+    """
+    d = parse_date(day, date.today())
+    existente = db.query(m.DailyInsight).filter(
+        m.DailyInsight.user_id == user.id, m.DailyInsight.date == d
+    ).first()
+    if existente and not refresh:
+        return {"text": existente.text, "date": d.isoformat(), "cached": True}
+
+    if not ai.ai_enabled():
+        return {"text": None, "date": d.isoformat(), "ai_enabled": False}
+
+    dados = _resumo_para_ia(db, user, d)
+    try:
+        texto = ai.generate_daily_insight(dados)
+    except Exception:
+        # A leitura é um extra: se a IA falhar, o Meu Dia segue inteiro.
+        return {"text": None, "date": d.isoformat(), "ai_enabled": True}
+
+    if existente:
+        existente.text = texto
+        existente.context = dados
+    else:
+        db.add(m.DailyInsight(user_id=user.id, date=d, text=texto, context=dados))
+    db.commit()
+    return {"text": texto, "date": d.isoformat(), "cached": False}
 
 # --- frontend estático (SPA) -----------------------------------------------
 # Em produção o backend também serve o frontend já buildado (dist), então tudo

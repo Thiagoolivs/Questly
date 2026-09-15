@@ -15,7 +15,7 @@ from datetime import date, timedelta
 
 from .data import (
     ACHIEVEMENTS,
-    CATEGORY_EMOJI,
+    CATEGORY_ICON,
     CATEGORY_ORDER,
     CHALLENGE_POOLS,
     DEFAULT_HABITS,
@@ -121,7 +121,7 @@ def challenge_for(settings, d: date, cat: str, cat_index: int, offset: int = 0) 
     diff, text = items[(base_pos + offset) % len(items)]
     return {
         "category": cat,
-        "emoji": CATEGORY_EMOJI[cat],
+        "icon": CATEGORY_ICON[cat],
         "difficulty": diff,
         "difficulty_label": DIFFICULTY_LABEL[diff],
         "points": DIFFICULTY_POINTS[diff],
@@ -261,7 +261,7 @@ def nudge(today_cd: dict, my_total: int, partner_total=None, partner_name=None) 
         elif my_total > partner_total:
             base += " Você tá liderando!"
 
-    return {"emoji": "", "text": base}
+    return {"icon": "", "text": base}
 
 
 def _challenge_window(settings, today: date):
@@ -375,7 +375,7 @@ def achievements_for(days: list[dict], stats: dict, casal_days: int = 0) -> list
         result.append({
             "key": a["key"],
             "name": a["name"],
-            "emoji": a["emoji"],
+            "icon": a["icon"],
             "desc": a["desc"],
             "current": min(current, target),
             "target": target,

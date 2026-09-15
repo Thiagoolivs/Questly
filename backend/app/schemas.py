@@ -1,7 +1,7 @@
 """Schemas Pydantic para os corpos de request."""
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 # --- auth / usuário --------------------------------------------------------
@@ -94,14 +94,12 @@ class RerollRequest(BaseModel):
 class JointActivityCreate(BaseModel):
     date: str
     label: str = Field(..., min_length=1, max_length=120)
-    emoji: str = Field("💞", max_length=8)
     icon: Optional[str] = Field(None, max_length=24)
     image: Optional[str] = None  # comprovação opcional
 
 
 class GoalCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=120)
-    emoji: str = Field("🎯", max_length=8)
     icon: Optional[str] = Field(None, max_length=24)
     duration_days: int = Field(30, ge=1, le=365)
 
@@ -112,7 +110,6 @@ class GoalCheckinRequest(BaseModel):
 
 class TaskCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=120)
-    emoji: str = Field("🗓️", max_length=8)
     icon: Optional[str] = Field(None, max_length=24)
     kind: Literal["once", "weekly"] = "once"
     date: Optional[str] = None          # para 'once' (YYYY-MM-DD)
@@ -170,13 +167,16 @@ class MessageCreate(BaseModel):
 class HabitDef(BaseModel):
     key: str
     label: str
-    emoji: str = "✅"
-    icon: Optional[str] = None
+    icon: str = "check-circle"
     category: str = "Geral"
 
 
 class SettingsUpdate(BaseModel):
     timezone: Optional[str] = Field(None, max_length=40)
+    # Janela do desafio do grupo, com hora (ISO 8601). Enviar as duas juntas;
+    # start_date/duration_days passam a ser derivados delas.
+    challenge_start: Optional[str] = None
+    challenge_end: Optional[str] = None
     duration_days: Optional[int] = Field(None, ge=1, le=365)
     water_goal_l: Optional[float] = None
     steps_goal: Optional[int] = None
@@ -284,7 +284,9 @@ class RoutineLogUpdate(BaseModel):
 # --- Fase 3: Scoring V2 e Atividades ---------------------------------------
 
 class ActivityRecordCreate(BaseModel):
-    date: str
+    # Sem data = hoje (no fuso do grupo). Registrar o que acabou de fazer é o
+    # caso comum e não deve exigir campo nenhum além do essencial.
+    date: Optional[str] = None
     modality: str = Field(..., max_length=40)
     category: Optional[str] = None
     params: dict = Field(default_factory=dict)
@@ -323,3 +325,73 @@ class CompetitiveScoreResponse(BaseModel):
     consistency_score: float
     challenge_score: float
     total_score: float
+
+
+# --- Fase 4: dia agregado, descanso planejado ------------------------------
+
+class RestDayCreate(BaseModel):
+    date: str
+    reason: Optional[str] = Field(default=None, max_length=120)
+
+
+class HabitLogToggle(BaseModel):
+    """Marca/desmarca um hábito num dia. Sem `completed` o valor é invertido."""
+
+    date: Optional[str] = None
+    completed: Optional[bool] = None
+    value: Optional[float] = None
+
+
+class RoutineStepToggle(BaseModel):
+    """Marca/desmarca um passo de rotina num dia."""
+
+    date: Optional[str] = None
+    step_id: int
+    done: Optional[bool] = None
+
+
+# --- Fase 5: treino com IA --------------------------------------------------
+
+class TrainingPlanCreate(BaseModel):
+    modality: str = Field(..., max_length=40)
+    goal: Optional[str] = Field(None, max_length=200)
+    level: Literal["iniciante", "intermediario", "avancado"] = "iniciante"
+    days_per_week: int = Field(3, ge=1, le=7)
+    weeks: int = Field(4, ge=1, le=12)
+    constraints: Optional[str] = Field(None, max_length=200)
+
+
+class TrainingItemToggle(BaseModel):
+    item_index: int = Field(..., ge=0)
+    done: Optional[bool] = None
+
+
+class TrainingSessionUpdate(BaseModel):
+    status: Optional[Literal["pending", "done", "skipped"]] = None
+    scheduled_date: Optional[str] = None
+
+
+class TrainingAdaptRequest(BaseModel):
+    """Pede à IA para refazer o restante do plano a partir do que aconteceu."""
+
+    feedback: str = Field(..., min_length=3, max_length=300)
+
+
+class RoutineFromAI(BaseModel):
+    name: str = Field(..., min_length=1, max_length=60)
+    context: Optional[str] = Field(None, max_length=200)
+    steps: int = Field(5, ge=2, le=12)
+
+
+class CommentCreate(BaseModel):
+    text: str = Field(..., min_length=1, max_length=500)
+
+    @field_validator("text")
+    @classmethod
+    def _sem_texto_vazio(cls, v: str) -> str:
+        # min_length conta os espaços, então "   " passaria e viraria um
+        # comentário vazio no feed.
+        limpo = v.strip()
+        if not limpo:
+            raise ValueError("Escreva alguma coisa.")
+        return limpo

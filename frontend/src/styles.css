@@ -1406,7 +1406,9 @@ input[type='range'] { width: 100%; accent-color: var(--accent); height: 24px; }
 .custom-ch-only { margin-top: 10px; }
 
 /* --- Tour (guided onboarding) --------------------------------------------- */
-.tour { position: fixed; inset: 0; z-index: 70; }
+/* O tour fica acima de tudo (TabBar 100, sheet 200, zoom 300): ele conduz a
+   tela, e qualquer camada por cima bloqueia o botão de avançar. */
+.tour { position: fixed; inset: 0; z-index: 400; }
 .tour-dim { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.78); }
 .tour-hole {
   position: fixed;

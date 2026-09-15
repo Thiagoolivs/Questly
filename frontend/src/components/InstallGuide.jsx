@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import Icon from './Icon.jsx'
+import Icon from '../design-system/components/core/Icon.jsx'
 import { canPromptInstall, promptInstall, onInstallChange, isStandalone, installGuide } from '../utils/pwa.js'
 
 // Passo a passo para colocar o Questly na tela inicial, adaptado ao aparelho.
@@ -22,7 +22,7 @@ export default function InstallGuide({ compact = false }) {
   if (installed) {
     return (
       <div className="install-done">
-        <Icon name="check" size={16} /> O Questly já está instalado neste aparelho. 🎉
+        <Icon name="check" size={16} /> O Questly já está instalado neste aparelho.
       </div>
     )
   }
