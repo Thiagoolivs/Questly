@@ -545,3 +545,19 @@ class TrainingSession(Base):
     scheduled_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True, index=True)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class ActivityComment(Base):
+    """Comentário de um membro num item do feed.
+
+    Reação diz que viu; comentário diz o quê. As duas coisas convivem — a
+    reação continua sendo o gesto rápido, com emoji.
+    """
+
+    __tablename__ = "activity_comments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    activity_id: Mapped[int] = mapped_column(ForeignKey("activities.id"), index=True)
+    membership_id: Mapped[int] = mapped_column(ForeignKey("memberships.id"), index=True)
+    text: Mapped[str] = mapped_column(String(500))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)

@@ -1,7 +1,7 @@
 """Schemas Pydantic para os corpos de request."""
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 # --- auth / usuário --------------------------------------------------------
@@ -385,3 +385,17 @@ class RoutineFromAI(BaseModel):
     name: str = Field(..., min_length=1, max_length=60)
     context: Optional[str] = Field(None, max_length=200)
     steps: int = Field(5, ge=2, le=12)
+
+
+class CommentCreate(BaseModel):
+    text: str = Field(..., min_length=1, max_length=500)
+
+    @field_validator("text")
+    @classmethod
+    def _sem_texto_vazio(cls, v: str) -> str:
+        # min_length conta os espaços, então "   " passaria e viraria um
+        # comentário vazio no feed.
+        limpo = v.strip()
+        if not limpo:
+            raise ValueError("Escreva alguma coisa.")
+        return limpo

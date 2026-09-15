@@ -475,11 +475,21 @@ def upsert_activity(db: Session, gid: int, membership: Membership, kind: str, em
     db.commit()
 
 
-def _purge_activity_reactions(db: Session, activity_query) -> None:
-    """Apaga as reações dos itens de feed prestes a serem removidos."""
+def _purge_activity_children(db: Session, activity_query) -> None:
+    """Apaga reações e comentários dos itens de feed prestes a sumir.
+
+    Vive num lugar só porque os dois caminhos de remoção passam por aqui —
+    esquecer um deles deixaria comentário órfão apontando para item inexistente.
+    """
     ids = [a.id for a in activity_query.all()]
-    if ids:
-        db.query(ActivityReaction).filter(ActivityReaction.activity_id.in_(ids)).delete(synchronize_session=False)
+    if not ids:
+        return
+    db.query(ActivityReaction).filter(
+        ActivityReaction.activity_id.in_(ids)
+    ).delete(synchronize_session=False)
+    db.query(m.ActivityComment).filter(
+        m.ActivityComment.activity_id.in_(ids)
+    ).delete(synchronize_session=False)
 
 
 def remove_activity(db: Session, gid: int, membership: Membership, ref: str, day: date | None = None) -> None:
@@ -488,7 +498,7 @@ def remove_activity(db: Session, gid: int, membership: Membership, ref: str, day
         Activity.group_id == gid, Activity.membership_id == membership.id,
         Activity.ref == ref, Activity.day == day,
     )
-    _purge_activity_reactions(db, q)
+    _purge_activity_children(db, q)
     q.delete(synchronize_session=False)
     db.commit()
 
@@ -499,7 +509,7 @@ def remove_activities_by_ref(db: Session, gid: int, ref: str) -> None:
     Usado quando o item de origem é excluído (tarefa agendada, atividade em dupla),
     para que ele não continue aparecendo no feed."""
     q = db.query(Activity).filter(Activity.group_id == gid, Activity.ref == ref)
-    _purge_activity_reactions(db, q)
+    _purge_activity_children(db, q)
     q.delete(synchronize_session=False)
     db.commit()
 
@@ -520,7 +530,32 @@ def reactions_map(db: Session, activity_ids: list[int], me_id: int) -> dict:
     return out
 
 
-def serialize_activity(a: Activity, members_by_id: dict, reactions: dict | None = None) -> dict:
+def comments_map(db: Session, activity_ids: list[int], members_by_id: dict) -> dict:
+    """Para cada activity: lista de comentários em ordem cronológica."""
+    out: dict[int, list] = {aid: [] for aid in activity_ids}
+    if not activity_ids:
+        return out
+    rows = (
+        db.query(m.ActivityComment)
+        .filter(m.ActivityComment.activity_id.in_(activity_ids))
+        .order_by(m.ActivityComment.id)
+        .all()
+    )
+    for c in rows:
+        mem = members_by_id.get(c.membership_id)
+        out.setdefault(c.activity_id, []).append({
+            "id": c.id,
+            "text": c.text,
+            "author": mem.user.name if mem and mem.user else "?",
+            "photo": mem.user.photo if mem and mem.user else None,
+            "membership_id": c.membership_id,
+            "created_at": c.created_at.isoformat() + "Z",
+        })
+    return out
+
+
+def serialize_activity(a: Activity, members_by_id: dict, reactions: dict | None = None,
+                       comments: dict | None = None) -> dict:
     mem = members_by_id.get(a.membership_id)
     u = mem.user if mem else None
     return {
@@ -535,6 +570,7 @@ def serialize_activity(a: Activity, members_by_id: dict, reactions: dict | None 
         "day": a.day.isoformat() if a.day else None,
         "created_at": a.created_at.isoformat() + "Z",
         "reactions": (reactions or {}).get(a.id) or {"counts": {}, "mine": None, "total": 0},
+        "comments": (comments or {}).get(a.id) or [],
     }
 
 
@@ -1886,9 +1922,11 @@ def list_activities(gid: int, limit: int = 40, user: User = Depends(get_current_
         .limit(min(limit, 200))
         .all()
     )
-    rmap = reactions_map(db, [a.id for a in rows], me.id)
+    ids = [a.id for a in rows]
+    rmap = reactions_map(db, ids, me.id)
+    cmap = comments_map(db, ids, members_by_id)
     return {
-        "activities": [serialize_activity(a, members_by_id, rmap) for a in rows],
+        "activities": [serialize_activity(a, members_by_id, rmap, cmap) for a in rows],
         "reaction_types": FEED_REACTIONS,
     }
 
@@ -2863,6 +2901,60 @@ def create_routine_with_ai(payload: s.RoutineFromAI,
     db.commit()
     db.refresh(rotina)
     return {"id": rotina.id, "name": rotina.name, "steps": gerada["steps"]}
+
+
+# --- Fase 6: comentários no feed -------------------------------------------
+def _activity_do_grupo(db: Session, gid: int, aid: int) -> Activity:
+    item = db.query(Activity).filter(Activity.id == aid, Activity.group_id == gid).first()
+    if not item:
+        raise HTTPException(404, "Item do feed não encontrado.")
+    return item
+
+
+@app.get("/api/groups/{gid}/activities/{aid}/comments")
+def list_comments(gid: int, aid: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    get_membership(db, user, gid)
+    _activity_do_grupo(db, gid, aid)
+    members_by_id = {x.id: x for x in group_members(db, gid)}
+    return {"comments": comments_map(db, [aid], members_by_id)[aid]}
+
+
+@app.post("/api/groups/{gid}/activities/{aid}/comments")
+def add_comment(gid: int, aid: int, payload: s.CommentCreate,
+                user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    membership = get_membership(db, user, gid)
+    _activity_do_grupo(db, gid, aid)
+
+    comentario = m.ActivityComment(
+        activity_id=aid,
+        membership_id=membership.id,
+        text=payload.text.strip(),
+    )
+    db.add(comentario)
+    db.commit()
+    db.refresh(comentario)
+
+    members_by_id = {x.id: x for x in group_members(db, gid)}
+    return {"comments": comments_map(db, [aid], members_by_id)[aid]}
+
+
+@app.delete("/api/groups/{gid}/activities/{aid}/comments/{cid}")
+def delete_comment(gid: int, aid: int, cid: int,
+                   user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Só o autor apaga o próprio comentário."""
+    membership = get_membership(db, user, gid)
+    comentario = db.query(m.ActivityComment).filter(
+        m.ActivityComment.id == cid, m.ActivityComment.activity_id == aid
+    ).first()
+    if not comentario:
+        raise HTTPException(404, "Comentário não encontrado.")
+    if comentario.membership_id != membership.id:
+        raise HTTPException(403, "Só dá para apagar o próprio comentário.")
+
+    db.delete(comentario)
+    db.commit()
+    members_by_id = {x.id: x for x in group_members(db, gid)}
+    return {"comments": comments_map(db, [aid], members_by_id)[aid]}
 
 # --- frontend estático (SPA) -----------------------------------------------
 # Em produção o backend também serve o frontend já buildado (dist), então tudo
