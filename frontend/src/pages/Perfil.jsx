@@ -246,7 +246,7 @@ export default function Perfil() {
               onChange={(e) => setForm({ ...form, objetivo: e.target.value })} 
             />
             <Button variant="primary" block onClick={save}>
-              {saved ? '✓ Salvo!' : 'Salvar perfil'}
+              {saved ? 'Salvo' : 'Salvar perfil'}
             </Button>
           </div>
         </Card>
@@ -487,7 +487,7 @@ function NutritionCard({ form, setForm, nt, onSave, saved }) {
         </div>
 
         <Button variant="primary" block onClick={onSave} style={{ marginTop: 'var(--space-4)' }}>
-          {saved ? '✓ Salvo!' : 'Salvar metas'}
+          {saved ? 'Salvo' : 'Salvar metas'}
         </Button>
       </div>
     </Card>

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import Icon from './Icon.jsx'
+import Icon from '../design-system/components/core/Icon.jsx'
 import InstallGuide from './InstallGuide.jsx'
 
 // v2: quem já tinha visto o modal antigo (chave `questly.onboarded`) precisa
@@ -34,7 +34,7 @@ export function useTourTrigger(onStart) {
 // aparece centralizado (boas-vindas e instalação).
 const STEPS = [
   {
-    title: 'Bem-vindo ao Questly! 👋',
+    title: 'Bem-vindo ao Questly',
     text: 'Um desafio de evolução em grupo. Em 1 minuto eu te mostro por onde começar — é rapidinho.',
   },
   {
@@ -78,7 +78,7 @@ const STEPS = [
   },
   {
     install: true,
-    title: 'Deixe na tela inicial 📲',
+    title: 'Deixe na tela inicial',
     text: 'Assim o Questly abre como um app de verdade — em tela cheia, com ícone e notificações.',
   },
 ]

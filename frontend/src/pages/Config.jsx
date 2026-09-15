@@ -282,7 +282,7 @@ export default function Config() {
                     color: selected.has(h.key) ? 'var(--blue-glow)' : 'var(--text-tertiary)',
                     fontSize: h.icon ? 18 : 20
                   }}>
-                    {h.icon ? <Icon name={h.icon} size={18} /> : h.emoji}
+                    <Icon name={h.icon || "check-circle"} size={18} />
                   </div>
                 }
                 right={
@@ -332,7 +332,7 @@ export default function Config() {
         boxShadow: '0 -4px 12px rgba(0,0,0,0.05)', zIndex: 100
       }}>
         <Button variant="primary" block onClick={save}>
-          {saved ? '✓ Configurações salvas!' : 'Salvar configurações'}
+          {saved ? 'Configurações salvas' : 'Salvar configurações'}
         </Button>
       </div>
     </div>

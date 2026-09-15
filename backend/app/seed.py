@@ -37,6 +37,11 @@ _NEW_COLUMNS = {
         "mood_note": "TEXT",
         "water_ml": "INTEGER",
     },
+    "activities": {
+        # O feed passou a desenhar ícone em vez de emoji; a coluna antiga fica
+        # para os itens já publicados não perderem o que mostravam.
+        "icon": "VARCHAR(24)",
+    },
     "settings": {
         "timezone": "VARCHAR(40)",
         "challenge_pool": "JSON",

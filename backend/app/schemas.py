@@ -94,14 +94,12 @@ class RerollRequest(BaseModel):
 class JointActivityCreate(BaseModel):
     date: str
     label: str = Field(..., min_length=1, max_length=120)
-    emoji: str = Field("💞", max_length=8)
     icon: Optional[str] = Field(None, max_length=24)
     image: Optional[str] = None  # comprovação opcional
 
 
 class GoalCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=120)
-    emoji: str = Field("🎯", max_length=8)
     icon: Optional[str] = Field(None, max_length=24)
     duration_days: int = Field(30, ge=1, le=365)
 
@@ -112,7 +110,6 @@ class GoalCheckinRequest(BaseModel):
 
 class TaskCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=120)
-    emoji: str = Field("🗓️", max_length=8)
     icon: Optional[str] = Field(None, max_length=24)
     kind: Literal["once", "weekly"] = "once"
     date: Optional[str] = None          # para 'once' (YYYY-MM-DD)
@@ -170,8 +167,7 @@ class MessageCreate(BaseModel):
 class HabitDef(BaseModel):
     key: str
     label: str
-    emoji: str = "✅"
-    icon: Optional[str] = None
+    icon: str = "check-circle"
     category: str = "Geral"
 
 

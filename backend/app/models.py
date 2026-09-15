@@ -35,7 +35,9 @@ class User(Base):
     # Vínculo com conta Google (sub do token). Nulo para contas só e-mail/senha.
     google_sub: Mapped[Optional[str]] = mapped_column(String(64), unique=True, nullable=True)
     name: Mapped[str] = mapped_column(String(60))
-    avatar: Mapped[str] = mapped_column(String(8), default="🎮")
+    # Avatar por emoji saiu da interface: o Avatar do design system desenha a
+    # foto ou as iniciais do nome. A coluna fica para não quebrar dados antigos.
+    avatar: Mapped[str] = mapped_column(String(8), default="")
     photo: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # data URL base64 (opcional)
     objetivo: Mapped[str] = mapped_column(String(200), default="")
     peso: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
@@ -186,7 +188,10 @@ class Activity(Base):
     group_id: Mapped[int] = mapped_column(ForeignKey("groups.id"), index=True)
     membership_id: Mapped[int] = mapped_column(ForeignKey("memberships.id"))
     kind: Mapped[str] = mapped_column(String(20))  # challenge | joint | habit | task
-    emoji: Mapped[str] = mapped_column(String(8), default="🎯")
+    # emoji ficou como legado dos itens antigos; o feed novo desenha `icon`
+    # (nome lucide), porque emoji virou exclusividade das reações e do chat.
+    emoji: Mapped[str] = mapped_column(String(8), default="")
+    icon: Mapped[Optional[str]] = mapped_column(String(24), nullable=True)
     text: Mapped[str] = mapped_column(Text, default="")
     image: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # foto opcional
     ref: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)  # p/ upsert/dedupe
@@ -203,7 +208,7 @@ class Goal(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     group_id: Mapped[int] = mapped_column(ForeignKey("groups.id"), index=True)
     title: Mapped[str] = mapped_column(String(120))
-    emoji: Mapped[str] = mapped_column(String(8), default="🎯")
+    emoji: Mapped[str] = mapped_column(String(8), default="")  # legado: use `icon`
     icon: Mapped[Optional[str]] = mapped_column(String(24), nullable=True)  # nome de ícone SVG (opcional)
     start_date: Mapped[date] = mapped_column(Date, default=date.today)
     duration_days: Mapped[int] = mapped_column(Integer, default=30)
@@ -232,7 +237,7 @@ class ScheduledTask(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     group_id: Mapped[int] = mapped_column(ForeignKey("groups.id"), index=True)
     title: Mapped[str] = mapped_column(String(120))
-    emoji: Mapped[str] = mapped_column(String(8), default="🗓️")
+    emoji: Mapped[str] = mapped_column(String(8), default="")  # legado: use `icon`
     icon: Mapped[Optional[str]] = mapped_column(String(24), nullable=True)
     kind: Mapped[str] = mapped_column(String(10), default="once")  # once | weekly
     date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)  # para 'once'
@@ -278,7 +283,7 @@ class JointActivity(Base):
     group_id: Mapped[int] = mapped_column(ForeignKey("groups.id"), index=True)
     date: Mapped[date] = mapped_column(Date, index=True)
     label: Mapped[str] = mapped_column(String(120))
-    emoji: Mapped[str] = mapped_column(String(8), default="💞")
+    emoji: Mapped[str] = mapped_column(String(8), default="")  # legado: use `icon`
     icon: Mapped[Optional[str]] = mapped_column(String(24), nullable=True)
     points: Mapped[int] = mapped_column(Integer, default=20)
     image: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # comprovação opcional

@@ -33,7 +33,7 @@ from .auth import (
 )
 from . import push as pushmod
 from .data import (
-    CATEGORY_EMOJI,
+    CATEGORY_ICON,
     CATEGORY_ORDER,
     DEFAULT_HABITS,
     DIFFICULTIES,
@@ -434,7 +434,6 @@ def serialize_message(m: Message, members_by_id: dict) -> dict:
         "membership_id": m.membership_id,
         "player_id": m.membership_id,  # compat com o frontend antigo
         "name": u.name if u else "?",
-        "avatar": u.avatar if u else "❓",
         "photo": u.photo if u else None,
         "text": m.text,
         "image": m.image,
@@ -451,7 +450,7 @@ def notify_group_others(db: Session, group_id: int, actor_user_id: int, title: s
         pushmod.send_to_user(db, uid, title, body, url)
 
 
-def upsert_activity(db: Session, gid: int, membership: Membership, kind: str, emoji: str, text: str,
+def upsert_activity(db: Session, gid: int, membership: Membership, kind: str, icon: str, text: str,
                     ref: str | None = None, image: str | None = None, day: date | None = None) -> None:
     """Registra/atualiza um evento no feed. Com `ref`, faz upsert por dia
     (evita duplicar ao remarcar o mesmo item) e sobe o evento pro topo."""
@@ -465,12 +464,12 @@ def upsert_activity(db: Session, gid: int, membership: Membership, kind: str, em
             .first()
         )
     if existing:
-        existing.emoji = emoji
+        existing.icon = icon
         existing.text = text
         existing.image = image
         existing.created_at = datetime.utcnow()
     else:
-        db.add(Activity(group_id=gid, membership_id=membership.id, kind=kind, emoji=emoji,
+        db.add(Activity(group_id=gid, membership_id=membership.id, kind=kind, icon=icon,
                         text=text, image=image, ref=ref, day=day))
     db.commit()
 
@@ -561,11 +560,10 @@ def serialize_activity(a: Activity, members_by_id: dict, reactions: dict | None 
     return {
         "id": a.id,
         "kind": a.kind,
-        "emoji": a.emoji,
+        "icon": a.icon,
         "text": a.text,
         "image": a.image,
         "author": u.name if u else "?",
-        "avatar": u.avatar if u else "❓",
         "photo": u.photo if u else None,
         "day": a.day.isoformat() if a.day else None,
         "created_at": a.created_at.isoformat() + "Z",
@@ -1103,7 +1101,7 @@ def _habit_info(settings: Settings, key: str) -> dict:
     for h in (settings.fixed_habits or DEFAULT_HABITS):
         if h.get("key") == key:
             return h
-    return {"key": key, "label": key, "emoji": "✅"}
+    return {"key": key, "label": key, "icon": "check-circle"}
 
 
 @app.post("/api/groups/{gid}/day/toggle")
@@ -1134,8 +1132,8 @@ def toggle(gid: int, req: ToggleRequest, user: User = Depends(get_current_user),
     result = _day_result(db, s, membership, entry, d)
     # Hábito concluído → vai pro feed (com foto, se houver).
     img = (entry.habit_proofs or {}).get(req.habit_key)
-    upsert_activity(db, gid, membership, "habit", h.get("emoji", "✅"),
-                    f"{membership.user.name} cumpriu: {h.get('label', req.habit_key)}",
+    upsert_activity(db, gid, membership, "habit", h.get("icon", "check-circle"),
+                    f"cumpriu: {h.get('label', req.habit_key)}",
                     ref=ref, image=img, day=d)
     return result
 
@@ -1163,8 +1161,8 @@ def set_habit_photo(gid: int, req: HabitPhotoRequest, user: User = Depends(get_c
     # Mantém o item do feed em sincronia com a foto (se o hábito está feito).
     if req.habit_key in (entry.habits_done or []):
         h = _habit_info(s, req.habit_key)
-        upsert_activity(db, gid, membership, "habit", h.get("emoji", "✅"),
-                        f"{membership.user.name} cumpriu: {h.get('label', req.habit_key)}",
+        upsert_activity(db, gid, membership, "habit", h.get("icon", "check-circle"),
+                        f"cumpriu: {h.get('label', req.habit_key)}",
                         ref=f"habit:{req.habit_key}", image=req.image, day=d)
     return result
 
@@ -1214,13 +1212,14 @@ def set_challenge(gid: int, req: ChallengeProofRequest, user: User = Depends(get
     result = _day_result(db, s, membership, entry, d)
 
     ref = f"challenge:{req.category}"
-    emoji = CATEGORY_EMOJI.get(req.category, "🎯")
+    icone = CATEGORY_ICON.get(req.category, "target")
     if req.image:
-        extra = " (juntos 💞)" if req.together else ""
-        text = f"{membership.user.name} fechou o desafio de {req.category}!{extra}"
-        upsert_activity(db, gid, membership, "challenge", emoji, text, ref=ref, image=req.image, day=d)
+        extra = " (juntos)" if req.together else ""
+        text = f"fechou o desafio de {req.category}{extra}"
+        upsert_activity(db, gid, membership, "challenge", icone, text, ref=ref, image=req.image, day=d)
         if not was_done:
-            notify_group_others(db, gid, membership.user_id, membership.group.name, f"{emoji} {text}", "/")
+            notify_group_others(db, gid, membership.user_id, membership.group.name,
+                                f"{membership.user.name} {text}", "/")
     else:
         remove_activity(db, gid, membership, ref, day=d)
     return result
@@ -1297,8 +1296,7 @@ def create_joint(gid: int, payload: JointActivityCreate, user: User = Depends(ge
         group_id=gid,
         date=d,
         label=payload.label.strip(),
-        emoji=(payload.emoji or "💞").strip() or "💞",
-        icon=payload.icon,
+        icon=(payload.icon or "heart").strip() or "heart",
         points=JOINT_ACTIVITY_POINTS,
         image=payload.image,
         created_by=membership.id,
@@ -1306,9 +1304,10 @@ def create_joint(gid: int, payload: JointActivityCreate, user: User = Depends(ge
     db.add(a)
     db.commit()
     db.refresh(a)
-    text = f"{membership.user.name} registrou em dupla: {a.label} (+{a.points} pra vocês!)"
-    upsert_activity(db, gid, membership, "joint", a.emoji, text, ref=f"joint:{a.id}", image=a.image, day=d)
-    notify_group_others(db, gid, membership.user_id, membership.group.name, f"💞 {text}", "/")
+    text = f"registrou em dupla: {a.label} (+{a.points} para os dois)"
+    upsert_activity(db, gid, membership, "joint", a.icon, text, ref=f"joint:{a.id}", image=a.image, day=d)
+    notify_group_others(db, gid, membership.user_id, membership.group.name,
+                        f"{membership.user.name} {text}", "/")
     return serialize_joint(a, {membership.id: membership})
 
 
@@ -1392,8 +1391,7 @@ def create_goal(gid: int, payload: GoalCreate, user: User = Depends(get_current_
     goal = Goal(
         group_id=gid,
         title=payload.title.strip(),
-        emoji=(payload.emoji or "🎯").strip() or "🎯",
-        icon=payload.icon,
+        icon=(payload.icon or "target").strip() or "target",
         start_date=today,
         duration_days=payload.duration_days,
         created_by=me.id,
@@ -1506,8 +1504,7 @@ def create_task(gid: int, payload: TaskCreate, user: User = Depends(get_current_
     task = ScheduledTask(
         group_id=gid,
         title=payload.title.strip(),
-        emoji=(payload.emoji or "🗓️").strip() or "🗓️",
-        icon=payload.icon,
+        icon=(payload.icon or "calendar").strip() or "calendar",
         kind=payload.kind,
         date=parse_date(payload.date) if (payload.kind == "once" and payload.date) else None,
         time=parse_time(payload.time),
@@ -1547,7 +1544,7 @@ def complete_task(gid: int, task_id: int, req: TaskCompleteRequest, user: User =
     else:
         db.add(TaskCompletion(task_id=task_id, membership_id=me.id, date=d, image=req.image))
     db.commit()
-    upsert_activity(db, gid, me, "task", task.emoji, f"{me.user.name} concluiu a tarefa: {task.title}",
+    upsert_activity(db, gid, me, "task", task.icon, f"concluiu a tarefa: {task.title}",
                     ref=ref, image=req.image, day=d)
     return serialize_task(db, task, group_members(db, gid), me, d)
 
@@ -1763,8 +1760,8 @@ def create_message(gid: int, payload: MessageCreate, user: User = Depends(get_cu
     db.add(m)
     db.commit()
     db.refresh(m)
-    preview = m.text if m.text else "📷 Foto"
-    notify_group_others(db, gid, membership.user_id, f"💬 {membership.user.name}", preview[:120], "/chat")
+    preview = m.text if m.text else "Enviou uma foto"
+    notify_group_others(db, gid, membership.user_id, membership.user.name, preview[:120], "/chat")
     return serialize_message(m, {membership.id: membership})
 
 
@@ -1856,7 +1853,7 @@ def create_activity_record(gid: int, payload: s.ActivityRecordCreate, user: User
     db.commit()
     db.refresh(ar)
 
-    text = f"{membership.user.name} registrou {payload.modality} (+{ar.score_earned} pts)"
+    text = f"registrou {payload.modality} (+{ar.score_earned} pts)"
     upsert_activity(db, gid, membership, "record", "activity", text,
                     ref=f"record:{ar.id}", image=ar.proof_image, day=d)
 
@@ -2029,7 +2026,7 @@ def radar(gid: int, user: User = Depends(get_current_user), db: Session = Depend
             "avatar": m.user.avatar,
             "values": [counts[c] for c in cats],
         })
-    return {"categories": cats, "emojis": [CATEGORY_EMOJI[c] for c in cats], "members": out}
+    return {"categories": cats, "icons": [CATEGORY_ICON[c] for c in cats], "members": out}
 
 
 @app.get("/api/groups/{gid}/gallery")
@@ -2057,7 +2054,7 @@ def gallery(gid: int, weeks_limit: int = 8, user: User = Depends(get_current_use
                     "date": e.date.isoformat(),
                     "author": m.user.name,
                     "kind": "challenge",
-                    "emoji": CATEGORY_EMOJI.get(cat, "🎯"),
+                    "icon": CATEGORY_ICON.get(cat, "target"),
                     "label": cat,
                     "image": img,
                 })
@@ -2069,7 +2066,7 @@ def gallery(gid: int, weeks_limit: int = 8, user: User = Depends(get_current_use
                     "date": e.date.isoformat(),
                     "author": m.user.name,
                     "kind": "habit",
-                    "emoji": h.get("emoji", "✅"),
+                    "emoji": h.get("icon", "check-circle"),
                     "label": h.get("label", key),
                     "image": img,
                 })
@@ -2155,7 +2152,7 @@ def state(gid: int, user: User = Depends(get_current_user), db: Session = Depend
                 partner["name"] if partner else None,
             )
         else:
-            row["nudge"] = {"emoji": "🏁", "text": "Desafio concluído! 🎉"}
+            row["nudge"] = {"icon": "flag", "text": "Desafio concluído!"}
 
     leaderboard = sorted(player_rows, key=lambda r: r["stats"]["total"], reverse=True)
 
@@ -2188,7 +2185,7 @@ def state(gid: int, user: User = Depends(get_current_user), db: Session = Depend
         "players": player_rows,
         "leaderboard": leaderboard,
         "casal_perfect_days": casal_perfect_days(s, members, today),
-        "category_emoji": CATEGORY_EMOJI,
+        "category_icon": CATEGORY_ICON,
         "joint": {
             "points_each": JOINT_ACTIVITY_POINTS,
             "activities": [serialize_joint(a, members_by_id) for a in joint_today],

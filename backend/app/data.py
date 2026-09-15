@@ -9,21 +9,21 @@ pontuações crescentes. As 5 áreas: Física, Mental, Social, Relação, Espiri
 # --- Hábitos ---------------------------------------------------------------
 # Conjunto padrão. O grupo pode adicionar QUANTOS hábitos quiser nas configs.
 DEFAULT_HABITS = [
-    {"key": "agua", "label": "Bater a meta de água diária", "emoji": "💧", "category": "Saúde"},
-    {"key": "sono", "label": "Dormir no mínimo 7h30", "emoji": "😴", "category": "Saúde"},
-    {"key": "refeicoes", "label": "Não pular refeições", "emoji": "🍽️", "category": "Saúde"},
-    {"key": "leitura", "label": "Ler 10 páginas (ou 15 min)", "emoji": "📖", "category": "Mental"},
-    {"key": "devocional", "label": "Fazer o devocional", "emoji": "🙏", "category": "Espiritual"},
+    {"key": "agua", "label": "Bater a meta de água diária", "icon": "droplet", "category": "Saúde"},
+    {"key": "sono", "label": "Dormir no mínimo 7h30", "icon": "moon", "category": "Saúde"},
+    {"key": "refeicoes", "label": "Não pular refeições", "icon": "utensils", "category": "Saúde"},
+    {"key": "leitura", "label": "Ler 10 páginas (ou 15 min)", "icon": "book-open", "category": "Mental"},
+    {"key": "devocional", "label": "Fazer o devocional", "icon": "heart-handshake", "category": "Espiritual"},
 ]
 
 # Sugestões prontas (o grupo pode ativar estas além de criar as suas).
 HABITS_MENU = DEFAULT_HABITS + [
-    {"key": "proteina", "label": "Bater a meta de proteína", "emoji": "🥩", "category": "Saúde"},
-    {"key": "passos", "label": "Caminhar 8.000 passos", "emoji": "🚶", "category": "Corpo"},
-    {"key": "alongar", "label": "Alongar por 10 minutos", "emoji": "🤸", "category": "Corpo"},
-    {"key": "orar", "label": "Orar", "emoji": "🕊️", "category": "Espiritual"},
-    {"key": "cama", "label": "Arrumar a cama", "emoji": "🛏️", "category": "Organização"},
-    {"key": "tarefas", "label": "Não deixar tarefas acumuladas", "emoji": "✅", "category": "Organização"},
+    {"key": "proteina", "label": "Bater a meta de proteína", "icon": "beef", "category": "Saúde"},
+    {"key": "passos", "label": "Caminhar 8.000 passos", "icon": "footprints", "category": "Corpo"},
+    {"key": "alongar", "label": "Alongar por 10 minutos", "icon": "activity", "category": "Corpo"},
+    {"key": "orar", "label": "Orar", "icon": "feather", "category": "Espiritual"},
+    {"key": "cama", "label": "Arrumar a cama", "icon": "bed", "category": "Organização"},
+    {"key": "tarefas", "label": "Não deixar tarefas acumuladas", "icon": "check-circle", "category": "Organização"},
 ]
 
 # --- Desafios por categoria e dificuldade ----------------------------------
@@ -148,12 +148,12 @@ CHALLENGE_POOLS = {
 # Ordem das áreas (também usada como ordem dos 5 desafios do dia).
 CATEGORY_ORDER = ["Física", "Mental", "Social", "Relação", "Espiritual"]
 
-CATEGORY_EMOJI = {
-    "Física": "💪",
-    "Mental": "🧠",
-    "Social": "🤝",
-    "Relação": "💞",
-    "Espiritual": "🙏",
+CATEGORY_ICON = {
+    "Física": "dumbbell",
+    "Mental": "brain",
+    "Social": "handshake",
+    "Relação": "heart",
+    "Espiritual": "heart-handshake",
 }
 
 # --- Dificuldades ----------------------------------------------------------
@@ -164,29 +164,29 @@ DIFFICULTY_LABEL = {"facil": "Fácil", "medio": "Médio", "dificil": "Difícil"}
 # --- Conquistas ------------------------------------------------------------
 # Cada conquista define uma métrica e um alvo; a checagem fica em scoring.py.
 ACHIEVEMENTS = [
-    {"key": "primeiros_7", "name": "Primeiros 7 dias", "emoji": "🥉",
+    {"key": "primeiros_7", "name": "Primeiros 7 dias", "icon": "medal",
      "desc": "Conclua 7 dias do desafio.", "metric": "completed_days", "target": 7},
-    {"key": "consecutivos_10", "name": "10 dias consecutivos", "emoji": "🔥",
+    {"key": "consecutivos_10", "name": "10 dias consecutivos", "icon": "flame",
      "desc": "Alcance uma sequência de 10 dias.", "metric": "best_streak", "target": 10},
-    {"key": "completos_30", "name": "30 dias completos", "emoji": "🏆",
+    {"key": "completos_30", "name": "30 dias completos", "icon": "trophy",
      "desc": "Conclua 30 dias do desafio.", "metric": "completed_days", "target": 30},
-    {"key": "mestre_agua", "name": "Mestre da Água", "emoji": "💧",
+    {"key": "mestre_agua", "name": "Mestre da Água", "icon": "droplet",
      "desc": "Bata a meta de água em 15 dias.", "metric": "habit:agua", "target": 15},
-    {"key": "rei_disciplina", "name": "Rei da Disciplina", "emoji": "👑",
+    {"key": "rei_disciplina", "name": "Rei da Disciplina", "icon": "crown",
      "desc": "Cumpra todos os hábitos em 20 dias.", "metric": "all_habits_days", "target": 20},
-    {"key": "leitor", "name": "Leitor Consistente", "emoji": "📚",
+    {"key": "leitor", "name": "Leitor Consistente", "icon": "library",
      "desc": "Cumpra o hábito de leitura em 20 dias.", "metric": "habit:leitura", "target": 20},
-    {"key": "mente_forte", "name": "Mente Forte", "emoji": "🧠",
+    {"key": "mente_forte", "name": "Mente Forte", "icon": "brain",
      "desc": "Conclua 10 desafios da área Mental.", "metric": "cat:Mental", "target": 10},
-    {"key": "gentileza", "name": "Gentileza em Ação", "emoji": "🤝",
+    {"key": "gentileza", "name": "Gentileza em Ação", "icon": "handshake",
      "desc": "Conclua 10 desafios da área Social.", "metric": "cat:Social", "target": 10},
-    {"key": "treino_sempre", "name": "Nunca faltou um treino", "emoji": "💪",
+    {"key": "treino_sempre", "name": "Nunca faltou um treino", "icon": "dumbbell",
      "desc": "Conclua 15 desafios da área Física.", "metric": "cat:Física", "target": 15},
-    {"key": "equilibrio", "name": "Equilíbrio", "emoji": "⚖️",
+    {"key": "equilibrio", "name": "Equilíbrio", "icon": "scale",
      "desc": "Feche as 5 áreas no mesmo dia 5 vezes.", "metric": "balance_days", "target": 5},
-    {"key": "superacao", "name": "Superação", "emoji": "⚡",
+    {"key": "superacao", "name": "Superação", "icon": "zap",
      "desc": "Conclua 5 desafios difíceis.", "metric": "hard_done", "target": 5},
-    {"key": "casal_inabalavel", "name": "Casal Inabalável", "emoji": "💞",
+    {"key": "casal_inabalavel", "name": "Casal Inabalável", "icon": "heart",
      "desc": "Vocês dois concluírem o mesmo dia (dia perfeito em conjunto).",
      "metric": "casal", "target": 1},
 ]
@@ -194,43 +194,45 @@ ACHIEVEMENTS = [
 # --- Reações do feed (estilo LinkedIn) -------------------------------------
 # Cada membro pode dar UMA reação por item do feed (toca outra troca; toca a
 # mesma remove).
+# Emoji aqui é intencional: reagir no feed e escrever nas mensagens do grupo
+# são os dois únicos lugares do app onde eles continuam.
 FEED_REACTIONS = [
-    {"key": "apoio", "emoji": "👏", "label": "Apoio"},
-    {"key": "amei", "emoji": "❤️", "label": "Amei"},
-    {"key": "forca", "emoji": "🔥", "label": "Força"},
-    {"key": "mandou", "emoji": "💪", "label": "Mandou bem"},
-    {"key": "grato", "emoji": "🙏", "label": "Grato"},
-    {"key": "haha", "emoji": "😂", "label": "Haha"},
+    {"key": "apoio", "emoji": "\U0001F44F", "label": "Apoio"},
+    {"key": "amei", "emoji": "\u2764\ufe0f", "label": "Amei"},
+    {"key": "forca", "emoji": "\U0001F525", "label": "Força"},
+    {"key": "mandou", "emoji": "\U0001F4AA", "label": "Mandou bem"},
+    {"key": "grato", "emoji": "\U0001F64F", "label": "Grato"},
+    {"key": "haha", "emoji": "\U0001F602", "label": "Haha"},
 ]
 
 # --- Sugestões de atividades em dupla --------------------------------------
 # Atividades extras feitas juntos (pontuam para os dois). O grupo também pode
 # registrar as suas próprias.
 JOINT_SUGGESTIONS = [
-    {"emoji": "🍳", "label": "Cozinhar uma refeição juntos"},
-    {"emoji": "🚶", "label": "Caminhar juntos"},
-    {"emoji": "🏋️", "label": "Treinar juntos"},
-    {"emoji": "🙏", "label": "Orar / devocional juntos"},
-    {"emoji": "🎬", "label": "Assistir algo e conversar sobre"},
-    {"emoji": "🧹", "label": "Organizar um ambiente juntos"},
-    {"emoji": "💬", "label": "1h de conversa sem telas"},
-    {"emoji": "🌅", "label": "Ver o nascer/pôr do sol juntos"},
+    {"icon": "utensils", "label": "Cozinhar uma refeição juntos"},
+    {"icon": "footprints", "label": "Caminhar juntos"},
+    {"icon": "dumbbell", "label": "Treinar juntos"},
+    {"icon": "heart-handshake", "label": "Orar / devocional juntos"},
+    {"icon": "clapperboard", "label": "Assistir algo e conversar sobre"},
+    {"icon": "sparkles", "label": "Organizar um ambiente juntos"},
+    {"icon": "message-circle", "label": "1h de conversa sem telas"},
+    {"icon": "sunrise", "label": "Ver o nascer/pôr do sol juntos"},
 ]
 
 # --- Status de humor / emoções (múltipla escolha) --------------------------
 MOODS = [
-    {"key": "otimo", "emoji": "😄", "label": "Ótimo"},
-    {"key": "feliz", "emoji": "😊", "label": "Feliz"},
-    {"key": "grato", "emoji": "🙏", "label": "Grato"},
-    {"key": "calmo", "emoji": "😌", "label": "Calmo"},
-    {"key": "motivado", "emoji": "🔥", "label": "Motivado"},
-    {"key": "produtivo", "emoji": "⚡", "label": "Produtivo"},
-    {"key": "neutro", "emoji": "😐", "label": "Neutro"},
-    {"key": "cansado", "emoji": "🥱", "label": "Cansado"},
-    {"key": "ansioso", "emoji": "😰", "label": "Ansioso"},
-    {"key": "estressado", "emoji": "😤", "label": "Estressado"},
-    {"key": "triste", "emoji": "😔", "label": "Triste"},
-    {"key": "dificil", "emoji": "😫", "label": "Difícil"},
+    {"key": "otimo", "icon": "smile", "label": "Ótimo"},
+    {"key": "feliz", "icon": "smile", "label": "Feliz"},
+    {"key": "grato", "icon": "heart-handshake", "label": "Grato"},
+    {"key": "calmo", "icon": "leaf", "label": "Calmo"},
+    {"key": "motivado", "icon": "flame", "label": "Motivado"},
+    {"key": "produtivo", "icon": "zap", "label": "Produtivo"},
+    {"key": "neutro", "icon": "meh", "label": "Neutro"},
+    {"key": "cansado", "icon": "moon", "label": "Cansado"},
+    {"key": "ansioso", "icon": "wind", "label": "Ansioso"},
+    {"key": "estressado", "icon": "flame", "label": "Estressado"},
+    {"key": "triste", "icon": "cloud-rain", "label": "Triste"},
+    {"key": "dificil", "icon": "cloud-lightning", "label": "Difícil"},
 ]
 
 # --- Mensagem do dia (motivacional, determinística por data) ---------------
@@ -259,10 +261,10 @@ MOTD_POOL = [
 
 # --- Incentivos genéricos --------------------------------------------------
 ENCOURAGEMENTS = [
-    "Bora! Cada área conta. 💪",
-    "Tá quase — não deixa pra amanhã. 🔥",
-    "Orgulho de você por continuar. 👏",
-    "Respira e faz o próximo. Um de cada vez. 🌱",
-    "Hoje é dia de virar o jogo. 😏",
-    "Seu eu do futuro agradece. ✨",
+    "Bora! Cada área conta.",
+    "Tá quase — não deixa pra amanhã.",
+    "Orgulho de você por continuar.",
+    "Respira e faz o próximo. Um de cada vez.",
+    "Hoje é dia de virar o jogo.",
+    "Seu eu do futuro agradece.",
 ]

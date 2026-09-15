@@ -2,8 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useApp } from '../store.jsx'
 import { api } from '../api.js'
 import { pickImage, fileToCompressedDataURL } from '../utils/image.js'
-import Avatar from '../components/Avatar.jsx'
-import Icon from '../components/Icon.jsx'
+import { Avatar, Icon } from '../design-system/components/index.js'
 
 function timeLabel(iso) {
   const d = new Date(iso)

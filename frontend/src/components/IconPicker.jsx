@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import Icon, { PICKER_ICONS } from './Icon.jsx'
+import Icon, { ICON_NAMES } from '../design-system/components/core/Icon.jsx'
 
 // Seletor de Ícones SVG (estilo Lucide).
 export default function IconPicker({ icon, onPick }) {
@@ -13,7 +13,7 @@ export default function IconPicker({ icon, onPick }) {
       {open && (
         <div className="iconpicker-panel">
           <div className="ip-grid">
-            {PICKER_ICONS.map((n) => (
+            {ICON_NAMES.map((n) => (
               <button
                 type="button"
                 key={n}

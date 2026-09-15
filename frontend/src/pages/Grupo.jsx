@@ -69,7 +69,11 @@ export default function Grupo() {
                   title={
                     <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
                       {r.name}
-                      {r.stats?.streak > 0 && <span style={{ color: 'var(--warning)', fontSize: 'var(--fs-label)' }}>🔥 {r.stats.streak}</span>}
+                      {r.stats?.streak > 0 && (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, color: 'var(--warning)', fontSize: 'var(--fs-label)' }}>
+                          <Icon name="flame" size={13} color="var(--warning)" /> {r.stats.streak}
+                        </span>
+                      )}
                     </div>
                   }
                   subtitle={`Concluídos: ${r.stats?.completed_days || 0} · Perfeitos: ${r.stats?.perfect_days || 0}`}

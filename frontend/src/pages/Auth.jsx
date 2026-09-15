@@ -3,7 +3,6 @@ import { useApp } from '../store.jsx'
 import { api } from '../api.js'
 import { Button, Input, SegmentedControl, Card, Icon } from '../design-system/components/index.js'
 
-const AVATARS = ['🦊', '🐨', '🐼', '🦁', '🐯', '🐸', '🐵', '🦉', '🔥', '⚡', '🌟', '💜']
 
 function readResetToken() {
   const token = new URLSearchParams(window.location.search).get('token')
@@ -18,7 +17,6 @@ export default function Auth() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [name, setName] = useState('')
-  const [avatar, setAvatar] = useState('🦊')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(null)
   const [notice, setNotice] = useState(null)
@@ -86,7 +84,7 @@ export default function Auth() {
       if (mode === 'login') {
         await login(email.trim(), password)
       } else if (mode === 'signup') {
-        await register({ email: email.trim(), password, name: name.trim(), avatar })
+        await register({ email: email.trim(), password, name: name.trim(), avatar: '' })
       } else if (mode === 'forgot') {
         await api.forgotPassword({ email: email.trim() })
         setNotice('Se existe uma conta com esse e-mail, enviamos um link para redefinir a senha. Confira a caixa de entrada (e o spam).')
@@ -144,29 +142,6 @@ export default function Auth() {
                   placeholder="Como te chamam"
                   required
                 />
-                <div>
-                  <span style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-medium)', color: 'var(--text-secondary)', display: 'block', marginBottom: 'var(--space-2)' }}>
-                    Avatar
-                  </span>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
-                    {AVATARS.map((a) => (
-                      <button
-                        key={a}
-                        type="button"
-                        style={{
-                          width: 40, height: 40, borderRadius: 'var(--radius-pill)',
-                          border: a === avatar ? '2px solid var(--blue-glow)' : '1px solid var(--line-hairline)',
-                          background: a === avatar ? 'rgba(0, 122, 255, 0.1)' : 'transparent',
-                          fontSize: 20, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          cursor: 'pointer', transition: 'all var(--dur-fast) var(--ease-standard)'
-                        }}
-                        onClick={() => setAvatar(a)}
-                      >
-                        {a}
-                      </button>
-                    ))}
-                  </div>
-                </div>
               </>
             )}
 
