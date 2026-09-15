@@ -66,6 +66,7 @@ function Vazio({ children }) {
 export default function MeuDia() {
   const { user } = useApp()
   const [day, setDay] = useState(null)
+  const [leitura, setLeitura] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
@@ -84,6 +85,12 @@ export default function MeuDia() {
   useEffect(() => {
     carregar()
   }, [carregar])
+
+  // A leitura do dia é um extra e vem à parte: se a IA demorar ou falhar, o
+  // Meu Dia já está na tela.
+  useEffect(() => {
+    api.insight().then((r) => setLeitura(r.text)).catch(() => {})
+  }, [])
 
   // As marcações são otimistas: o toque responde na hora e só volta atrás se o
   // servidor recusar. É o gesto mais repetido do app, não pode ter espera.
@@ -232,6 +239,24 @@ export default function MeuDia() {
           <Chip>Nível {summary.level ?? 1}</Chip>
         </div>
       </Card>
+
+      {leitura && (
+        <Card style={{ marginBottom: 'var(--space-8)' }}>
+          <div style={{ display: 'flex', gap: 'var(--space-5)' }}>
+            <Icon name="sparkles" size={16} color="var(--blue-glow)" />
+            <p
+              style={{
+                margin: 0,
+                fontFamily: 'var(--font-ui)',
+                fontSize: 'var(--fs-body-sm)',
+                color: 'var(--text-secondary)',
+              }}
+            >
+              {leitura}
+            </p>
+          </div>
+        </Card>
+      )}
 
       <Secao
         title="Agenda"

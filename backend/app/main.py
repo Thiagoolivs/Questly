@@ -2953,6 +2953,96 @@ def delete_comment(gid: int, aid: int, cid: int,
     members_by_id = {x.id: x for x in group_members(db, gid)}
     return {"comments": comments_map(db, [aid], members_by_id)[aid]}
 
+
+# --- IA lendo o que de fato aconteceu --------------------------------------
+def _resumo_para_ia(db: Session, user: User, d: date) -> dict:
+    """O que a pessoa realmente fez — a matéria-prima da leitura do dia.
+
+    É aqui que a IA deixa de ser chatbot: ela não pergunta como foi, ela lê.
+    """
+    inicio = d - timedelta(days=6)
+
+    habitos = db.query(m.Habit).filter(
+        m.Habit.user_id == user.id, m.Habit.active.is_(True)
+    ).all()
+    logs = db.query(m.HabitLog).filter(
+        m.HabitLog.user_id == user.id, m.HabitLog.date >= inicio, m.HabitLog.date <= d
+    ).all()
+    descansos = db.query(m.RestDay).filter(
+        m.RestDay.user_id == user.id, m.RestDay.date >= inicio, m.RestDay.date <= d
+    ).count()
+
+    # Consistência olha só os dias em que algo era esperado, e desconta o
+    # descanso planejado — descansar de propósito não é falha.
+    esperados = len([h for h in habitos if habit_due_on(h, d)]) * 7
+    feitos = len([x for x in logs if x.completed])
+    consistencia = scoring_v2.compute_consistency_score(esperados, feitos, descansos)
+
+    registros = db.query(m.ActivityRecord).filter(
+        m.ActivityRecord.user_id == user.id,
+        m.ActivityRecord.date >= inicio,
+        m.ActivityRecord.date <= d,
+    ).all()
+    modalidades = sorted({r.modality for r in registros})
+
+    dia = my_day(day=d.isoformat(), user=user, db=db)
+    plano = db.query(m.TrainingPlan).filter(
+        m.TrainingPlan.user_id == user.id, m.TrainingPlan.status == "active"
+    ).first()
+
+    dados = {
+        "pendente hoje": dia["summary"]["pending"],
+        "concluído hoje": f"{dia['summary']['done']} de {dia['summary']['total']}",
+        "hoje é descanso planejado": "sim" if dia["rest_day"] else "não",
+        "consistência de hábitos (7 dias)": f"{consistencia:.0f}%",
+        "treinos registrados (7 dias)": len(registros),
+        "modalidades (7 dias)": ", ".join(modalidades) or "nenhuma",
+        "dias de descanso planejados (7 dias)": descansos,
+        "objetivo declarado": user.objetivo or "não informado",
+    }
+    if plano:
+        progresso = serialize_plan(db, plano, com_sessoes=False)["progress"]
+        dados["plano de treino"] = (
+            f"{plano.modality}, {progresso['done']} de {progresso['total']} sessões"
+        )
+    if dia["agenda"]:
+        dados["agenda de hoje"] = ", ".join(e["title"] for e in dia["agenda"][:3])
+    return dados
+
+
+@app.get("/api/today/insight")
+def daily_insight(day: str | None = None, refresh: bool = False,
+                  user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Uma frase da IA sobre o dia, a partir dos dados reais da pessoa.
+
+    Gerada uma vez por dia: o Meu Dia é a tela mais aberta do app, e refazer a
+    cada visita seria desperdício sem ganho nenhum.
+    """
+    d = parse_date(day, date.today())
+    existente = db.query(m.DailyInsight).filter(
+        m.DailyInsight.user_id == user.id, m.DailyInsight.date == d
+    ).first()
+    if existente and not refresh:
+        return {"text": existente.text, "date": d.isoformat(), "cached": True}
+
+    if not ai.ai_enabled():
+        return {"text": None, "date": d.isoformat(), "ai_enabled": False}
+
+    dados = _resumo_para_ia(db, user, d)
+    try:
+        texto = ai.generate_daily_insight(dados)
+    except Exception:
+        # A leitura é um extra: se a IA falhar, o Meu Dia segue inteiro.
+        return {"text": None, "date": d.isoformat(), "ai_enabled": True}
+
+    if existente:
+        existente.text = texto
+        existente.context = dados
+    else:
+        db.add(m.DailyInsight(user_id=user.id, date=d, text=texto, context=dados))
+    db.commit()
+    return {"text": texto, "date": d.isoformat(), "cached": False}
+
 # --- frontend estático (SPA) -----------------------------------------------
 # Em produção o backend também serve o frontend já buildado (dist), então tudo
 # roda num único serviço e numa única porta ($PORT): sem CORS, sem VITE_API_URL

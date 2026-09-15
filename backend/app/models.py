@@ -566,3 +566,22 @@ class ActivityComment(Base):
     membership_id: Mapped[int] = mapped_column(ForeignKey("memberships.id"), index=True)
     text: Mapped[str] = mapped_column(String(500))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
+class DailyInsight(Base):
+    """Leitura do dia feita pela IA sobre o que a pessoa realmente fez.
+
+    Guardada por dia porque é cara e não muda a cada refresh: o Meu Dia é a
+    tela mais aberta do app, e gerar a cada visita seria desperdício.
+    """
+
+    __tablename__ = "daily_insights"
+    __table_args__ = (UniqueConstraint("user_id", "date", name="uq_user_insight_date"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    date: Mapped[date] = mapped_column(Date, index=True)
+    text: Mapped[str] = mapped_column(String(300))
+    # O que a IA viu ao escrever — útil para depurar sugestão estranha.
+    context: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

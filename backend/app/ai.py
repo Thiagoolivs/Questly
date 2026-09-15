@@ -649,3 +649,28 @@ def generate_routine(name: str, context: str | None = None, steps: int = 5) -> d
     if not passos:
         raise ValueError("A IA não retornou uma rotina válida.")
     return {"name": _clean_text(data.get("name"), 60) or _clean_text(name, 60), "steps": passos}
+
+
+# --- leitura do dia --------------------------------------------------------
+_INSIGHT_PROMPT = (
+    "Você acompanha alguém num app de bem-estar e escreve UMA frase curta "
+    "sobre o dia dela, em português do Brasil.\n\n"
+    "Dados reais dos últimos dias:\n{dados}\n\n"
+    "Regras:\n"
+    "- Uma frase só, no máximo 140 caracteres.\n"
+    "- Fale do que os dados mostram, não do que você imagina.\n"
+    "- Se houver descanso planejado, trate como escolha, nunca como falha.\n"
+    "- Segunda pessoa, direto, sem bajulação e sem emoji.\n"
+    "- Se algo está pendente hoje, aponte o próximo passo concreto.\n\n"
+    'Responda APENAS com JSON: {{"text": "sua frase"}}'
+)
+
+
+def generate_daily_insight(dados: dict) -> str:
+    """Uma frase sobre o dia, a partir do que a pessoa de fato registrou."""
+    linhas = "\n".join(f"- {k}: {v}" for k, v in dados.items())
+    data = _text_json(_INSIGHT_PROMPT.format(dados=linhas), max_tokens=300, temperature=0.6)
+    texto = _clean_text(data.get("text"), 280)
+    if not texto:
+        raise ValueError("A IA não retornou uma leitura válida.")
+    return texto

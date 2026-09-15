@@ -125,6 +125,7 @@ export const api = {
   deleteHabit: (id) => req(`/api/habits/${id}`, { method: 'DELETE' }),
   // --- Meu Dia: agenda + rotinas + hábitos do dia numa chamada (Fase 4) ---
   today: (day) => req(`/api/today${qs(day)}`),
+  insight: (day) => req(`/api/today/insight${qs(day)}`),
   modalities: () => req('/api/modalities'),
   // --- treino com IA (Fase 5) ---
   trainingPlans: () => req('/api/training/plans'),
