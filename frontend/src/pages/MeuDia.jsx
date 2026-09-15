@@ -1,161 +1,379 @@
-import { useState, useEffect } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useApp } from '../store.jsx'
 import { api } from '../api.js'
-import { Avatar, Card, Chip, Icon, ListRow } from '../design-system/components/index.js'
+import { Avatar, Button, Card, Chip, Icon } from '../design-system/components/index.js'
+import CheckControl from '../components/CheckControl.jsx'
+
+const LONG_DATE = { weekday: 'long', day: '2-digit', month: 'long' }
+
+function saudacao(h = new Date().getHours()) {
+  if (h < 5) return 'Boa madrugada'
+  if (h < 12) return 'Bom dia'
+  if (h < 18) return 'Boa tarde'
+  return 'Boa noite'
+}
+
+function hora(iso) {
+  if (!iso) return null
+  return new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+}
+
+function Secao({ title, action, children }) {
+  return (
+    <section style={{ marginBottom: 'var(--space-9)' }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'baseline',
+          justifyContent: 'space-between',
+          marginBottom: 'var(--space-5)',
+        }}
+      >
+        <h2
+          style={{
+            margin: 0,
+            fontFamily: 'var(--font-ui)',
+            fontSize: 'var(--fs-title-3)',
+            fontWeight: 'var(--fw-semibold)',
+            color: 'var(--text-primary)',
+          }}
+        >
+          {title}
+        </h2>
+        {action}
+      </div>
+      {children}
+    </section>
+  )
+}
+
+function Vazio({ children }) {
+  return (
+    <p
+      style={{
+        margin: 0,
+        fontFamily: 'var(--font-ui)',
+        fontSize: 'var(--fs-body-sm)',
+        color: 'var(--text-tertiary)',
+      }}
+    >
+      {children}
+    </p>
+  )
+}
 
 export default function MeuDia() {
-  const { state, me, user, refresh, loading, error } = useApp()
-  const [busy, setBusy] = useState(false)
+  const { user } = useApp()
+  const [day, setDay] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
 
-  // Data for today
-  const [routines, setRoutines] = useState([])
-  const [habits, setHabits] = useState([])
-  const [events, setEvents] = useState([])
-
-  useEffect(() => {
-    loadDayData()
+  const carregar = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      setDay(await api.today())
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
-  async function loadDayData() {
-    setBusy(true)
+  useEffect(() => {
+    carregar()
+  }, [carregar])
+
+  // As marcações são otimistas: o toque responde na hora e só volta atrás se o
+  // servidor recusar. É o gesto mais repetido do app, não pode ter espera.
+  const marcarHabito = async (habit, next) => {
+    setDay((d) => ({
+      ...d,
+      habits: d.habits.map((h) => (h.id === habit.id ? { ...h, completed: next } : h)),
+    }))
     try {
-      const [rs, hs, es] = await Promise.all([
-        api.routines(),
-        api.habits(),
-        api.calendar()
-      ])
-      setRoutines(rs.routines || [])
-      setHabits(hs.habits || [])
-      setEvents(es.activities || [])
+      await api.logHabit(habit.id, { date: day.date, completed: next })
+      await carregar()
     } catch (e) {
-      console.error(e)
-    } finally {
-      setBusy(false)
+      setError(e.message)
+      await carregar()
     }
   }
 
-  if (loading) return <div className="screen center muted">Carregando…</div>
-  if (error) return <div className="screen center"><p className="error">Erro ao carregar</p><button className="btn btn-primary" onClick={refresh}>Tentar de novo</button></div>
-  if (!user) return <div className="screen center muted">Sem dados do usuário.</div>
-
-  const todayStr = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'short' })
-
-  const toggleHabit = async (h) => {
-    // Optimistic update
-    const previousHabits = [...habits]
-    const updated = habits.map(x => x.id === h.id ? { ...x, completed: !x.completed } : x)
-    setHabits(updated)
+  const marcarPasso = async (routine, step, next) => {
+    setDay((d) => ({
+      ...d,
+      routines: d.routines.map((r) =>
+        r.id !== routine.id
+          ? r
+          : {
+              ...r,
+              steps: r.steps.map((s) => (s.id === step.id ? { ...s, done: next } : s)),
+              done_count: r.done_count + (next ? 1 : -1),
+            },
+      ),
+    }))
     try {
-      await api.updateHabit(h.id, { active: true }) 
+      await api.logRoutineStep(routine.id, { date: day.date, step_id: step.id, done: next })
+      await carregar()
     } catch (e) {
-      setHabits(previousHabits)
-      console.error(e)
+      setError(e.message)
+      await carregar()
     }
   }
+
+  const alternarDescanso = async () => {
+    try {
+      if (day.rest_day) await api.removeRestDay(day.date)
+      else await api.addRestDay({ date: day.date, reason: 'Descanso planejado' })
+      await carregar()
+    } catch (e) {
+      setError(e.message)
+    }
+  }
+
+  if (loading && !day) return <div className="screen center muted">Carregando…</div>
+
+  if (error && !day) {
+    return (
+      <div className="screen center" style={{ gap: 'var(--space-5)' }}>
+        <p style={{ color: 'var(--danger)' }}>{error}</p>
+        <Button onClick={carregar}>Tentar de novo</Button>
+      </div>
+    )
+  }
+
+  const { agenda = [], habits = [], routines = [], summary = {}, rest_day: descanso } = day || {}
+  const data = day ? new Date(`${day.date}T12:00:00`) : new Date()
+  const tudoFeito = summary.total > 0 && summary.pending === 0 && !descanso
 
   return (
-    <div className="screen" style={{ paddingTop: 'var(--space-6)', paddingLeft: 'var(--gutter-screen)', paddingRight: 'var(--gutter-screen)' }}>
-      {/* HEADER SIMPLIFICADO */}
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-8)' }}>
-        <div style={{ display: 'flex', flexDirection: 'column' }}>
-          <span style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-micro)', fontWeight: 'var(--fw-bold)', color: 'var(--text-tertiary)', letterSpacing: 'var(--ls-caps)', textTransform: 'uppercase' }}>
-            {todayStr}
+    <div
+      className="screen"
+      style={{
+        paddingTop: 'var(--space-7)',
+        paddingLeft: 'var(--gutter-screen)',
+        paddingRight: 'var(--gutter-screen)',
+      }}
+    >
+      <header
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'flex-start',
+          marginBottom: 'var(--space-8)',
+        }}
+      >
+        <div>
+          <span
+            style={{
+              fontFamily: 'var(--font-ui)',
+              fontSize: 'var(--fs-micro)',
+              fontWeight: 'var(--fw-bold)',
+              color: 'var(--text-tertiary)',
+              letterSpacing: 'var(--ls-caps)',
+              textTransform: 'uppercase',
+            }}
+          >
+            {data.toLocaleDateString('pt-BR', LONG_DATE)}
           </span>
-          <h1 style={{ margin: 0, fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-title-2)', fontWeight: 'var(--fw-bold)', color: 'var(--text-primary)' }}>
-            O que fazer hoje
+          <h1
+            style={{
+              margin: '2px 0 0',
+              fontFamily: 'var(--font-ui)',
+              fontSize: 'var(--fs-title-2)',
+              fontWeight: 'var(--fw-bold)',
+              color: 'var(--text-primary)',
+            }}
+          >
+            {saudacao()}
+            {user?.name ? `, ${user.name.split(' ')[0]}` : ''}
           </h1>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}>
-          {me?.stats?.streak > 0 && (
-            <Chip icon="flame" label={me.stats.streak.toString()} variant="glass" />
-          )}
-          <Link to="/perfil">
-            <Avatar name={user?.name} src={user?.photo} size={40} />
-          </Link>
-        </div>
+        <Link to="/perfil" aria-label="Perfil">
+          <Avatar name={user?.name} src={user?.photo} size={40} />
+        </Link>
       </header>
 
-      {/* AGENDA */}
-      <div style={{ marginBottom: 'var(--space-8)' }}>
-        <h2 style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-title-3)', color: 'var(--text-primary)', marginBottom: 'var(--space-4)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-          <Icon name="calendar" size={18} color="var(--blue-glow)" /> Agenda do dia
-        </h2>
-        {events.length === 0 ? (
-          <p style={{ color: 'var(--text-tertiary)', fontSize: 'var(--fs-body)' }}>Nada agendado para hoje.</p>
-        ) : (
-          <Card padding="none">
-            {events.map((ev, i) => (
-              <ListRow
-                key={ev.id}
-                title={ev.title}
-                subtitle={ev.description}
-                left={<div style={{ width: 44, textAlign: 'center', color: 'var(--text-secondary)', fontFamily: 'var(--font-numeric)' }}>
-                  {ev.start_datetime ? new Date(ev.start_datetime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : 'Dia'}
-                </div>}
-                borderBottom={i < events.length - 1}
-              />
-            ))}
-          </Card>
-        )}
-      </div>
+      {/* O resumo é a única métrica da Home: o que falta hoje. */}
+      <Card tone="bloom" pad="var(--pad-card-lg)" style={{ marginBottom: 'var(--space-8)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-5)' }}>
+          <div>
+            <div
+              style={{
+                fontFamily: 'var(--font-ui)',
+                fontSize: 'var(--fs-title-3)',
+                fontWeight: 'var(--fw-semibold)',
+                color: 'var(--text-primary)',
+              }}
+            >
+              {descanso
+                ? 'Dia de descanso'
+                : tudoFeito
+                  ? 'Dia concluído'
+                  : `${summary.pending} ${summary.pending === 1 ? 'item pendente' : 'itens pendentes'}`}
+            </div>
+            <div
+              style={{
+                marginTop: 2,
+                fontFamily: 'var(--font-ui)',
+                fontSize: 'var(--fs-body-sm)',
+                color: 'var(--text-secondary)',
+              }}
+            >
+              {descanso
+                ? 'Descanso planejado não conta como falha.'
+                : summary.total === 0
+                  ? 'Nada planejado ainda. Comece pelo Meu Plano.'
+                  : `${summary.done} de ${summary.total} concluídos`}
+            </div>
+          </div>
+          <Chip>Nível {summary.level ?? 1}</Chip>
+        </div>
+      </Card>
 
-      {/* HÁBITOS */}
-      <div style={{ marginBottom: 'var(--space-8)' }}>
-        <h2 style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-title-3)', color: 'var(--text-primary)', marginBottom: 'var(--space-4)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-          <Icon name="check-circle" size={18} color="var(--success)" /> Hábitos
-        </h2>
-        {habits.length === 0 ? (
-          <p style={{ color: 'var(--text-tertiary)', fontSize: 'var(--fs-body)' }}>Nenhum hábito configurado.</p>
+      <Secao
+        title="Agenda"
+        action={
+          <Link
+            to="/agenda"
+            style={{
+              fontFamily: 'var(--font-ui)',
+              fontSize: 'var(--fs-body-sm)',
+              color: 'var(--blue-glow)',
+              textDecoration: 'none',
+            }}
+          >
+            Ver tudo
+          </Link>
+        }
+      >
+        {agenda.length === 0 ? (
+          <Vazio>Nada agendado para hoje.</Vazio>
         ) : (
-          <Card padding="none">
-            {habits.map((h, i) => (
-              <div key={h.id} style={{ borderBottom: i < habits.length - 1 ? '1px solid var(--line-hairline)' : 'none' }}>
-                <button
-                  onClick={() => toggleHabit(h)}
+          <Card pad="0 var(--pad-card)">
+            {agenda.map((ev, i) => (
+              <div
+                key={ev.id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-5)',
+                  padding: 'var(--pad-row) 0',
+                  borderBottom: i < agenda.length - 1 ? '1px solid var(--line-hairline)' : 'none',
+                }}
+              >
+                <span
                   style={{
-                    width: '100%', display: 'flex', alignItems: 'center', gap: 'var(--space-4)', padding: 'var(--pad-row)',
-                    background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left',
-                    opacity: h.completed ? 0.5 : 1
+                    width: 46,
+                    flex: 'none',
+                    fontFamily: 'var(--font-numeric)',
+                    fontSize: 'var(--fs-body-sm)',
+                    color: ev.start ? 'var(--text-primary)' : 'var(--text-tertiary)',
                   }}
                 >
-                  <div style={{
-                    width: 24, height: 24, borderRadius: 'var(--radius-sm)', border: h.completed ? 'none' : '1px solid var(--text-tertiary)',
-                    background: h.completed ? 'var(--success)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center'
-                  }}>
-                    {h.completed && <Icon name="check" size={16} color="#000" />}
+                  {hora(ev.start) ?? '—'}
+                </span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontFamily: 'var(--font-ui)',
+                      fontSize: 'var(--fs-body)',
+                      color: 'var(--text-primary)',
+                    }}
+                  >
+                    {ev.title}
                   </div>
-                  <div style={{ flex: 1, fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-body)', color: 'var(--text-primary)', textDecoration: h.completed ? 'line-through' : 'none' }}>
-                    {h.name}
-                  </div>
-                </button>
+                  {(ev.duration_min || ev.category) && (
+                    <div
+                      style={{
+                        marginTop: 2,
+                        fontFamily: 'var(--font-ui)',
+                        fontSize: 'var(--fs-body-sm)',
+                        color: 'var(--text-tertiary)',
+                      }}
+                    >
+                      {[ev.category, ev.duration_min ? `${ev.duration_min} min` : null]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </div>
+                  )}
+                </div>
+                {ev.visibility === 'group' && <Icon name="users" size={15} color="var(--text-tertiary)" />}
               </div>
             ))}
           </Card>
         )}
-      </div>
+      </Secao>
 
-      {/* ROTINAS */}
-      <div style={{ marginBottom: 'var(--space-8)' }}>
-        <h2 style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-title-3)', color: 'var(--text-primary)', marginBottom: 'var(--space-4)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-          <Icon name="list-todo" size={18} color="var(--warning)" /> Rotinas
-        </h2>
+      <Secao title="Rotinas">
         {routines.length === 0 ? (
-          <p style={{ color: 'var(--text-tertiary)', fontSize: 'var(--fs-body)' }}>Nenhuma rotina para hoje.</p>
+          <Vazio>Nenhuma rotina para hoje.</Vazio>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--gap-card)' }}>
-            {routines.map(r => (
+            {routines.map((r) => (
               <Card key={r.id}>
-                <div style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-body)', fontWeight: 'var(--fw-semibold)', marginBottom: 'var(--space-4)' }}>
-                  {r.name}
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    marginBottom: 'var(--space-5)',
+                  }}
+                >
+                  <span
+                    style={{
+                      fontFamily: 'var(--font-ui)',
+                      fontSize: 'var(--fs-body)',
+                      fontWeight: 'var(--fw-semibold)',
+                      color: 'var(--text-primary)',
+                    }}
+                  >
+                    {r.name}
+                  </span>
+                  <span
+                    style={{
+                      fontFamily: 'var(--font-numeric)',
+                      fontSize: 'var(--fs-body-sm)',
+                      color: r.completed ? 'var(--success)' : 'var(--text-tertiary)',
+                    }}
+                  >
+                    {r.done_count}/{r.total_count}
+                  </span>
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-                  {r.steps?.map(step => (
-                    <div key={step.id} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-                      <div style={{ width: 18, height: 18, borderRadius: '50%', border: '1px solid var(--text-tertiary)' }} />
-                      <span style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-body-sm)', color: 'var(--text-secondary)' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+                  {r.steps.map((step) => (
+                    <div key={step.id} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-5)' }}>
+                      <CheckControl
+                        checked={step.done}
+                        round
+                        size={20}
+                        label={step.name}
+                        onChange={(v) => marcarPasso(r, step, v)}
+                      />
+                      <span
+                        style={{
+                          flex: 1,
+                          fontFamily: 'var(--font-ui)',
+                          fontSize: 'var(--fs-body-sm)',
+                          color: step.done ? 'var(--text-tertiary)' : 'var(--text-secondary)',
+                          textDecoration: step.done ? 'line-through' : 'none',
+                        }}
+                      >
                         {step.name}
                       </span>
+                      {step.duration_min ? (
+                        <span
+                          style={{
+                            fontFamily: 'var(--font-numeric)',
+                            fontSize: 'var(--fs-micro)',
+                            color: 'var(--text-tertiary)',
+                          }}
+                        >
+                          {step.duration_min} min
+                        </span>
+                      ) : null}
                     </div>
                   ))}
                 </div>
@@ -163,29 +381,79 @@ export default function MeuDia() {
             ))}
           </div>
         )}
+      </Secao>
+
+      <Secao title="Hábitos">
+        {habits.length === 0 ? (
+          <Vazio>Nenhum hábito para hoje.</Vazio>
+        ) : (
+          <Card pad="0 var(--pad-card)">
+            {habits.map((h, i) => (
+              <div
+                key={h.id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-5)',
+                  padding: 'var(--pad-row) 0',
+                  borderBottom: i < habits.length - 1 ? '1px solid var(--line-hairline)' : 'none',
+                }}
+              >
+                <CheckControl
+                  checked={h.completed}
+                  label={h.name}
+                  onChange={(v) => marcarHabito(h, v)}
+                />
+                <span
+                  style={{
+                    flex: 1,
+                    fontFamily: 'var(--font-ui)',
+                    fontSize: 'var(--fs-body)',
+                    color: h.completed ? 'var(--text-tertiary)' : 'var(--text-primary)',
+                    textDecoration: h.completed ? 'line-through' : 'none',
+                  }}
+                >
+                  {h.name}
+                </span>
+                {h.time ? (
+                  <span
+                    style={{
+                      fontFamily: 'var(--font-numeric)',
+                      fontSize: 'var(--fs-body-sm)',
+                      color: 'var(--text-tertiary)',
+                    }}
+                  >
+                    {h.time}
+                  </span>
+                ) : null}
+              </div>
+            ))}
+          </Card>
+        )}
+      </Secao>
+
+      {/* Registrar e desafiar-se são ações, não conteúdo: ficam no fim, fora do caminho. */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--gap-stack)', marginBottom: 'var(--space-9)' }}>
+        <Link to="/registrar" style={{ textDecoration: 'none' }}>
+          <Button fullWidth iconLeft="plus">
+            Registrar atividade
+          </Button>
+        </Link>
+        <Link to="/desafio" style={{ textDecoration: 'none' }}>
+          <Button fullWidth variant="secondary" iconLeft="target">
+            Cumprir um desafio hoje
+          </Button>
+        </Link>
+        <Button variant="ghost" iconLeft={descanso ? 'sun' : 'moon'} onClick={alternarDescanso} fullWidth>
+          {descanso ? 'Cancelar descanso de hoje' : 'Marcar hoje como descanso'}
+        </Button>
       </div>
 
-      {/* DESAFIO DIÁRIO CTA */}
-      <div style={{ marginBottom: 'var(--space-8)' }}>
-        <Card variant="bloom" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'var(--pad-card-lg)' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
-            <span style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-title-3)', fontWeight: 'var(--fw-semibold)', color: 'var(--text-primary)' }}>
-              Desafio Diário
-            </span>
-            <span style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-body-sm)', color: 'var(--text-secondary)' }}>
-              Supere seus limites hoje
-            </span>
-          </div>
-          <button style={{
-            background: 'var(--surface-inverse)', color: 'var(--text-on-light)', border: 'none',
-            borderRadius: 'var(--radius-pill)', padding: 'var(--space-3) var(--space-5)',
-            fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-semibold)', cursor: 'pointer'
-          }}>
-            Cumprir
-          </button>
-        </Card>
-      </div>
-
+      {error ? (
+        <p style={{ color: 'var(--danger)', fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-body-sm)' }}>
+          {error}
+        </p>
+      ) : null}
     </div>
   )
 }

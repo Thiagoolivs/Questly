@@ -284,7 +284,9 @@ class RoutineLogUpdate(BaseModel):
 # --- Fase 3: Scoring V2 e Atividades ---------------------------------------
 
 class ActivityRecordCreate(BaseModel):
-    date: str
+    # Sem data = hoje (no fuso do grupo). Registrar o que acabou de fazer é o
+    # caso comum e não deve exigir campo nenhum além do essencial.
+    date: Optional[str] = None
     modality: str = Field(..., max_length=40)
     category: Optional[str] = None
     params: dict = Field(default_factory=dict)

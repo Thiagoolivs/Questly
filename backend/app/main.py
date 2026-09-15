@@ -4,6 +4,7 @@ import logging
 import os
 import re
 import secrets
+import calendar
 from datetime import date, datetime, time as dtime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -234,6 +235,12 @@ def parse_date(value: str | None, default: date | None = None) -> date:
         return date.fromisoformat(value)
     except ValueError:
         raise HTTPException(400, f"Data inválida: {value!r} (use YYYY-MM-DD).")
+
+
+def month_bounds(d: date) -> tuple[date, date]:
+    """Primeiro e último dia do mês de `d` — o período do ranking."""
+    last = calendar.monthrange(d.year, d.month)[1]
+    return d.replace(day=1), d.replace(day=last)
 
 
 def validate_image(image: str | None) -> None:
@@ -1602,9 +1609,14 @@ def create_message(gid: int, payload: MessageCreate, user: User = Depends(get_cu
 
 @app.post("/api/groups/{gid}/activity-record")
 def create_activity_record(gid: int, payload: s.ActivityRecordCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Registra o que a pessoa realmente fez.
+
+    O XP é pessoal e vai inteiro. Já o que entra no ranking passa pelos limites
+    do scoring_v2 (retorno decrescente por repetição + teto diário), senão quem
+    registra mais vence, e não quem se esforça mais.
+    """
     membership = get_membership(db, user, gid)
-    
-    # Validações e conversões de datas
+
     s_obj = get_group_settings(db, gid)
     today = today_of(s_obj)
     d = parse_date(payload.date, today)
@@ -1613,72 +1625,90 @@ def create_activity_record(gid: int, payload: s.ActivityRecordCreate, user: User
     if payload.proof_image:
         validate_image(payload.proof_image)
 
-    # Computar esforço (scoring_v2)
-    effort = scoring_v2.compute_effort_score(payload.params, payload.modality)
-    
-    # Criar registro
+    params, notes = scoring_v2.normalize_params(payload.params, payload.modality)
+    effort = scoring_v2.compute_effort_score(params, payload.modality)
+    if effort <= 0:
+        raise HTTPException(400, "Informe ao menos a duração da atividade.")
+
+    # Quanto desse esforço conta para o ranking, dado o que já foi registrado hoje.
+    same_today = db.query(m.ActivityRecord).filter(
+        m.ActivityRecord.user_id == user.id,
+        m.ActivityRecord.date == d,
+        m.ActivityRecord.modality == payload.modality,
+    ).count()
+    effort_today = sum(
+        r.score_earned for r in db.query(m.ActivityRecord).filter(
+            m.ActivityRecord.user_id == user.id, m.ActivityRecord.date == d
+        ).all()
+    )
+    competitive = scoring_v2.competitive_effort(effort, same_today, effort_today)
+
     ar = m.ActivityRecord(
         user_id=user.id,
         group_id=gid,
         date=d,
         modality=payload.modality,
         category=payload.category,
-        params=payload.params,
+        params=params,
         effort_score=effort,
-        xp_earned=int(effort * 10), # 1 ponto = 10 XP (exemplo simples)
-        score_earned=int(effort),
-        proof_image=payload.proof_image
+        xp_earned=scoring_v2.xp_for(effort),
+        score_earned=int(competitive),
+        proof_image=payload.proof_image,
     )
     db.add(ar)
-    
-    # Atualizar UserProgress
+
     up = db.query(m.UserProgress).filter(m.UserProgress.user_id == user.id).first()
     if not up:
-        up = m.UserProgress(user_id=user.id)
+        # Os defaults das colunas só valem no INSERT; recém-instanciado o objeto
+        # ainda tem None nos contadores, e `None += n` estoura no primeiro
+        # registro de cada usuário.
+        up = m.UserProgress(user_id=user.id, total_xp=0, effort_total=0.0, level=1)
         db.add(up)
-    up.total_xp += ar.xp_earned
-    up.effort_total += ar.effort_score
-    # lógica simplista para level (cada 1000 XP = 1 lvl)
-    up.level = max(1, up.total_xp // 1000 + 1)
-    
-    # Atualizar CompetitiveScore (simplificado, para o período atual: mês inteiro)
-    period_start = d.replace(day=1)
-    
-    # workaround para último dia do mês
-    import calendar
-    _, last_day = calendar.monthrange(d.year, d.month)
-    period_end = d.replace(day=last_day)
-    
+    up.total_xp = (up.total_xp or 0) + ar.xp_earned
+    up.effort_total = (up.effort_total or 0.0) + ar.effort_score
+    up.level = scoring_v2.level_for(up.total_xp)
+
+    period_start, period_end = month_bounds(d)
     cs = db.query(m.CompetitiveScore).filter(
         m.CompetitiveScore.membership_id == membership.id,
         m.CompetitiveScore.period_start == period_start,
-        m.CompetitiveScore.period_end == period_end
+        m.CompetitiveScore.period_end == period_end,
     ).first()
-    
     if not cs:
         cs = m.CompetitiveScore(
             membership_id=membership.id,
             period_start=period_start,
-            period_end=period_end
+            period_end=period_end,
+            effort_score=0.0,
+            consistency_score=0.0,
+            challenge_score=0.0,
         )
         db.add(cs)
-        
-    cs.effort_score += ar.effort_score
-    cs.total_score = cs.effort_score + cs.consistency_score + cs.challenge_score
-    
+
+    cs.effort_score = (cs.effort_score or 0.0) + competitive
+    cs.consistency_score = cs.consistency_score or 0.0
+    cs.challenge_score = cs.challenge_score or 0.0
+    cs.total_score = scoring_v2.total_competitive(
+        cs.effort_score, cs.consistency_score, cs.challenge_score
+    )
+
     db.commit()
     db.refresh(ar)
-    
-    # Registrar no feed geral do grupo
-    text = f"{membership.user.name} registrou {payload.modality}! (+{ar.score_earned} pts)"
-    emoji = "🏃" if "corrida" in payload.modality.lower() else "💪"
-    upsert_activity(db, gid, membership, "record", emoji, text, ref=f"record:{ar.id}", image=ar.proof_image, day=d)
-    
+
+    text = f"{membership.user.name} registrou {payload.modality} (+{ar.score_earned} pts)"
+    upsert_activity(db, gid, membership, "record", "activity", text,
+                    ref=f"record:{ar.id}", image=ar.proof_image, day=d)
+
     return {
         "id": ar.id,
         "modality": ar.modality,
         "effort_score": ar.effort_score,
-        "xp_earned": ar.xp_earned
+        "xp_earned": ar.xp_earned,
+        "score_earned": ar.score_earned,
+        # O que foi limitado é dito na cara: pontuação silenciosamente cortada
+        # parece bug.
+        "capped": round(effort - competitive, 2),
+        "notes": notes,
     }
 
 
@@ -1687,14 +1717,8 @@ def create_activity_record(gid: int, payload: s.ActivityRecordCreate, user: User
 def get_ranking(gid: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     membership = get_membership(db, user, gid)
     
-    # Período atual (mês simplificado)
-    today = date.today()
-    period_start = today.replace(day=1)
-    
-    import calendar
-    _, last_day = calendar.monthrange(today.year, today.month)
-    period_end = today.replace(day=last_day)
-    
+    period_start, period_end = month_bounds(date.today())
+
     # Membros do grupo
     members = group_members(db, gid)
     
