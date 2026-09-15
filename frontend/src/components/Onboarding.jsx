@@ -1,18 +1,20 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import Icon from '../design-system/components/core/Icon.jsx'
+import { enablePush, getPushState, pushSupported } from '../utils/push.js'
 import InstallGuide from './InstallGuide.jsx'
 
-// v2: quem já tinha visto o modal antigo (chave `questly.onboarded`) precisa
-// ver o tour novo uma vez — por isso a chave é versionada.
-const KEY = 'questly.tour.v2'
-const LEGACY_KEY = 'questly.onboarded'
+// A chave é versionada porque o tour muda junto com o app: quem viu o v2
+// (estrutura antiga, com desafios e alimentação na Home) precisa ver este uma
+// vez, já que as telas que ele apontava não existem mais.
+const KEY = 'questly.tour.v3'
+const LEGACY_KEYS = ['questly.onboarded', 'questly.tour.v2']
 const START_EVT = 'questly:start-tour'
 
 export const hasOnboarded = () => localStorage.getItem(KEY) === '1'
 export const markOnboarded = () => {
   localStorage.setItem(KEY, '1')
-  localStorage.removeItem(LEGACY_KEY)
+  LEGACY_KEYS.forEach((k) => localStorage.removeItem(k))
 }
 export const resetOnboarding = () => localStorage.removeItem(KEY)
 
@@ -31,57 +33,102 @@ export function useTourTrigger(onStart) {
 }
 
 // Cada passo aponta para um elemento real (data-tour). Sem `target`, o passo
-// aparece centralizado (boas-vindas e instalação).
+// aparece centralizado (boas-vindas, notificações e instalação).
 const STEPS = [
   {
     title: 'Bem-vindo ao Questly',
-    text: 'Um desafio de evolução em grupo. Em 1 minuto eu te mostro por onde começar — é rapidinho.',
+    text: 'Sua central de planejamento e evolução. Em um minuto eu mostro o caminho: planejar, executar, registrar.',
   },
   {
-    target: 'desafios',
+    target: 'dia-resumo',
     route: '/',
-    section: 'desafios',
-    title: 'Os desafios do dia',
-    text: 'Todo dia o app sorteia um desafio por área. Quanto mais difícil, mais pontos. Você comprova com uma foto — e pode trocar 1 por dia se não curtir.',
+    title: 'Meu Dia',
+    text: 'A tela inicial mostra só o que falta fazer hoje: agenda, rotinas e hábitos. Nada além disso.',
   },
   {
-    target: 'habitos',
+    target: 'dia-registrar',
     route: '/',
-    section: 'habitos',
-    title: 'Seus hábitos',
-    text: 'Estes se repetem todo dia: água, sono, leitura… Marcar vale 10 pontos; com foto, 12.',
-  },
-  {
-    target: 'alimentacao',
-    route: '/',
-    section: 'alimentacao',
-    title: 'Alimentação e água',
-    text: 'Escreva o que comeu ("um pão de queijo e um café com leite") ou mande uma foto — a IA estima as calorias. A água você soma de 500 em 500 ml.',
+    title: 'Registre o que fez',
+    text: 'Escolha a modalidade e preencha o que importa. A pontuação vem do esforço real — não de quantas vezes você registra.',
   },
   {
     target: 'nav-plano',
-    title: 'Seu Planejamento',
-    text: 'Aqui fica o seu calendário e tarefas agendadas — consultas, treinos, aniversários. Planeje o seu mês na aba Plano.',
+    title: 'Meu Plano',
+    text: 'Aqui você planeja: treino, alimentação, rotinas e hábitos. A IA monta planos de treino inteiros, com checklist.',
   },
   {
-    target: 'perfil-nutricao',
-    route: '/perfil',
-    title: 'Seu peso e suas metas',
-    text: 'Informe peso, altura e objetivo: o app calcula suas metas de calorias, proteína e água. Dá para ajustar tudo na mão depois.',
-    cta: 'Preencher agora é o ideal — leva 30 segundos.',
+    target: 'nav-grupo',
+    title: 'Grupo',
+    text: 'Competir é opcional. Se quiser, crie um espaço — sozinho, em casal ou em grupo — e acompanhe o ranking.',
   },
   {
-    target: 'perfil-convite',
-    route: '/perfil',
-    title: 'Chame a galera',
-    text: 'Toque em "Convidar por link" e mande no WhatsApp. Quem receber entra direto no grupo, sem digitar código.',
+    notifications: true,
+    title: 'Quer um empurrão na hora certa?',
+    text: 'Podemos te lembrar dos seus hábitos e compromissos no horário que você mesmo definiu. Sem isso, o app só te ajuda quando você lembra de abrir.',
+    cta: 'Você pode desligar quando quiser, em Configurações.',
   },
   {
     install: true,
     title: 'Deixe na tela inicial',
-    text: 'Assim o Questly abre como um app de verdade — em tela cheia, com ícone e notificações.',
+    text: 'Assim o Questly abre como um app de verdade — em tela cheia e com ícone.',
   },
 ]
+
+/**
+ * Pede a permissão de notificação no tour, e só depois de dizer para quê.
+ *
+ * O navegador só deixa pedir uma vez: negada, não há como perguntar de novo
+ * sem a pessoa ir nas permissões. Por isso o pedido vem atrás de um botão,
+ * depois da explicação — nunca no primeiro segundo de app aberto.
+ */
+function PedirNotificacoes() {
+  const [estado, setEstado] = useState('desconhecido')
+  const [ocupado, setOcupado] = useState(false)
+
+  useEffect(() => {
+    if (pushSupported()) getPushState().then(setEstado)
+    else setEstado('unsupported')
+  }, [])
+
+  if (estado === 'unsupported') {
+    return <p className="tour-text muted">Este aparelho não aceita notificações do navegador.</p>
+  }
+  if (estado === 'on') {
+    return (
+      <p className="tour-text" style={{ color: 'var(--success)' }}>
+        Lembretes ativados.
+      </p>
+    )
+  }
+  if (estado === 'denied') {
+    return (
+      <p className="tour-text muted">
+        As notificações estão bloqueadas nas permissões do navegador. Dá para
+        liberar por lá quando quiser.
+      </p>
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      className="btn full btn-primary"
+      disabled={ocupado}
+      onClick={async () => {
+        setOcupado(true)
+        try {
+          setEstado(await enablePush())
+        } catch {
+          setEstado('denied')
+        } finally {
+          setOcupado(false)
+        }
+      }}
+    >
+      {ocupado ? 'Ativando…' : 'Ativar lembretes'}
+    </button>
+  )
+}
 
 const PAD = 8
 const findEl = (t) => document.querySelector(`[data-tour="${t}"]`)
@@ -174,7 +221,7 @@ export default function Onboarding({ onClose }) {
                 : { top: rect.top - PAD - 44, left: Math.min(Math.max(rect.left + rect.width / 2 - 18, 16), window.innerWidth - 52) }
             }
           >
-            <Icon name="arrowRight" size={30} />
+            <Icon name="arrow-right" size={30} />
           </div>
         </>
       ) : (
@@ -187,6 +234,7 @@ export default function Onboarding({ onClose }) {
         <div className="tour-title">{step.title}</div>
         <p className="tour-text">{step.text}</p>
         {step.cta && <div className="tour-cta"><Icon name="bulb" size={13} /> <span>{step.cta}</span></div>}
+        {step.notifications && <PedirNotificacoes />}
         {step.install && <InstallGuide compact />}
 
         <div className="tour-dots">

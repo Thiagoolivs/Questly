@@ -25,6 +25,7 @@ import Chat from './pages/Chat.jsx'
 import Mural from './pages/Mural.jsx'
 import Conquistas from './pages/Conquistas.jsx'
 import Config from './pages/Config.jsx'
+import ConfigGrupo from './pages/ConfigGrupo.jsx'
 
 // Captura o código de convite da URL antes de qualquer render (uma vez só).
 captureInviteFromUrl()
@@ -74,8 +75,12 @@ function TabBarHost() {
 
   return (
     <div style={{ position: 'fixed', bottom: 16, left: 0, right: 0, display: 'flex', justifyContent: 'center', pointerEvents: 'none', zIndex: 100 }}>
-      <div style={{ pointerEvents: 'auto' }}>
+      <div style={{ pointerEvents: 'auto', position: 'relative' }}>
         <TabBar tabs={tabs} active={loc.pathname} onChange={(id) => navigate(id)} />
+        {/* Âncoras invisíveis para o tour apontar abas específicas da TabBar,
+            que é um componente do design system e não leva marcação própria. */}
+        <span data-tour="nav-plano" style={{ position: 'absolute', left: '30%', top: 0, width: 44, height: 44, pointerEvents: 'none' }} />
+        <span data-tour="nav-grupo" style={{ position: 'absolute', left: '50%', top: 0, width: 44, height: 44, marginLeft: -22, pointerEvents: 'none' }} />
       </div>
     </div>
   )
@@ -118,6 +123,7 @@ function Shell() {
             <Route path="/mural" element={<Mural />} />
             <Route path="/conquistas" element={<Conquistas />} />
             <Route path="/config" element={<Config />} />
+            <Route path="/grupo/config" element={<ConfigGrupo />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>

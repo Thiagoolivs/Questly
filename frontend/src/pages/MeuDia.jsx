@@ -197,7 +197,7 @@ export default function MeuDia() {
       </header>
 
       {/* O resumo é a única métrica da Home: o que falta hoje. */}
-      <Card tone="bloom" pad="var(--pad-card-lg)" style={{ marginBottom: 'var(--space-8)' }}>
+      <Card tone="bloom" pad="var(--pad-card-lg)" data-tour="dia-resumo" style={{ marginBottom: 'var(--space-8)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-5)' }}>
           <div>
             <div
@@ -434,7 +434,7 @@ export default function MeuDia() {
 
       {/* Registrar e desafiar-se são ações, não conteúdo: ficam no fim, fora do caminho. */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--gap-stack)', marginBottom: 'var(--space-9)' }}>
-        <Link to="/registrar" style={{ textDecoration: 'none' }}>
+        <Link to="/registrar" data-tour="dia-registrar" style={{ textDecoration: 'none' }}>
           <Button fullWidth iconLeft="plus">
             Registrar atividade
           </Button>
