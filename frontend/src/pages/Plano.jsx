@@ -25,16 +25,6 @@ export default function Plano() {
             />
           </Link>
 
-          <Link to="/historico" style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}>
-            <ListRow
-              title="Histórico"
-              subtitle="Dias passados e estatísticas"
-              icon="calendar-days"
-              right={<Icon name="chevron-right" size={16} color="var(--text-tertiary)" />}
-              borderBottom={true}
-            />
-          </Link>
-
           <Link to="/conquistas" style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}>
             <ListRow
               title="Conquistas"

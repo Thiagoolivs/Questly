@@ -966,10 +966,23 @@ def update_settings(gid: int, payload: SettingsUpdate, user: User = Depends(get_
 # --- rotas: grupo (desafios/dia) -------------------------------------------
 @app.get("/api/groups/{gid}/challenges/today")
 def challenges_today(gid: int, day: str | None = None, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    get_membership(db, user, gid)
+    membership = get_membership(db, user, gid)
     s = get_group_settings(db, gid)
     d = parse_date(day, today_of(s))
     inicio, fim = challenge_window(s)
+
+    # Os desafios são por pessoa: as trocas que ela fez mudam o que aparece, e
+    # o que ela já comprovou vem marcado — senão a tela oferece "cumprir" algo
+    # que já está cumprido.
+    entry = next((e for e in membership.days if e.date == d), None)
+    rerolls = (entry.challenge_rerolls or {}) if entry else {}
+    proofs = (entry.challenge_proofs or {}) if entry else {}
+
+    desafios = [
+        {**ch, "done": bool(proofs.get(ch["category"]))}
+        for ch in scoring.daily_challenges(s, d, rerolls)
+    ]
+
     return {
         "date": d.isoformat(),
         "day_number": scoring.day_number(s, d),
@@ -977,7 +990,7 @@ def challenges_today(gid: int, day: str | None = None, user: User = Depends(get_
         "challenge_start": inicio.isoformat(),
         "challenge_end": fim.isoformat(),
         "challenge_status": challenge_status(s),
-        "challenges": scoring.daily_challenges(s, d),
+        "challenges": desafios,
         "motd": scoring.motd(d),
     }
 
@@ -2558,6 +2571,16 @@ def my_day(day: str | None = None, user: User = Depends(get_current_user), db: S
             "level": progress.level if progress else 1,
         },
     }
+
+
+@app.get("/api/modalities")
+def list_modalities(user: User = Depends(get_current_user)):
+    """Modalidades e seus parâmetros, direto de quem calcula a pontuação.
+
+    O formulário de registro se monta a partir daqui, então não há como ele
+    pedir um campo que o cálculo ignora — nem esquecer um que ele usa.
+    """
+    return {"modalities": scoring_v2.modality_catalog()}
 
 # --- frontend estático (SPA) -----------------------------------------------
 # Em produção o backend também serve o frontend já buildado (dist), então tudo

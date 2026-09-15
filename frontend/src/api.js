@@ -122,6 +122,7 @@ export const api = {
   deleteHabit: (id) => req(`/api/habits/${id}`, { method: 'DELETE' }),
   // --- Meu Dia: agenda + rotinas + hábitos do dia numa chamada (Fase 4) ---
   today: (day) => req(`/api/today${qs(day)}`),
+  modalities: () => req('/api/modalities'),
   logHabit: (id, b = {}) => req(`/api/habits/${id}/log`, { method: 'POST', body: b }),
   logRoutineStep: (id, b) => req(`/api/routines/${id}/log`, { method: 'POST', body: b }),
   restDays: () => req('/api/rest-days'),

@@ -255,3 +255,44 @@ def total_competitive(effort: float, consistency: float, challenge: float) -> fl
     sem isso ela viraria o atalho para o topo sem sair do lugar.
     """
     return round(effort + consistency * 0.5 + challenge, 2)
+
+
+# Catálogo exposto ao app. Fica aqui, junto das regras de pontuação, para o
+# formulário não perguntar parâmetro que o cálculo ignora — nem deixar de
+# perguntar o que ele usa.
+FIELD_LABELS = {
+    "distance": {"key": "distance", "label": "Distância", "unit": "km", "type": "number", "step": "0.1"},
+    "duration": {"key": "duration", "label": "Duração", "unit": "min", "type": "number", "step": "1"},
+    "intensity": {"key": "intensity", "label": "Intensidade", "type": "choice",
+                  "options": ["leve", "moderado", "intenso", "extremo"]},
+    "rolas": {"key": "rolas", "label": "Rolas", "type": "number", "step": "1"},
+    "series": {"key": "series", "label": "Séries", "type": "number", "step": "1"},
+}
+
+_PERCURSO = ["distance", "duration", "intensity"]
+_TEMPO = ["duration", "intensity"]
+
+MODALITIES = [
+    {"id": "corrida", "label": "Corrida", "icon": "footprints", "fields": _PERCURSO},
+    {"id": "caminhada", "label": "Caminhada", "icon": "footprints", "fields": _PERCURSO},
+    {"id": "ciclismo", "label": "Ciclismo", "icon": "bike", "fields": _PERCURSO},
+    {"id": "natacao", "label": "Natação", "icon": "droplet", "fields": _PERCURSO},
+    {"id": "musculacao", "label": "Musculação", "icon": "dumbbell", "fields": ["duration", "series", "intensity"]},
+    {"id": "funcional", "label": "Funcional", "icon": "zap", "fields": _TEMPO},
+    {"id": "crossfit", "label": "CrossFit", "icon": "zap", "fields": _TEMPO},
+    {"id": "jiu-jitsu", "label": "Jiu-Jitsu", "icon": "shield" , "fields": ["duration", "rolas", "intensity"]},
+    {"id": "luta", "label": "Luta", "icon": "zap", "fields": ["duration", "rolas", "intensity"]},
+    {"id": "danca", "label": "Dança", "icon": "activity", "fields": _TEMPO},
+    {"id": "yoga", "label": "Yoga", "icon": "leaf", "fields": _TEMPO},
+    {"id": "pilates", "label": "Pilates", "icon": "leaf", "fields": _TEMPO},
+    {"id": "alongamento", "label": "Alongamento", "icon": "leaf", "fields": _TEMPO},
+    {"id": "esporte", "label": "Esporte", "icon": "activity", "fields": _TEMPO},
+]
+
+
+def modality_catalog() -> list[dict]:
+    """Modalidades com os campos que cada uma realmente usa na pontuação."""
+    return [
+        {**mod, "fields": [FIELD_LABELS[f] for f in mod["fields"] if f in FIELD_LABELS]}
+        for mod in MODALITIES
+    ]

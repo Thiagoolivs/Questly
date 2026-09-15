@@ -12,10 +12,12 @@ import Plano from './pages/Plano.jsx'
 import Grupo from './pages/Grupo.jsx'
 import Feed from './pages/Feed.jsx'
 import Perfil from './pages/Perfil.jsx'
-// Sub-pages (acessíveis pelo Plano e Grupo, fora da bottom nav)
+// Sub-páginas (abertas a partir das 5 abas, fora da navegação principal)
+import Agenda from './pages/Agenda.jsx'
+import Registrar from './pages/Registrar.jsx'
+import Desafio from './pages/Desafio.jsx'
 import Tarefas from './pages/Tarefas.jsx'
 import Chat from './pages/Chat.jsx'
-import Historico from './pages/Historico.jsx'
 import Mural from './pages/Mural.jsx'
 import Conquistas from './pages/Conquistas.jsx'
 import Config from './pages/Config.jsx'
@@ -88,10 +90,12 @@ function Shell() {
             <Route path="/grupo" element={<Grupo />} />
             <Route path="/feed" element={<Feed />} />
             <Route path="/perfil" element={<Perfil />} />
-            {/* Sub-páginas (acessíveis por links, fora da bottom nav) */}
+            {/* Sub-páginas (abertas por links, fora da navegação principal) */}
+            <Route path="/agenda" element={<Agenda />} />
+            <Route path="/registrar" element={<Registrar />} />
+            <Route path="/desafio" element={<Desafio />} />
             <Route path="/tarefas" element={<Tarefas />} />
             <Route path="/chat" element={<Chat />} />
-            <Route path="/historico" element={<Historico />} />
             <Route path="/mural" element={<Mural />} />
             <Route path="/conquistas" element={<Conquistas />} />
             <Route path="/config" element={<Config />} />
