@@ -177,6 +177,10 @@ class HabitDef(BaseModel):
 
 class SettingsUpdate(BaseModel):
     timezone: Optional[str] = Field(None, max_length=40)
+    # Janela do desafio do grupo, com hora (ISO 8601). Enviar as duas juntas;
+    # start_date/duration_days passam a ser derivados delas.
+    challenge_start: Optional[str] = None
+    challenge_end: Optional[str] = None
     duration_days: Optional[int] = Field(None, ge=1, le=365)
     water_goal_l: Optional[float] = None
     steps_goal: Optional[int] = None

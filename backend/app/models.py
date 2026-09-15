@@ -132,6 +132,12 @@ class Settings(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     group_id: Mapped[int] = mapped_column(ForeignKey("groups.id"), unique=True, index=True)
     timezone: Mapped[str] = mapped_column(String(40), default="America/Sao_Paulo")
+    # O desafio do grupo tem janela com hora, não só contagem de dias: "começa
+    # segunda 6h e termina no dia 30 às 23h59" é o que as pessoas combinam.
+    # start_date/duration_days seguem derivados da janela, porque o cálculo de
+    # dia (scoring.day_number) e os grupos já existentes dependem deles.
+    challenge_start: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    challenge_end: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     start_date: Mapped[date] = mapped_column(Date, default=date.today)
     duration_days: Mapped[int] = mapped_column(Integer, default=30)
     water_goal_l: Mapped[float] = mapped_column(Float, default=2.5)

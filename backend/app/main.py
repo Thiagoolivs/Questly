@@ -243,6 +243,19 @@ def month_bounds(d: date) -> tuple[date, date]:
     return d.replace(day=1), d.replace(day=last)
 
 
+def parse_datetime(value: str | None, default: datetime | None = None) -> datetime:
+    """Lê um ISO 8601 e devolve datetime ingênuo (o fuso é o do grupo)."""
+    if not value:
+        if default is None:
+            raise HTTPException(400, "Data e hora são obrigatórias.")
+        return default
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        raise HTTPException(400, f"Data/hora inválida: {value!r} (use ISO 8601).")
+    return parsed.replace(tzinfo=None)
+
+
 def validate_image(image: str | None) -> None:
     if image and len(image) > MAX_IMAGE_CHARS:
         raise HTTPException(413, "Imagem muito grande. Tente uma foto menor.")
@@ -321,13 +334,32 @@ def group_members(db: Session, group_id: int) -> list[Membership]:
     )
 
 
+# O tipo escolhido na criação decide o que o espaço é. Um espaço individual não
+# tem com quem competir; um casal tem atividade em dupla; um grupo tem ranking,
+# mas não dupla — dupla dentro de grupo sempre vira panelinha de dois.
+GROUP_RULES = {
+    "individual": {"max_members": 1, "joint": False, "ranking": False, "invite": False},
+    "couple": {"max_members": 2, "joint": True, "ranking": True, "invite": True},
+    "group": {"max_members": 50, "joint": False, "ranking": True, "invite": True},
+}
+DEFAULT_GROUP_RULES = GROUP_RULES["group"]
+
+
+def group_rules(group: Group) -> dict:
+    return GROUP_RULES.get(getattr(group, "group_type", None) or "group", DEFAULT_GROUP_RULES)
+
+
 def group_summary(group: Group, role: str, member_count: int) -> dict:
+    rules = group_rules(group)
     return {
         "id": group.id,
         "name": group.name,
         "invite_code": group.invite_code,
         "role": role,
         "member_count": member_count,
+        "group_type": getattr(group, "group_type", None) or "group",
+        # A interface se adapta por aqui em vez de repetir a regra por tela.
+        "rules": rules,
     }
 
 
@@ -547,12 +579,55 @@ def _clean_custom_challenges(raw: dict) -> dict:
     return out
 
 
+def challenge_window(s: Settings) -> tuple[datetime, datetime]:
+    """Início e fim do desafio do grupo, com hora.
+
+    Grupos criados antes da janela só têm start_date + duration_days; para eles
+    a janela é derivada (começa 00:00 do primeiro dia, termina 23:59:59 do
+    último), então nada precisa ser migrado à mão.
+    """
+    start = getattr(s, "challenge_start", None)
+    end = getattr(s, "challenge_end", None)
+    if start and end:
+        return start, end
+    inicio = start or datetime.combine(s.start_date, dtime.min)
+    fim = end or datetime.combine(
+        s.start_date + timedelta(days=max(1, s.duration_days) - 1), dtime.max
+    )
+    return inicio, fim
+
+
+def challenge_status(s: Settings, now: datetime | None = None) -> str:
+    """'scheduled' antes de começar, 'active' durante, 'ended' depois."""
+    now = now or datetime.now(_zone(getattr(s, "timezone", None))).replace(tzinfo=None)
+    inicio, fim = challenge_window(s)
+    if now < inicio:
+        return "scheduled"
+    if now > fim:
+        return "ended"
+    return "active"
+
+
+def ensure_challenge_active(s: Settings) -> None:
+    """Fora da janela não se registra desafio — nem antes, nem depois."""
+    estado = challenge_status(s)
+    if estado == "scheduled":
+        inicio, _ = challenge_window(s)
+        raise HTTPException(400, f"O desafio começa em {inicio.strftime('%d/%m às %H:%M')}.")
+    if estado == "ended":
+        _, fim = challenge_window(s)
+        raise HTTPException(400, f"O desafio terminou em {fim.strftime('%d/%m às %H:%M')}.")
+
+
 def settings_public(s: Settings) -> dict:
     updated = getattr(s, "challenge_pool_updated", None)
     return {
         "timezone": getattr(s, "timezone", None) or DEFAULT_TZ,
         "start_date": s.start_date.isoformat(),
         "duration_days": s.duration_days,
+        "challenge_start": challenge_window(s)[0].isoformat(),
+        "challenge_end": challenge_window(s)[1].isoformat(),
+        "challenge_status": challenge_status(s),
         "water_goal_l": s.water_goal_l,
         "steps_goal": s.steps_goal,
         "protein_goal_g": s.protein_goal_g,
@@ -794,7 +869,16 @@ def create_group(payload: GroupCreate, user: User = Depends(get_current_user), d
     group = Group(name=payload.name.strip(), invite_code=code, group_type=payload.group_type)
     db.add(group)
     db.flush()
-    db.add(Settings(group_id=group.id, start_date=date.today(), duration_days=30, fixed_habits=DEFAULT_HABITS))
+    inicio = datetime.combine(date.today(), dtime.min)
+    fim = datetime.combine(date.today() + timedelta(days=29), dtime.max)
+    db.add(Settings(
+        group_id=group.id,
+        challenge_start=inicio,
+        challenge_end=fim,
+        start_date=inicio.date(),
+        duration_days=30,
+        fixed_habits=DEFAULT_HABITS,
+    ))
     db.add(Membership(user_id=user.id, group_id=group.id, role="owner"))
     db.commit()
     db.refresh(group)
@@ -809,6 +893,12 @@ def join_group(payload: GroupJoin, user: User = Depends(get_current_user), db: S
         raise HTTPException(404, "Código de convite inválido.")
     existing = get_membership_or_none(db, user, group.id)
     if existing is None:
+        rules = group_rules(group)
+        atuais = db.query(Membership).filter(Membership.group_id == group.id).count()
+        if not rules["invite"]:
+            raise HTTPException(400, "Este é um espaço individual e não aceita outras pessoas.")
+        if atuais >= rules["max_members"]:
+            raise HTTPException(400, f"Este espaço já está completo ({rules['max_members']} pessoas).")
         db.add(Membership(user_id=user.id, group_id=group.id, role="member"))
         db.commit()
     count = db.query(Membership).filter(Membership.group_id == group.id).count()
@@ -850,6 +940,23 @@ def update_settings(gid: int, payload: SettingsUpdate, user: User = Depends(get_
         if len(off) >= len(CATEGORY_ORDER):
             raise HTTPException(400, "Deixe pelo menos uma área ativa.")
         data["disabled_areas"] = off
+
+    # A janela manda: quando vem, start_date e duration_days são recalculados a
+    # partir dela, para o resto do app (day_number, metas) continuar coerente.
+    if "challenge_start" in data or "challenge_end" in data:
+        inicio_atual, fim_atual = challenge_window(s)
+        inicio = parse_datetime(data.pop("challenge_start", None), inicio_atual)
+        fim = parse_datetime(data.pop("challenge_end", None), fim_atual)
+        if fim <= inicio:
+            raise HTTPException(400, "O fim do desafio precisa ser depois do início.")
+        if (fim - inicio).days > 365:
+            raise HTTPException(400, "O desafio pode durar no máximo 365 dias.")
+        s.challenge_start = inicio
+        s.challenge_end = fim
+        s.start_date = inicio.date()
+        s.duration_days = max(1, (fim.date() - inicio.date()).days + 1)
+        data.pop("duration_days", None)
+
     for field, value in data.items():
         setattr(s, field, value)
     db.commit()
@@ -862,10 +969,14 @@ def challenges_today(gid: int, day: str | None = None, user: User = Depends(get_
     get_membership(db, user, gid)
     s = get_group_settings(db, gid)
     d = parse_date(day, today_of(s))
+    inicio, fim = challenge_window(s)
     return {
         "date": d.isoformat(),
         "day_number": scoring.day_number(s, d),
         "duration_days": s.duration_days,
+        "challenge_start": inicio.isoformat(),
+        "challenge_end": fim.isoformat(),
+        "challenge_status": challenge_status(s),
         "challenges": scoring.daily_challenges(s, d),
         "motd": scoring.motd(d),
     }
@@ -1032,6 +1143,7 @@ def set_challenge(gid: int, req: ChallengeProofRequest, user: User = Depends(get
     s = get_group_settings(db, gid)
     if req.category not in scoring.active_categories(s):
         raise HTTPException(400, "Área inválida.")
+    ensure_challenge_active(s)
     today = today_of(s)
     d = parse_date(req.date, today)
     ensure_today(d, today)
@@ -1126,8 +1238,8 @@ def list_joint(gid: int, day: str | None = None, user: User = Depends(get_curren
 def create_joint(gid: int, payload: JointActivityCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     validate_image(payload.image)
     membership = get_membership(db, user, gid)
-    if membership.group.group_type != "couple":
-        raise HTTPException(400, "Atividades em dupla só estão disponíveis para grupos do tipo Casal.")
+    if not group_rules(membership.group)["joint"]:
+        raise HTTPException(400, "Atividade em dupla existe só em espaço de Casal.")
     s = get_group_settings(db, gid)
     today = today_of(s)
     d = parse_date(payload.date, today)

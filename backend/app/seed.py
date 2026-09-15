@@ -43,6 +43,10 @@ _NEW_COLUMNS = {
         "challenge_pool_updated": "TIMESTAMP",
         "custom_challenges": "JSON",
         "disabled_areas": "JSON",
+        # Janela do desafio com hora. Ficam nulas nos grupos antigos; o backend
+        # deriva a janela de start_date + duration_days enquanto for o caso.
+        "challenge_start": "TIMESTAMP",
+        "challenge_end": "TIMESTAMP",
     },
     "activities": {
         "image": "TEXT",
