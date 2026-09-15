@@ -1,0 +1,45 @@
+<!-- @dsCard group="Components" viewport="700x300" name="Core" subtitle="Buttons, icon buttons, badges, chips, avatars, dot numerals" -->
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>Core</title>
+<link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<style>html,body{margin:0}body{background:var(--surface-page);color:var(--text-primary);font-family:var(--font-ui);padding:18px;min-height:300px;box-sizing:border-box}.row{display:flex;flex-wrap:wrap;align-items:center;gap:12px}.col{display:flex;flex-direction:column;gap:12px}.cap{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-tertiary);margin-bottom:8px}</style>
+</head><body><div id="root"></div><script type="text/babel">
+const NS = window.LGrowDesignSystem_af8774;
+
+const {Button,IconButton,Badge,Chip,Avatar,DotNumber,Card,Legend}=NS;
+function Demo(){const [sel,setSel]=React.useState('Gym');return(<div className="col" style={{gap:18}}>
+<div><div className="cap">Buttons</div><div className="row">
+<Button variant="primary">Login Now</Button>
+<Button variant="accent" size="sm" pill>GET</Button>
+<Button variant="secondary" iconLeft="pause">Pause</Button>
+<Button variant="ghost">Complete</Button>
+<Button variant="glass">Contact us</Button>
+<Button variant="primary" disabled>Confirm</Button>
+</div></div>
+<div className="row" style={{gap:26,alignItems:'flex-start'}}>
+<div><div className="cap">Icon buttons</div><div className="row">
+<IconButton icon="chevron-left"/><IconButton icon="share" tone="glass" size={40}/><IconButton icon="bell"/><IconButton icon="plus" tone="light"/><IconButton icon="x"/>
+</div></div>
+<div><div className="cap">Avatars</div><div className="row">
+<Avatar initials="AB"/><Avatar initials="MS" color="var(--data-steps)"/><Avatar initials="DR" color="var(--success)"/><Avatar initials="WL" color="var(--data-nutrition)"/><Avatar src="../../assets/img/avatar-tobi.png" size="lg"/>
+</div></div></div>
+<div className="row" style={{gap:26,alignItems:'flex-start'}}>
+<div><div className="cap">Badges</div><div className="row">
+<Badge caps>About project</Badge><Badge tone="outline" caps>Health mode</Badge><Badge tone="success">2.3% ↗</Badge><Badge tone="danger">10.1% ↘</Badge><Badge tone="light">[2/10]</Badge>
+</div></div>
+<div><div className="cap">Chips</div><div className="row">
+{['Gym','Cadio','Yoga','Pilates','Swim'].map(c=><Chip key={c} selected={sel===c} onClick={()=>setSel(c)}>{c}</Chip>)}
+</div></div></div>
+<div className="row" style={{gap:26}}>
+<div><div className="cap">Dot numerals</div><div className="row" style={{gap:18}}>
+<DotNumber value="32" unit="min"/><DotNumber value="93.2" size="lg" unit="%"/><DotNumber value="8" size="md"/>
+</div></div>
+<div><div className="cap">Legend</div><Legend items={[{label:'Calories Burned',color:'var(--data-calories)'},{label:'Nutrition',color:'var(--data-nutrition)'},{label:'Exercises',color:'var(--data-exercises)'},{label:'Steps',color:'var(--data-steps)'}]}/></div>
+</div>
+</div>);}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<Demo/>);
+</script></body></html>

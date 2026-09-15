@@ -112,7 +112,7 @@ export default function Chat() {
         {pending && (
           <div className="chat-preview">
             <img src={pending} alt="prévia" />
-            <button className="chat-preview-x" onClick={() => setPending(null)}>✕</button>
+            <button className="chat-preview-x" onClick={() => setPending(null)}><Icon name="x" size={16} /></button>
           </div>
         )}
         <div className="chat-row">

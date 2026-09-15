@@ -1,0 +1,27 @@
+:root{
+  --space-0:0px;
+  --space-1:2px;
+  --space-2:4px;
+  --space-3:6px;
+  --space-4:8px;
+  --space-5:12px;
+  --space-6:16px;
+  --space-7:20px;
+  --space-8:24px;
+  --space-9:32px;
+  --space-10:40px;
+  --space-11:56px;
+
+  --gutter-screen:16px;   /* left/right screen padding on mobile */
+  --gap-card:10px;        /* gap between sibling cards in the home grid */
+  --gap-stack:12px;
+  --pad-card:14px;        /* card inner padding */
+  --pad-card-lg:18px;
+  --pad-row:12px;
+
+  --control-h-sm:32px;
+  --control-h:44px;       /* minimum touch target */
+  --control-h-lg:52px;    /* full-width primary buttons */
+  --tabbar-h:56px;
+  --statusbar-h:44px;
+}

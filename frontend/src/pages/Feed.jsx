@@ -1,8 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useApp } from '../store.jsx'
 import { api } from '../api.js'
-import Avatar from '../components/Avatar.jsx'
-import Icon from '../components/Icon.jsx'
+import { Avatar, Card, Icon } from '../design-system/components/index.js'
 
 function timeAgo(iso) {
   const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000)
@@ -48,6 +47,7 @@ export default function Feed() {
   useEffect(() => {
     load()
   }, [load])
+
   useEffect(() => {
     const t = setInterval(load, 15000)
     return () => clearInterval(t)
@@ -66,7 +66,6 @@ export default function Feed() {
     }
   }
 
-  // Agrupa por dia mantendo a ordem (itens já vêm do mais novo pro mais antigo).
   const groups = []
   const idx = {}
   for (const a of items || []) {
@@ -79,87 +78,149 @@ export default function Feed() {
   }
 
   return (
-    <div className="screen">
-      <header className="topbar">
-        <div className="brand">Atividades</div>
+    <div className="screen" style={{ paddingTop: 'var(--space-6)', paddingLeft: 'var(--gutter-screen)', paddingRight: 'var(--gutter-screen)' }}>
+      <header style={{ marginBottom: 'var(--space-8)' }}>
+        <h1 style={{ margin: 0, fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-title-1)', fontWeight: 'var(--fw-bold)', color: 'var(--text-primary)' }}>
+          Feed
+        </h1>
+        <p style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-body)', color: 'var(--text-secondary)', marginTop: 'var(--space-2)' }}>
+          Atividades recentes do grupo.
+        </p>
       </header>
 
-      {err && <div className="error">{err}</div>}
-      {items === null && !err && <div className="muted small">Carregando…</div>}
+      {err && (
+        <div style={{ padding: 'var(--space-4)', background: 'rgba(255, 69, 58, 0.1)', color: 'var(--error)', borderRadius: 'var(--radius-md)', marginBottom: 'var(--space-6)' }}>
+          {err}
+        </div>
+      )}
+      
+      {items === null && !err && (
+        <div style={{ textAlign: 'center', color: 'var(--text-tertiary)', padding: 'var(--space-8)' }}>Carregando…</div>
+      )}
+      
       {items && items.length === 0 && (
-        <div className="empty-state">
-          <div className="muted small">Ainda sem atividades. Conclua um desafio ou registre algo em dupla — aparece aqui.</div>
+        <div style={{ textAlign: 'center', color: 'var(--text-tertiary)', padding: 'var(--space-8)' }}>
+          Ainda sem atividades. Conclua um desafio ou registre algo em dupla — aparece aqui.
         </div>
       )}
 
-      {groups.map((g) => (
-        <div className="feed-day" key={g.key}>
-          <div className="feed-day-divider">{dayLabel(g.key)}</div>
-          <div className="feed-list">
-            {g.items.map((a) => {
-              const rx = a.reactions || { counts: {}, mine: null, total: 0 }
-              return (
-                <div className="feed-row card" key={a.id}>
-                  <div className="feed-av">
-                    <Avatar photo={a.photo} avatar={a.avatar} name={a.author} size={34} />
-                  </div>
-                  <div className="feed-body">
-                    <div className="feed-line">
-                      <span className="feed-row-emoji">{a.emoji}</span> {a.text}
-                    </div>
-                    {a.image && (
-                      <img className="feed-photo" src={a.image} alt="" loading="lazy" onClick={() => setZoom(a.image)} />
-                    )}
-                    <div className="feed-react">
-                      <span className="feed-react-left">
-                        <span className="muted xsmall">{timeAgo(a.created_at)}</span>
-                        {rx.total > 0 && (
-                          <span className="feed-react-summary">
-                            {Object.keys(rx.counts).map((k) => (
-                              <span key={k} className="react-chip-emoji">{emojiOf(k)}</span>
-                            ))}
-                            <span className="muted xsmall">{rx.total}</span>
-                          </span>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-8)' }}>
+        {groups.map((g) => (
+          <div key={g.key} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+            <div style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-semibold)', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: 'var(--ls-caps)' }}>
+              {dayLabel(g.key)}
+            </div>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--gap-card)' }}>
+              {g.items.map((a) => {
+                const rx = a.reactions || { counts: {}, mine: null, total: 0 }
+                return (
+                  <Card key={a.id} padding="md">
+                    <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
+                      <Avatar src={a.photo || a.avatar} name={a.author} size={36} />
+                      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                        <div style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-body)', color: 'var(--text-primary)' }}>
+                          <span style={{ fontWeight: 'var(--fw-bold)' }}>{a.author}</span> {a.text}
+                        </div>
+                        
+                        {a.image && (
+                          <img 
+                            src={a.image} 
+                            alt="" 
+                            loading="lazy" 
+                            onClick={() => setZoom(a.image)}
+                            style={{ 
+                              width: '100%', borderRadius: 'var(--radius-md)', objectFit: 'cover', maxHeight: 300, cursor: 'pointer',
+                              border: '1px solid var(--line-hairline)' 
+                            }} 
+                          />
                         )}
-                      </span>
-                      <span className="feed-react-btnwrap">
-                        <button
-                          className={'react-btn ' + (rx.mine ? 'active' : '')}
-                          onClick={() => setPickerFor(pickerFor === a.id ? null : a.id)}
-                        >
-                          {rx.mine ? (
-                            <>{emojiOf(rx.mine)} {labelOf(rx.mine)}</>
-                          ) : (
-                            <><Icon name="heart" size={13} /> Reagir</>
-                          )}
-                        </button>
-                        {pickerFor === a.id && (
-                          <div className="react-picker">
-                            {types.map((rt) => (
-                              <button
-                                key={rt.key}
-                                className={'react-opt ' + (rx.mine === rt.key ? 'active' : '')}
-                                title={rt.label}
-                                onClick={() => react(a.id, rt.key)}
-                              >
-                                {rt.emoji}
-                              </button>
-                            ))}
+                        
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 'var(--space-2)' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+                            <span style={{ fontFamily: 'var(--font-numeric)', fontSize: 'var(--fs-caption)', color: 'var(--text-tertiary)' }}>
+                              {timeAgo(a.created_at)}
+                            </span>
+                            {rx.total > 0 && (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}>
+                                {Object.keys(rx.counts).map((k) => (
+                                  <span key={k} style={{ fontSize: 14 }}>{emojiOf(k)}</span>
+                                ))}
+                                <span style={{ fontFamily: 'var(--font-numeric)', fontSize: 'var(--fs-caption)', color: 'var(--text-secondary)' }}>
+                                  {rx.total}
+                                </span>
+                              </div>
+                            )}
                           </div>
-                        )}
-                      </span>
+                          
+                          <div style={{ position: 'relative' }}>
+                            <button
+                              style={{
+                                background: rx.mine ? 'rgba(0, 122, 255, 0.1)' : 'var(--surface-chip)',
+                                border: 'none', borderRadius: 'var(--radius-pill)',
+                                padding: 'var(--space-1) var(--space-3)',
+                                display: 'flex', alignItems: 'center', gap: 'var(--space-1)',
+                                cursor: 'pointer',
+                                color: rx.mine ? 'var(--blue-glow)' : 'var(--text-secondary)',
+                                fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-caption)', fontWeight: 'var(--fw-medium)'
+                              }}
+                              onClick={() => setPickerFor(pickerFor === a.id ? null : a.id)}
+                            >
+                              {rx.mine ? (
+                                <>{emojiOf(rx.mine)} <span style={{ display: 'none' }}>{labelOf(rx.mine)}</span></>
+                              ) : (
+                                <><Icon name="heart" size={12} /> Reagir</>
+                              )}
+                            </button>
+                            
+                            {pickerFor === a.id && (
+                              <div style={{
+                                position: 'absolute', bottom: 'calc(100% + 8px)', right: 0,
+                                background: 'var(--surface-overlay)', border: '1px solid var(--line-hairline)',
+                                borderRadius: 'var(--radius-pill)', padding: 'var(--space-2)',
+                                display: 'flex', gap: 'var(--space-2)', boxShadow: 'var(--shadow-float)',
+                                zIndex: 10
+                              }}>
+                                {types.map((rt) => (
+                                  <button
+                                    key={rt.key}
+                                    title={rt.label}
+                                    onClick={() => react(a.id, rt.key)}
+                                    style={{
+                                      background: rx.mine === rt.key ? 'var(--surface-hover)' : 'transparent',
+                                      border: 'none', fontSize: 20, cursor: 'pointer',
+                                      width: 32, height: 32, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                      transition: 'transform var(--dur-fast) var(--ease-spring)'
+                                    }}
+                                  >
+                                    {rt.emoji}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
-              )
-            })}
+                  </Card>
+                )
+              })}
+            </div>
           </div>
-        </div>
-      ))}
+        ))}
+      </div>
 
       {zoom && (
-        <div className="lightbox" onClick={() => setZoom(null)}>
-          <img src={zoom} alt="" />
+        <div 
+          onClick={() => setZoom(null)}
+          style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.9)', zIndex: 9999,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 'var(--space-4)', cursor: 'zoom-out'
+          }}
+        >
+          <img src={zoom} alt="" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: 'var(--radius-md)' }} />
         </div>
       )}
     </div>

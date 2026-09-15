@@ -5,11 +5,11 @@ import Icon from './Icon.jsx'
 import { pickImage, fileToCompressedDataURL } from '../utils/image.js'
 
 const MODALITIES = [
-  { id: 'corrida', label: 'Corrida', emoji: '🏃', fields: ['distance', 'duration', 'intensity'] },
-  { id: 'caminhada', label: 'Caminhada', emoji: '🚶', fields: ['distance', 'duration', 'intensity'] },
-  { id: 'ciclismo', label: 'Ciclismo', emoji: '🚴', fields: ['distance', 'duration', 'intensity'] },
-  { id: 'musculacao', label: 'Musculação', emoji: '🏋️', fields: ['duration', 'intensity'] },
-  { id: 'jiu-jitsu', label: 'Jiu-Jitsu', emoji: '🥋', fields: ['duration', 'rolas', 'intensity'] },
+  { id: 'corrida', label: 'Corrida', icon: 'activity', fields: ['distance', 'duration', 'intensity'] },
+  { id: 'caminhada', label: 'Caminhada', icon: 'corner-down-right', fields: ['distance', 'duration', 'intensity'] },
+  { id: 'ciclismo', label: 'Ciclismo', icon: 'aperture', fields: ['distance', 'duration', 'intensity'] },
+  { id: 'musculacao', label: 'Musculação', icon: 'anchor', fields: ['duration', 'intensity'] },
+  { id: 'jiu-jitsu', label: 'Jiu-Jitsu', icon: 'shield', fields: ['duration', 'rolas', 'intensity'] },
 ]
 
 export default function LogActivityModal({ onClose, onSuccess }) {
@@ -88,7 +88,10 @@ export default function LogActivityModal({ onClose, onSuccess }) {
                   className={modality === m.id ? 'active' : ''} 
                   onClick={() => setModality(m.id)}
                 >
-                  {m.emoji} {m.label}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Icon name={m.icon} size={16} />
+                    {m.label}
+                  </div>
                 </button>
               ))}
             </div>

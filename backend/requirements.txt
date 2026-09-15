@@ -7,7 +7,7 @@ PyJWT==2.9.0
 # Web Push (notificações). Puxa cryptography (com wheels) e py-vapid/http-ece.
 pywebpush==2.3.0
 # Necessário apenas quando DATABASE_URL (Postgres) estiver definido — ex: Railway.
-psycopg[binary]==3.2.1
+psycopg[binary]>=3.2.10
 # IA (desafios + contador de calorias). Opcionais: usados se a chave existir.
 groq==0.13.0
 openai>=1.40,<2

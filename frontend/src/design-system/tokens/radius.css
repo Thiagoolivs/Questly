@@ -1,0 +1,11 @@
+:root{
+  --radius-xs:6px;
+  --radius-sm:10px;   /* primary buttons, OTP cells */
+  --radius-md:12px;   /* inputs, small tiles */
+  --radius-lg:16px;   /* inner cards, media thumbs */
+  --radius-xl:20px;   /* standard content card */
+  --radius-2xl:24px;  /* hero / sheet cards */
+  --radius-3xl:34px;  /* case-study panels, phone screen corners */
+  --radius-pill:999px;/* chips, badges, avatars, tab-bar buttons */
+  --radius-squircle:28%; /* @kind radius */ /* app-icon style superellipse approximation */
+}

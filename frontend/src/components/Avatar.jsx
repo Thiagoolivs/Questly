@@ -1,4 +1,5 @@
-// Avatar do usuário: foto (data URL) > emoji escolhido > monograma (inicial).
+import Icon from './Icon.jsx'
+
 const MONO_COLORS = ['#5e6ad2', '#3fb27f', '#d6a23e', '#e5749a', '#4aa3d6', '#a06ad2', '#d2795e']
 
 function colorFor(seed = '') {
@@ -7,24 +8,45 @@ function colorFor(seed = '') {
   return MONO_COLORS[h % MONO_COLORS.length]
 }
 
-// Um emoji "de verdade" tem code point alto; letras/vazio caem no monograma.
-function isEmoji(str) {
-  return !!str && /\p{Extended_Pictographic}/u.test(str)
-}
-
-export default function Avatar({ photo, avatar, name = '', size = 32, round = true }) {
+export default function Avatar({ src, photo, avatar, name = '', size = 32, round = true }) {
   const radius = round ? '50%' : 8
-  if (photo) {
-    return <img src={photo} alt="" className="avatar-photo" style={{ width: size, height: size, borderRadius: radius }} />
+  const photoUrl = src || photo
+  if (photoUrl) {
+    return <img src={photoUrl} alt="" className="avatar-photo" style={{ width: size, height: size, borderRadius: radius, objectFit: 'cover' }} />
   }
-  if (isEmoji(avatar)) {
-    return <span style={{ fontSize: size * 0.72, lineHeight: 1 }}>{avatar}</span>
+  
+  if (avatar && avatar.length > 0) {
+    // Check if it's still a legacy emoji or string name
+    const isLegacyEmoji = /\p{Extended_Pictographic}/u.test(avatar)
+    
+    if (isLegacyEmoji) {
+      return (
+        <span style={{ 
+          width: size, height: size, borderRadius: radius, 
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: 'var(--surface-sunken)', fontSize: size * 0.5 
+        }}>
+          {avatar}
+        </span>
+      )
+    }
+
+    return (
+      <span style={{ 
+        width: size, height: size, borderRadius: radius, 
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: 'var(--blue-glow)', color: '#fff' 
+      }}>
+        <Icon name={avatar} size={size * 0.6} />
+      </span>
+    )
   }
+
   const initial = (name || '?').trim().charAt(0).toUpperCase() || '?'
   return (
     <span
       className="avatar-mono"
-      style={{ width: size, height: size, borderRadius: radius, background: colorFor(name), fontSize: size * 0.42 }}
+      style={{ width: size, height: size, borderRadius: radius, background: colorFor(name), fontSize: size * 0.42, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}
     >
       {initial}
     </span>

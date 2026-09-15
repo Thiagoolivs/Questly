@@ -1,0 +1,78 @@
+:root{
+  /* ---- Brand palette (verbatim from the LGrow colour card) ---- */
+  --blue-glow:#4B45F4;        /* BLUE GLOW — the single brand colour */
+  --african-turquoise:#000000;/* AFRICAN TURQUOISE — true black page ground */
+  --electric-black:#292929;   /* ELECTRIC BLACK */
+  --full-white:#FFFFFF;       /* FULL WHITE */
+  --refresh-black:#121212;    /* REFRESH BLACK */
+  --chinese-silver:#C2C2C2;   /* CHINESE SILVER */
+  --solid-black:#0C0C0C;      /* SOLID BLACK */
+  --boulder:#78787B;          /* BOULDER */
+
+  /* ---- Blue ramp derived from Blue Glow (glows, tints, pressed states) ---- */
+  --blue-100:#E3E1FE;
+  --blue-200:#C8C5FB;
+  --blue-300:#A49FF8;
+  --blue-400:#7C76F6;
+  --blue-500:#4B45F4;
+  --blue-600:#3B35DC;
+  --blue-700:#2A25B4;
+  --blue-900:#14126B;
+
+  /* ---- Neutral ramp (dark-first) ---- */
+  --n-0:#000000;
+  --n-1:#0C0C0C;
+  --n-2:#121212;
+  --n-3:#1A1A1A;
+  --n-4:#292929;
+  --n-5:#3A3A3C;
+  --n-6:#78787B;
+  --n-7:#9A9A9E;
+  --n-8:#C2C2C2;
+  --n-9:#FFFFFF;
+
+  /* ---- Data / metric colours (charts, legends, sleep stages) ---- */
+  --data-calories:#9B93F5;
+  --data-nutrition:#FF7A18;
+  --data-exercises:#FF2D7E;
+  --data-steps:#FFC93C;
+  --sleep-rem:#FF2D7E;
+  --sleep-deep:#8B85F0;
+  --sleep-core:#22C1E0;
+  --sleep-awake:#FFC93C;
+  --sleep-inbed:#9A9A9E;
+  --sleep-asleep:#F0518E;
+
+  /* ---- Semantic status ---- */
+  --success:#2BD07A;
+  --success-bg:#12331F;
+  --danger:#FF3B4E;
+  --danger-bg:#3A0F17;
+  --warning:#FFC93C;
+
+  /* ---- Semantic aliases: text ---- */
+  --text-primary:var(--full-white);
+  --text-secondary:var(--chinese-silver);
+  --text-tertiary:var(--boulder);
+  --text-on-accent:var(--full-white);
+  --text-on-light:var(--n-0);
+  --text-link:var(--blue-300);
+  --text-required:var(--danger);
+
+  /* ---- Semantic aliases: surfaces ---- */
+  --surface-page:var(--n-0);
+  --surface-raised:var(--n-1);
+  --surface-card:var(--n-2);
+  --surface-card-alt:var(--n-3);
+  --surface-input:var(--n-4);
+  --surface-chip:rgba(255,255,255,.06);
+  --surface-pill:rgba(255,255,255,.10);
+  --surface-glass:rgba(41,41,41,.72);
+  --surface-accent:var(--blue-glow);
+  --surface-inverse:var(--full-white);
+
+  /* ---- Semantic aliases: lines ---- */
+  --line-hairline:rgba(255,255,255,.08);
+  --line-strong:rgba(255,255,255,.16);
+  --line-accent:var(--blue-glow);
+}

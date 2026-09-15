@@ -1,7 +1,8 @@
 import { useState, useCallback } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AppProvider, useApp } from './store.jsx'
-import BottomNav from './components/BottomNav.jsx'
+import { TabBar } from './design-system/components/index.js'
+import { useNavigate, useLocation } from 'react-router-dom'
 import Onboarding, { hasOnboarded, useTourTrigger } from './components/Onboarding.jsx'
 import { captureInviteFromUrl } from './utils/invite.js'
 import Auth from './pages/Auth.jsx'
@@ -47,12 +48,39 @@ function TourHost() {
   return <Onboarding onClose={() => setShow(false)} />
 }
 
+function TabBarHost() {
+  const navigate = useNavigate()
+  const loc = useLocation()
+
+  // Mapear rotas para IDs da TabBar (home, coaching, chats, profile)
+  // Como são 5 no Questly, vamos adaptar os ícones e IDs
+  const tabs = [
+    { id: "/", icon: "house" },
+    { id: "/plano", icon: "clipboard-list" },
+    { id: "/grupo", icon: "users" },
+    { id: "/feed", icon: "activity" },
+    { id: "/perfil", icon: "user" }
+  ]
+
+  // Se não estiver em nenhuma dessas 5 abas principais, oculta a TabBar
+  const isMainTab = tabs.some(t => t.id === loc.pathname)
+  if (!isMainTab) return null
+
+  return (
+    <div style={{ position: 'fixed', bottom: 16, left: 0, right: 0, display: 'flex', justifyContent: 'center', pointerEvents: 'none', zIndex: 100 }}>
+      <div style={{ pointerEvents: 'auto' }}>
+        <TabBar tabs={tabs} active={loc.pathname} onChange={(id) => navigate(id)} />
+      </div>
+    </div>
+  )
+}
+
 function Shell() {
   return (
     <BrowserRouter>
       <TourHost />
       <div className="app-shell">
-        <main className="content">
+        <main className="content" style={{ paddingBottom: '80px', minHeight: '100vh', overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
           <Routes>
             {/* 5 abas principais */}
             <Route path="/" element={<MeuDia />} />
@@ -70,7 +98,7 @@ function Shell() {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>
-        <BottomNav />
+        <TabBarHost />
       </div>
     </BrowserRouter>
   )

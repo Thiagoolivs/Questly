@@ -4,21 +4,21 @@ import { useApp } from '../store.jsx'
 import { pickImage, fileToCompressedDataURL } from '../utils/image.js'
 import { getPushState, enablePush, disablePush } from '../utils/push.js'
 import { forceUpdate } from '../utils/pwa.js'
-import Icon from '../components/Icon.jsx'
-import Avatar from '../components/Avatar.jsx'
 import { startTour } from '../components/Onboarding.jsx'
 import InstallGuide from '../components/InstallGuide.jsx'
 import { shareInvite } from '../utils/invite.js'
+import { Avatar, Button, Card, Chip, Icon, Input, ListRow, SegmentedControl } from '../design-system/components/index.js'
 
-const AVATARS = ['🦊', '🐨', '🐼', '🦁', '🐯', '🐸', '🐵', '🦉', '🔥', '⚡', '🌟', '💜']
+const AVATARS = ['smile', 'heart', 'star', 'zap', 'sun', 'moon', 'music', 'camera', 'coffee', 'award', 'gift', 'flag']
 const ATIVIDADES = [
-  ['sedentario', 'Sedentário'],
-  ['leve', 'Leve'],
-  ['moderado', 'Moderado'],
-  ['intenso', 'Intenso'],
-  ['muito_intenso', 'Muito intenso'],
+  { value: '', label: 'Não informar' },
+  { value: 'sedentario', label: 'Sedentário' },
+  { value: 'leve', label: 'Leve' },
+  { value: 'moderado', label: 'Moderado' },
+  { value: 'intenso', label: 'Intenso' },
+  { value: 'muito_intenso', label: 'Muito intenso' },
 ]
-const OBJETIVOS = [['perder', 'Perder peso'], ['manter', 'Manter'], ['ganhar', 'Ganhar massa']]
+
 const BMI_LABEL = { abaixo: 'abaixo do peso', normal: 'peso normal', sobrepeso: 'sobrepeso', obesidade: 'obesidade' }
 const numOrNull = (v) => (v === '' || v === null || v === undefined ? null : Number(v))
 
@@ -95,7 +95,7 @@ export default function Perfil() {
     }
   }
 
-  if (loading || !user || !form) return <div className="screen center muted">Carregando…</div>
+  if (loading || !user || !form) return <div className="screen center muted" style={{ paddingTop: 'var(--space-6)', paddingLeft: 'var(--gutter-screen)', paddingRight: 'var(--gutter-screen)', color: 'var(--text-tertiary)', textAlign: 'center' }}>Carregando…</div>
 
   async function save() {
     await updateUser({
@@ -145,193 +145,218 @@ export default function Perfil() {
   const s = me?.stats
   const stats = s
     ? [
-        { label: 'Dias concluídos', value: s.completed_days, icon: 'check' },
-        { label: 'Sequência atual', value: s.streak, icon: 'flame' },
-        { label: 'Melhor sequência', value: s.best_streak, icon: 'trophy' },
-        { label: 'Dias perfeitos', value: s.perfect_days, icon: 'star' },
-        { label: 'Pontos totais', value: s.total, icon: 'target' },
-        { label: 'Conclusão', value: s.completion_pct + '%', icon: 'activity' },
+        { label: 'Dias concluídos', value: s.completed_days, icon: 'check-circle' },
+        { label: 'Sequência', value: s.streak, icon: 'flame' },
+        { label: 'Pontos', value: s.total, icon: 'target' },
       ]
     : []
 
   return (
-    <div className="screen">
-      <header className="topbar">
-        <div className="brand">Perfil</div>
-        <div className="muted small">{user.email}</div>
+    <div className="screen" style={{ paddingTop: 'var(--space-6)', paddingLeft: 'var(--gutter-screen)', paddingRight: 'var(--gutter-screen)' }}>
+      <header style={{ marginBottom: 'var(--space-8)' }}>
+        <h1 style={{ margin: 0, fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-title-1)', fontWeight: 'var(--fw-bold)', color: 'var(--text-primary)' }}>
+          Perfil
+        </h1>
+        <p style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-body)', color: 'var(--text-secondary)', marginTop: 'var(--space-2)' }}>
+          {user.email}
+        </p>
       </header>
 
-      <section className="card center">
-        <div className="avatar-big">
-          <Avatar photo={form.photo} avatar={form.avatar} name={form.name} size={104} />
-        </div>
-        <div className="photo-actions">
-          <button className="btn ghost small-btn icon-btn" disabled={photoBusy} onClick={changePhoto}>
-            <Icon name="camera" size={15} /> {photoBusy ? '…' : form.photo ? 'Trocar foto' : 'Enviar foto'}
-          </button>
-          {form.photo && (
-            <button className="link-btn danger" disabled={photoBusy} onClick={removePhoto}>
-              remover foto
-            </button>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-8)' }}>
+        {/* IDENTITY */}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--space-4)' }}>
+          <Avatar src={form.photo || form.avatar} name={form.name} size={120} />
+          
+          <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+            <Button variant="secondary" size="sm" onClick={changePhoto} disabled={photoBusy}>
+              <Icon name="camera" size={16} /> {photoBusy ? '…' : form.photo ? 'Trocar' : 'Enviar foto'}
+            </Button>
+            {form.photo && (
+              <Button variant="danger" size="sm" onClick={removePhoto} disabled={photoBusy}>
+                Remover
+              </Button>
+            )}
+          </div>
+          
+          {!form.photo && (
+            <div style={{ width: '100%', marginTop: 'var(--space-2)' }}>
+              <div style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-caption)', color: 'var(--text-tertiary)', textAlign: 'center', marginBottom: 'var(--space-3)' }}>
+                ou escolha um ícone
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 'var(--space-2)', maxWidth: 300, margin: '0 auto' }}>
+                <button
+                  style={{
+                    aspectRatio: '1', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    background: !form.avatar ? 'var(--blue-glow)' : 'var(--surface-sunken)',
+                    color: !form.avatar ? '#fff' : 'var(--text-primary)',
+                    border: 'none', borderRadius: '50%', fontSize: 18, cursor: 'pointer', fontFamily: 'var(--font-ui)', fontWeight: 'var(--fw-bold)'
+                  }}
+                  onClick={() => setForm({ ...form, avatar: '' })}
+                >
+                  {(form.name || '?').charAt(0).toUpperCase()}
+                </button>
+                {AVATARS.map((a) => (
+                  <button
+                    key={a}
+                    style={{
+                      aspectRatio: '1', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      background: form.avatar === a ? 'var(--blue-glow)' : 'var(--surface-sunken)',
+                      color: form.avatar === a ? '#fff' : 'var(--text-secondary)',
+                      border: 'none', borderRadius: '50%', cursor: 'pointer'
+                    }}
+                    onClick={() => setForm({ ...form, avatar: a })}
+                  >
+                    <Icon name={a} size={20} />
+                  </button>
+                ))}
+              </div>
+            </div>
           )}
         </div>
-        {!form.photo && (
-          <>
-            <div className="muted xsmall" style={{ marginTop: 4 }}>ou escolha um emoji</div>
-            <div className="avatar-picker">
-              <button
-                className={'avatar-opt mono-opt ' + (!form.avatar ? 'active' : '')}
-                title="Monograma (inicial)"
-                onClick={() => setForm({ ...form, avatar: '' })}
-              >
-                {(form.name || '?').charAt(0).toUpperCase()}
-              </button>
-              {AVATARS.map((a) => (
-                <button
-                  key={a}
-                  className={'avatar-opt ' + (a === form.avatar ? 'active' : '')}
-                  onClick={() => setForm({ ...form, avatar: a })}
-                >
-                  {a}
-                </button>
+
+        {/* STATS */}
+        {stats.length > 0 && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--space-3)' }}>
+            {stats.map((st) => (
+              <Card key={st.label} padding="md" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--space-2)' }}>
+                <Icon name={st.icon} size={24} color="var(--blue-glow)" />
+                <div style={{ fontFamily: 'var(--font-numeric)', fontSize: 'var(--fs-title-3)', fontWeight: 'var(--fw-bold)', color: 'var(--text-primary)' }}>
+                  {st.value}
+                </div>
+                <div style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-caption)', color: 'var(--text-tertiary)', textAlign: 'center' }}>
+                  {st.label}
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
+
+        {/* BASIC INFO */}
+        <Card padding="md">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+            <Input 
+              label="Nome" 
+              value={form.name} 
+              onChange={(e) => setForm({ ...form, name: e.target.value })} 
+            />
+            <Input 
+              label="Objetivo" 
+              placeholder="Ex: evoluir com constância" 
+              value={form.objetivo} 
+              onChange={(e) => setForm({ ...form, objetivo: e.target.value })} 
+            />
+            <Button variant="primary" block onClick={save}>
+              {saved ? '✓ Salvo!' : 'Salvar perfil'}
+            </Button>
+          </div>
+        </Card>
+
+        {/* NUTRITION */}
+        <NutritionCard form={form} setForm={setForm} nt={user.nutrition_targets} onSave={saveNutrition} saved={savedN} />
+
+        {/* GROUP */}
+        <Card padding="none">
+          <div style={{ padding: 'var(--pad-card-md)', display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+            <div>
+              <div style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-title-3)', color: 'var(--text-primary)', marginBottom: 'var(--space-1)' }}>
+                Grupo
+              </div>
+              <div style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-body)', color: 'var(--text-secondary)' }}>
+                {group?.name} <span style={{ color: 'var(--text-tertiary)' }}>· {group?.member_count ?? '—'} membro(s)</span>
+              </div>
+            </div>
+
+            <div style={{ background: 'var(--surface-sunken)', borderRadius: 'var(--radius-md)', padding: 'var(--space-3)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <div style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-caption)', color: 'var(--text-tertiary)' }}>Código de convite</div>
+                <div style={{ fontFamily: 'var(--font-numeric)', fontSize: 'var(--fs-body)', fontWeight: 'var(--fw-bold)', color: 'var(--text-primary)', letterSpacing: 1 }}>
+                  {group?.invite_code}
+                </div>
+              </div>
+              <Button variant="secondary" size="sm" onClick={copyCode}>
+                <Icon name={copied ? 'check' : 'copy'} size={16} /> {copied ? 'Copiado' : 'Copiar'}
+              </Button>
+            </div>
+
+            <Button variant="primary" block onClick={shareLink}>
+              <Icon name={linkShared ? 'check' : 'users'} size={18} /> {linkShared ? 'Link pronto!' : 'Convidar por link'}
+            </Button>
+          </div>
+
+          {groups.length > 1 && (
+            <div style={{ borderTop: '1px solid var(--line-hairline)' }}>
+              {groups.map((g, i) => (
+                <ListRow
+                  key={g.id}
+                  title={g.name}
+                  subtitle={`${g.member_count} membro(s)`}
+                  left={<Icon name="users" color="var(--text-tertiary)" size={20} />}
+                  right={<Icon name={g.id === group?.id ? 'check' : 'chevron-right'} color={g.id === group?.id ? 'var(--blue-glow)' : 'var(--text-tertiary)'} size={16} />}
+                  borderBottom={i < groups.length - 1}
+                  onClick={() => selectGroup(g.id)}
+                  style={{ cursor: 'pointer', background: g.id === group?.id ? 'rgba(0,122,255,0.05)' : 'transparent' }}
+                />
               ))}
             </div>
-          </>
-        )}
-      </section>
-
-      <section className="card">
-        <label className="field">
-          <span>Nome</span>
-          <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-        </label>
-        <label className="field">
-          <span>Objetivo</span>
-          <input
-            value={form.objetivo}
-            placeholder="Ex: evoluir com constância"
-            onChange={(e) => setForm({ ...form, objetivo: e.target.value })}
-          />
-        </label>
-        <button className="btn full btn-primary" onClick={save}>
-          {saved ? '✓ Salvo!' : 'Salvar perfil'}
-        </button>
-      </section>
-
-      {/* Metas de nutrição (estimativa por perfil, ajustável) */}
-      <NutritionCard form={form} setForm={setForm} nt={user.nutrition_targets} onSave={saveNutrition} saved={savedN} />
-
-      {/* Grupo atual + convite */}
-      <section className="card" data-tour="perfil-convite">
-        <div className="card-title">Grupo</div>
-        <div className="row between">
-          <div>
-            <div className="group-name">{group?.name}</div>
-            <div className="muted xsmall">{group?.member_count ?? '—'} membro(s)</div>
-          </div>
-        </div>
-        <div className="invite-box">
-          <div>
-            <div className="muted xsmall">Código de convite</div>
-            <div className="invite-code">{group?.invite_code}</div>
-          </div>
-          <button className="btn ghost small-btn icon-btn" onClick={copyCode}>
-            <Icon name={copied ? 'check' : 'copy'} size={14} /> {copied ? 'Copiado' : 'Copiar'}
-          </button>
-        </div>
-        <button className="btn full btn-primary icon-btn" onClick={shareLink}>
-          <Icon name={linkShared ? 'check' : 'users'} size={15} /> {linkShared ? 'Link pronto!' : 'Convidar por link'}
-        </button>
-        <p className="muted xsmall">
-          O link já leva a pessoa direto para o grupo — ela só precisa criar a conta. Sem link, dá para usar o código acima.
-        </p>
-
-        {groups.length > 1 && (
-          <div className="group-list">
-            {groups.map((g) => (
-              <button
-                key={g.id}
-                className={'group-row ' + (g.id === group?.id ? 'active' : '')}
-                onClick={() => selectGroup(g.id)}
-              >
-                <span className="group-emoji"><Icon name="users" size={18} /></span>
-                <span className="group-main">
-                  <span className="group-name">{g.name}</span>
-                  <span className="muted xsmall">{g.member_count} membro(s)</span>
-                </span>
-                <span className="group-go"><Icon name={g.id === group?.id ? 'check' : 'chevronRight'} size={16} /></span>
-              </button>
-            ))}
-          </div>
-        )}
-
-        <button className="btn ghost full" onClick={() => selectGroup(null)}>
-          Criar / entrar em outro grupo
-        </button>
-        <Link to="/config" className="btn ghost full config-link icon-btn">
-          <Icon name="settings" size={15} /> Configurações do grupo
-        </Link>
-      </section>
-
-      {/* Notificações push */}
-      <section className="card">
-        <div className="row between">
-          <div>
-            <div className="card-title no-margin">Notificações</div>
-            <div className="muted small">
-              {pushState === 'denied'
-                ? 'Bloqueadas no navegador — libere nas permissões do site.'
-                : pushState === 'unsupported'
-                ? 'Não suportadas neste navegador.'
-                : 'Lembretes do dia, avisos do par e do chat.'}
-            </div>
-          </div>
-          {pushState !== 'unsupported' && pushState !== 'denied' && (
-            <button
-              className={'toggle ' + (pushState === 'on' ? 'on' : '')}
-              onClick={togglePush}
-              disabled={pushBusy}
-              aria-pressed={pushState === 'on'}
-            >
-              <span className="knob" />
-            </button>
           )}
-        </div>
-      </section>
-
-      {stats.length > 0 && (
-        <section className="card">
-          <div className="card-title">Estatísticas</div>
-          <div className="stat-grid">
-            {stats.map((st) => (
-              <div className="stat-box" key={st.label}>
-                <div className="stat-emoji"><Icon name={st.icon} size={18} /></div>
-                <div className="stat-value">{st.value}</div>
-                <div className="muted xsmall">{st.label}</div>
-              </div>
-            ))}
+          
+          <div style={{ borderTop: '1px solid var(--line-hairline)', padding: 'var(--pad-card-md)', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+            <Button variant="secondary" block onClick={() => selectGroup(null)}>
+              Mudar de grupo
+            </Button>
+            <Link to="/config" style={{ textDecoration: 'none' }}>
+              <Button variant="glass" block>
+                <Icon name="settings" size={16} /> Configurações do grupo
+              </Button>
+            </Link>
           </div>
-        </section>
-      )}
+        </Card>
 
-      <section className="card">
-        <div className="card-title">App na tela inicial</div>
-        <InstallGuide />
-      </section>
+        {/* SYSTEM PREFS */}
+        <Card padding="none">
+          <ListRow
+            title="Notificações"
+            subtitle={
+              pushState === 'denied' ? 'Bloqueadas no navegador.'
+              : pushState === 'unsupported' ? 'Não suportadas.'
+              : 'Lembretes e avisos do grupo.'
+            }
+            icon="bell"
+            right={
+              pushState !== 'unsupported' && pushState !== 'denied' && (
+                <button
+                  className={'toggle ' + (pushState === 'on' ? 'on' : '')}
+                  onClick={togglePush}
+                  disabled={pushBusy}
+                  aria-pressed={pushState === 'on'}
+                >
+                  <span className="knob" />
+                </button>
+              )
+            }
+            borderBottom={true}
+          />
+          <div style={{ padding: 'var(--pad-card-md)' }}>
+            <div style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-caption)', color: 'var(--text-tertiary)', marginBottom: 'var(--space-3)' }}>
+              App na tela inicial
+            </div>
+            <InstallGuide />
+          </div>
+        </Card>
 
-      <button className="btn ghost full icon-btn" onClick={startTour}>
-        <Icon name="bulb" size={15} /> Rever o tour do app
-      </button>
-
-      <button className="btn ghost full icon-btn" onClick={forceUpdate}>
-        <Icon name="refresh" size={15} /> Buscar atualização do app
-      </button>
-      <div className="muted xsmall" style={{ textAlign: 'center' }}>
-        Use se o app parecer travado numa versão antiga.
+        {/* ACTIONS */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', marginBottom: 'var(--space-8)' }}>
+          <Button variant="secondary" block onClick={startTour}>
+            <Icon name="help-circle" size={16} /> Rever tour do app
+          </Button>
+          <Button variant="secondary" block onClick={forceUpdate}>
+            <Icon name="refresh-cw" size={16} /> Buscar atualização
+          </Button>
+          <Button variant="danger" block onClick={logout}>
+            <Icon name="log-out" size={16} /> Sair da conta
+          </Button>
+        </div>
       </div>
-
-      <button className="btn full logout-btn icon-btn" onClick={logout}><Icon name="logout" size={15} /> Sair da conta</button>
-
     </div>
   )
 }
@@ -340,73 +365,131 @@ function NutritionCard({ form, setForm, nt, onSave, saved }) {
   const set = (patch) => setForm((f) => ({ ...f, ...patch }))
   const est = (nt && (nt.auto || nt.targets)) || {}
   const rows = [
-    ['meta_kcal', 'Calorias', 'kcal', est.kcal],
-    ['meta_proteina_g', 'Proteína', 'g', est.protein_g],
-    ['meta_carbo_g', 'Carboidrato', 'g', est.carbs_g],
-    ['meta_gordura_g', 'Gordura', 'g', est.fat_g],
-    ['meta_agua_l', 'Água', 'L', est.water_l],
+    ['meta_kcal', 'Calorias (kcal)', est.kcal],
+    ['meta_proteina_g', 'Proteína (g)', est.protein_g],
+    ['meta_carbo_g', 'Carboidrato (g)', est.carbs_g],
+    ['meta_gordura_g', 'Gordura (g)', est.fat_g],
+    ['meta_agua_l', 'Água (L)', est.water_l],
   ]
+
   return (
-    <section className="card" data-tour="perfil-nutricao">
-      <div className="card-title">Metas de nutrição</div>
-      <p className="muted xsmall" style={{ marginTop: -4, marginBottom: 10 }}>
-        Estimativas com base no seu perfil — <b>não substituem um nutricionista</b>. Ajuste os valores como quiser.
+    <Card padding="md">
+      <div style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-title-3)', color: 'var(--text-primary)', marginBottom: 'var(--space-1)' }}>
+        Metas de Nutrição
+      </div>
+      <p style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-caption)', color: 'var(--text-secondary)', marginBottom: 'var(--space-6)' }}>
+        Estimativas com base no seu perfil — <strong style={{ color: 'var(--text-primary)' }}>não substituem um nutricionista</strong>. Ajuste os valores como quiser.
       </p>
 
-      <div className="nutri-form">
-        <label className="field"><span>Peso (kg)</span>
-          <input type="number" inputMode="decimal" value={form.peso} onChange={(e) => set({ peso: e.target.value })} /></label>
-        <label className="field"><span>Altura (cm)</span>
-          <input type="number" inputMode="numeric" value={form.altura_cm} onChange={(e) => set({ altura_cm: e.target.value })} /></label>
-        <label className="field"><span>Idade</span>
-          <input type="number" inputMode="numeric" value={form.idade} onChange={(e) => set({ idade: e.target.value })} /></label>
-      </div>
-
-      <div className="field"><span>Sexo <span className="muted xsmall">(opcional, melhora a estimativa)</span></span>
-        <div className="chips">
-          <button className={'chip ' + (form.sexo === 'M' ? 'active' : '')} onClick={() => set({ sexo: form.sexo === 'M' ? '' : 'M' })}>Masculino</button>
-          <button className={'chip ' + (form.sexo === 'F' ? 'active' : '')} onClick={() => set({ sexo: form.sexo === 'F' ? '' : 'F' })}>Feminino</button>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)' }}>
+          <Input 
+            label="Peso (kg)" 
+            type="number" 
+            inputMode="decimal" 
+            value={form.peso} 
+            onChange={(e) => set({ peso: e.target.value })} 
+          />
+          <Input 
+            label="Altura (cm)" 
+            type="number" 
+            inputMode="numeric" 
+            value={form.altura_cm} 
+            onChange={(e) => set({ altura_cm: e.target.value })} 
+          />
         </div>
-      </div>
 
-      <label className="field"><span>Nível de atividade <span className="muted xsmall">(opcional)</span></span>
-        <select value={form.nivel_atividade} onChange={(e) => set({ nivel_atividade: e.target.value })}>
-          <option value="">Não informar</option>
-          {ATIVIDADES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-        </select>
-      </label>
-
-      <div className="field"><span>Objetivo</span>
-        <div className="chips">
-          {OBJETIVOS.map(([v, l]) => (
-            <button key={v} className={'chip ' + (form.objetivo_tipo === v ? 'active' : '')}
-              onClick={() => set({ objetivo_tipo: form.objetivo_tipo === v ? '' : v })}>{l}</button>
-          ))}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)' }}>
+          <Input 
+            label="Idade" 
+            type="number" 
+            inputMode="numeric" 
+            value={form.idade} 
+            onChange={(e) => set({ idade: e.target.value })} 
+          />
+          <div>
+            <div style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-caption)', fontWeight: 'var(--fw-semibold)', color: 'var(--text-secondary)', marginBottom: 'var(--space-2)' }}>
+              Sexo
+            </div>
+            <SegmentedControl
+              options={[{ label: 'Masculino', value: 'M' }, { label: 'Feminino', value: 'F' }]}
+              value={form.sexo}
+              onChange={(val) => set({ sexo: val === form.sexo ? '' : val })}
+            />
+          </div>
         </div>
-      </div>
 
-      {nt?.bmi != null && (
-        <div className="nutri-imc muted small">
-          IMC <b>{nt.bmi}</b> · {BMI_LABEL[nt.bmi_class] || nt.bmi_class}
-          {nt.tdee ? ` · gasto estimado ~${nt.tdee} kcal/dia` : ''}
+        <div>
+          <div style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-caption)', fontWeight: 'var(--fw-semibold)', color: 'var(--text-secondary)', marginBottom: 'var(--space-2)' }}>
+            Nível de atividade
+          </div>
+          <select 
+            value={form.nivel_atividade} 
+            onChange={(e) => set({ nivel_atividade: e.target.value })}
+            style={{
+              width: '100%', padding: 'var(--space-3)', borderRadius: 'var(--radius-md)',
+              border: '1px solid var(--line-hairline)', background: 'var(--surface-sunken)',
+              color: 'var(--text-primary)', fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-body)',
+              appearance: 'none', WebkitAppearance: 'none'
+            }}
+          >
+            {ATIVIDADES.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+          </select>
         </div>
-      )}
 
-      <div className="muted xsmall" style={{ margin: '12px 0 6px' }}>
-        Metas diárias — deixe em branco para usar a estimativa (mostrada como sugestão):
-      </div>
-      <div className="nutri-targets-edit">
-        {rows.map(([key, label, unit, estv]) => (
-          <label className="field row nutri-target-row" key={key}>
-            <span>{label} <span className="muted xsmall">({unit})</span></span>
-            <input type="number" inputMode="decimal" value={form[key]}
-              placeholder={estv != null ? `~${estv}` : ''}
-              onChange={(e) => set({ [key]: e.target.value })} />
-          </label>
-        ))}
-      </div>
+        <div>
+          <div style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-caption)', fontWeight: 'var(--fw-semibold)', color: 'var(--text-secondary)', marginBottom: 'var(--space-2)' }}>
+            Objetivo
+          </div>
+          <SegmentedControl
+            options={[
+              { label: 'Perder', value: 'perder' },
+              { label: 'Manter', value: 'manter' },
+              { label: 'Ganhar', value: 'ganhar' }
+            ]}
+            value={form.objetivo_tipo}
+            onChange={(val) => set({ objetivo_tipo: val === form.objetivo_tipo ? '' : val })}
+          />
+        </div>
 
-      <button className="btn full btn-primary" onClick={onSave}>{saved ? '✓ Salvo!' : 'Salvar metas'}</button>
-    </section>
+        {nt?.bmi != null && (
+          <div style={{ background: 'var(--surface-sunken)', padding: 'var(--space-3)', borderRadius: 'var(--radius-md)', display: 'flex', flexDirection: 'column', gap: 'var(--space-1)', marginTop: 'var(--space-2)' }}>
+            <div style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-caption)', color: 'var(--text-secondary)' }}>
+              IMC <strong style={{ color: 'var(--text-primary)' }}>{nt.bmi}</strong> · {BMI_LABEL[nt.bmi_class] || nt.bmi_class}
+            </div>
+            {nt.tdee && (
+              <div style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-caption)', color: 'var(--text-secondary)' }}>
+                Gasto diário estimado: <strong style={{ color: 'var(--text-primary)' }}>~{nt.tdee} kcal</strong>
+              </div>
+            )}
+          </div>
+        )}
+
+        <div style={{ height: 1, background: 'var(--line-hairline)', margin: 'var(--space-4) 0' }} />
+
+        <div>
+          <div style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-caption)', fontWeight: 'var(--fw-semibold)', color: 'var(--text-primary)', marginBottom: 'var(--space-4)' }}>
+            Metas Diárias Personalizadas
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)' }}>
+            {rows.map(([key, label, estv]) => (
+              <Input
+                key={key}
+                label={label}
+                type="number"
+                inputMode="decimal"
+                value={form[key]}
+                placeholder={estv != null ? `~${estv}` : ''}
+                onChange={(e) => set({ [key]: e.target.value })}
+              />
+            ))}
+          </div>
+        </div>
+
+        <Button variant="primary" block onClick={onSave} style={{ marginTop: 'var(--space-4)' }}>
+          {saved ? '✓ Salvo!' : 'Salvar metas'}
+        </Button>
+      </div>
+    </Card>
   )
 }

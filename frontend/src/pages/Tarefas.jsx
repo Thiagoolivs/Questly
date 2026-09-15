@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useApp } from '../store.jsx'
 import { api } from '../api.js'
 import { pickImage, fileToCompressedDataURL } from '../utils/image.js'
-import Icon from '../components/Icon.jsx'
+import { Card, Icon, Button, ListRow, Input } from '../design-system/components/index.js'
 import IconPicker from '../components/IconPicker.jsx'
 
 const WEEKDAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
@@ -11,7 +11,6 @@ function onceLabel(iso) {
   return new Date(iso + 'T00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
-// Monta o subtítulo da tarefa (quando/recorrência + horário, se houver).
 function taskWhen(t) {
   const base = t.kind === 'once' ? onceLabel(t.date) : t.weekdays.map((i) => WEEKDAYS[i]).join(', ')
   return t.time ? `${base} · ${t.time}` : base
@@ -31,7 +30,6 @@ export default function Tarefas() {
     if (!groupId) return
     api.tasks(groupId, '?all=true').then((d) => {
       setTasks(d.tasks)
-      // Data "de hoje" no fuso do grupo (o backend só aceita conclusões nesse dia).
       if (d.date) setToday(d.date)
     }).catch((e) => setErr(e.message))
   }, [groupId])
@@ -66,6 +64,7 @@ export default function Tarefas() {
   }
   const toggleWeekday = (i) =>
     setForm((f) => ({ ...f, weekdays: f.weekdays.includes(i) ? f.weekdays.filter((d) => d !== i) : [...f.weekdays, i] }))
+    
   function create() {
     if (!form.title.trim()) return
     if (form.kind === 'once' && !form.date) return alert('Escolha a data.')
@@ -89,89 +88,205 @@ export default function Tarefas() {
   const agendadas = list.filter((t) => !t.due && t.kind === 'once')
   const recorrentes = list.filter((t) => t.kind === 'weekly')
 
-  const TaskRow = ({ t, canComplete }) => (
-    <div className={'habit-row ' + (t.checked_today ? 'done' : '')}>
-      <div className="habit habit-toggle" onClick={canComplete ? () => toggle(t.id) : undefined} style={{ cursor: canComplete ? 'pointer' : 'default' }}>
-        <span className="habit-emoji"><Icon name={t.icon || 'calendar'} size={17} /></span>
-        <span className="habit-main-col">
-          <span className="habit-label">{t.title}</span>
-          <span className="muted xsmall">{taskWhen(t)}</span>
-        </span>
-        {canComplete && <span className={'check ' + (t.checked_today ? 'on' : '')}>{t.checked_today ? <Icon name="check" size={14} /> : ''}</span>}
-      </div>
-      {canComplete && t.image && <img className="habit-thumb" src={t.image} alt="" onClick={() => setZoom(t.image)} />}
-      {canComplete && (
-        <button className="habit-cam" disabled={busy} title="Foto-prova" onClick={() => attachPhoto(t.id)}><Icon name="camera" size={16} /></button>
-      )}
-      <button className="habit-cam" disabled={busy} title="Remover" onClick={() => remove(t.id)}><Icon name="x" size={15} /></button>
-    </div>
+  const TaskRow = ({ t, canComplete, borderBottom }) => (
+    <ListRow
+      title={<span style={{ textDecoration: t.checked_today ? 'line-through' : 'none', color: t.checked_today ? 'var(--text-tertiary)' : 'var(--text-primary)' }}>{t.title}</span>}
+      subtitle={taskWhen(t)}
+      borderBottom={borderBottom}
+      left={
+        <button 
+          onClick={canComplete ? () => toggle(t.id) : undefined}
+          style={{ 
+            width: 32, height: 32, borderRadius: 'var(--radius-md)', 
+            background: t.checked_today ? 'var(--blue-glow)' : 'var(--surface-sunken)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: t.checked_today ? '#fff' : 'var(--text-secondary)',
+            border: 'none', cursor: canComplete ? 'pointer' : 'default'
+          }}
+        >
+          {t.checked_today ? <Icon name="check" size={16} /> : <Icon name={t.icon || 'calendar'} size={16} />}
+        </button>
+      }
+      right={
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+          {canComplete && t.image && (
+            <img src={t.image} alt="prova" onClick={() => setZoom(t.image)} style={{ width: 32, height: 32, borderRadius: 'var(--radius-md)', objectFit: 'cover', cursor: 'pointer', border: '1px solid var(--line-hairline)' }} />
+          )}
+          {canComplete && (
+            <button disabled={busy} onClick={() => attachPhoto(t.id)} style={{ background: 'var(--surface-sunken)', border: 'none', width: 32, height: 32, borderRadius: 'var(--radius-md)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+              <Icon name="camera" size={14} />
+            </button>
+          )}
+          <button disabled={busy} onClick={() => remove(t.id)} style={{ background: 'transparent', border: 'none', color: 'var(--text-tertiary)', padding: 'var(--space-1)', cursor: 'pointer' }}>
+            <Icon name="x" size={16} />
+          </button>
+        </div>
+      }
+    />
   )
 
   return (
-    <div className="screen">
-      <header className="topbar">
-        <div className="brand">Tarefas</div>
+    <div className="screen" style={{ paddingTop: 'var(--space-6)', paddingLeft: 'var(--gutter-screen)', paddingRight: 'var(--gutter-screen)', paddingBottom: 'calc(var(--tab-bar-height) + var(--space-8))' }}>
+      <header style={{ marginBottom: 'var(--space-8)' }}>
+        <h1 style={{ margin: 0, fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-title-1)', fontWeight: 'var(--fw-bold)', color: 'var(--text-primary)' }}>
+          Tarefas
+        </h1>
+        <p style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-body)', color: 'var(--text-secondary)', marginTop: 'var(--space-2)' }}>
+          Gerencie seus lembretes e hábitos.
+        </p>
       </header>
 
-      {err && <div className="error">{err}</div>}
-      {tasks === null && !err && <div className="muted small">Carregando…</div>}
+      {err && <div className="error" style={{ color: 'var(--error)', marginBottom: 'var(--space-4)' }}>{err}</div>}
+      {tasks === null && !err && <div className="muted small" style={{ color: 'var(--text-tertiary)' }}>Carregando…</div>}
 
-      {/* Criar */}
-      {show ? (
-        <section className="card">
-          <div className="card-title">Nova tarefa</div>
-          <div className="add-habit">
-            <IconPicker icon={form.icon} onPick={({ icon }) => setForm({ ...form, icon })} />
-            <input className="add-habit-label" placeholder="Ex: Consulta médica / Treino especial" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
-          </div>
-          <div className="chips">
-            <button className={'chip ' + (form.kind === 'once' ? 'active' : '')} onClick={() => setForm({ ...form, kind: 'once' })}>Data única</button>
-            <button className={'chip ' + (form.kind === 'weekly' ? 'active' : '')} onClick={() => setForm({ ...form, kind: 'weekly' })}>Semanal</button>
-          </div>
-          {form.kind === 'once' ? (
-            <label className="field"><span>Data</span><input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></label>
-          ) : (
-            <div className="chips">
-              {WEEKDAYS.map((w, i) => (
-                <button key={w} className={'chip ' + (form.weekdays.includes(i) ? 'active' : '')} onClick={() => toggleWeekday(i)}>{w}</button>
-              ))}
-            </div>
-          )}
-          <label className="field"><span>Horário <span className="muted xsmall">(opcional)</span></span>
-            <input type="time" value={form.time} onChange={(e) => setForm({ ...form, time: e.target.value })} /></label>
-          <div className="row" style={{ gap: 8 }}>
-            <button className="btn ghost full" onClick={() => setShow(false)}>Cancelar</button>
-            <button className="btn full btn-primary" disabled={busy || !form.title.trim()} onClick={create}>Agendar</button>
-          </div>
-        </section>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-8)' }}>
+        {tasks && (
+          <>
+            <Card padding="none">
+              <div style={{ padding: 'var(--pad-card-md)', borderBottom: '1px solid var(--line-hairline)' }}>
+                <div style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-title-3)', color: 'var(--text-primary)' }}>Hoje</div>
+              </div>
+              {hoje.length === 0 ? (
+                <div style={{ padding: 'var(--pad-card-md)', fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-body)', color: 'var(--text-secondary)' }}>
+                  Nada agendado para hoje.
+                </div>
+              ) : (
+                <div>
+                  {hoje.map((t, i) => <TaskRow key={t.id} t={t} canComplete borderBottom={i < hoje.length - 1} />)}
+                </div>
+              )}
+            </Card>
+
+            {recorrentes.length > 0 && (
+              <Card padding="none">
+                <div style={{ padding: 'var(--pad-card-md)', borderBottom: '1px solid var(--line-hairline)' }}>
+                  <div style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-title-3)', color: 'var(--text-primary)' }}>Recorrentes</div>
+                </div>
+                <div>
+                  {recorrentes.map((t, i) => <TaskRow key={t.id} t={t} canComplete={t.due} borderBottom={i < recorrentes.length - 1} />)}
+                </div>
+              </Card>
+            )}
+
+            {agendadas.length > 0 && (
+              <Card padding="none">
+                <div style={{ padding: 'var(--pad-card-md)', borderBottom: '1px solid var(--line-hairline)' }}>
+                  <div style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-title-3)', color: 'var(--text-primary)' }}>Agendadas</div>
+                </div>
+                <div>
+                  {agendadas.map((t, i) => <TaskRow key={t.id} t={t} canComplete={false} borderBottom={i < agendadas.length - 1} />)}
+                </div>
+              </Card>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Flutuante para criar */}
+      {!show ? (
+        <div style={{ position: 'fixed', bottom: 'calc(var(--tab-bar-height) + var(--space-4))', right: 'var(--space-4)', zIndex: 100 }}>
+          <button 
+            onClick={() => setShow(true)}
+            style={{ 
+              width: 56, height: 56, borderRadius: 28, background: 'var(--blue-glow)', color: '#fff', 
+              border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              boxShadow: '0 4px 12px rgba(0,122,255,0.4)', cursor: 'pointer'
+            }}
+          >
+            <Icon name="plus" size={24} />
+          </button>
+        </div>
       ) : (
-        <button className="btn ghost full icon-btn new-goal-btn" onClick={() => setShow(true)}><Icon name="plus" size={15} /> Nova tarefa</button>
+        <div style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'var(--surface-overlay)', display: 'flex', flexDirection: 'column', paddingTop: 'env(safe-area-inset-top)' }}>
+          <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'var(--space-4)', borderBottom: '1px solid var(--line-hairline)' }}>
+            <h2 style={{ margin: 0, fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-title-2)', color: 'var(--text-primary)' }}>Nova Tarefa</h2>
+            <button onClick={() => setShow(false)} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}><Icon name="x" size={24} /></button>
+          </header>
+          
+          <div style={{ padding: 'var(--space-6) var(--gutter-screen)', flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
+            <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
+              <div style={{ background: 'var(--surface-sunken)', border: '1px solid var(--line-hairline)', borderRadius: 'var(--radius-md)' }}>
+                <IconPicker icon={form.icon} onPick={({ icon }) => setForm({ ...form, icon })} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <Input placeholder="Título (ex: Consulta Médica)" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
+              </div>
+            </div>
+
+            <div>
+              <div style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-caption)', color: 'var(--text-secondary)', marginBottom: 'var(--space-2)' }}>Tipo</div>
+              <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                <button 
+                  style={{ 
+                    flex: 1, padding: 'var(--space-3)', borderRadius: 'var(--radius-md)', border: '1px solid',
+                    borderColor: form.kind === 'once' ? 'var(--blue-glow)' : 'var(--line-hairline)',
+                    background: form.kind === 'once' ? 'rgba(0,122,255,0.1)' : 'var(--surface-sunken)',
+                    color: form.kind === 'once' ? 'var(--blue-glow)' : 'var(--text-secondary)',
+                    fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-body)', fontWeight: 'var(--fw-medium)'
+                  }}
+                  onClick={() => setForm({ ...form, kind: 'once' })}
+                >
+                  Data única
+                </button>
+                <button 
+                  style={{ 
+                    flex: 1, padding: 'var(--space-3)', borderRadius: 'var(--radius-md)', border: '1px solid',
+                    borderColor: form.kind === 'weekly' ? 'var(--blue-glow)' : 'var(--line-hairline)',
+                    background: form.kind === 'weekly' ? 'rgba(0,122,255,0.1)' : 'var(--surface-sunken)',
+                    color: form.kind === 'weekly' ? 'var(--blue-glow)' : 'var(--text-secondary)',
+                    fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-body)', fontWeight: 'var(--fw-medium)'
+                  }}
+                  onClick={() => setForm({ ...form, kind: 'weekly' })}
+                >
+                  Semanal
+                </button>
+              </div>
+            </div>
+
+            {form.kind === 'once' ? (
+              <Input label="Data" type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
+            ) : (
+              <div>
+                <div style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-caption)', color: 'var(--text-secondary)', marginBottom: 'var(--space-2)' }}>Dias da semana</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
+                  {WEEKDAYS.map((w, i) => (
+                    <button 
+                      key={w} 
+                      style={{ 
+                        padding: 'var(--space-2) var(--space-4)', borderRadius: 'var(--radius-pill)', border: '1px solid',
+                        borderColor: form.weekdays.includes(i) ? 'var(--blue-glow)' : 'var(--line-hairline)',
+                        background: form.weekdays.includes(i) ? 'rgba(0,122,255,0.1)' : 'var(--surface-sunken)',
+                        color: form.weekdays.includes(i) ? 'var(--blue-glow)' : 'var(--text-secondary)',
+                        fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-caption)', fontWeight: 'var(--fw-medium)'
+                      }}
+                      onClick={() => toggleWeekday(i)}
+                    >
+                      {w}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <Input label="Horário (opcional)" type="time" value={form.time} onChange={(e) => setForm({ ...form, time: e.target.value })} />
+            
+            <div style={{ marginTop: 'auto', paddingTop: 'var(--space-8)' }}>
+              <Button variant="primary" block disabled={busy || !form.title.trim()} onClick={create}>
+                Salvar Tarefa
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
 
-      {tasks && (
-        <>
-          <section className="card">
-            <div className="card-title">Hoje</div>
-            {hoje.length === 0 ? <div className="muted small">Nada agendado para hoje.</div> : <div className="habits">{hoje.map((t) => <TaskRow key={t.id} t={t} canComplete />)}</div>}
-          </section>
-
-          {recorrentes.length > 0 && (
-            <section className="card">
-              <div className="card-title">Recorrentes</div>
-              <div className="habits">{recorrentes.map((t) => <TaskRow key={t.id} t={t} canComplete={t.due} />)}</div>
-            </section>
-          )}
-
-          {agendadas.length > 0 && (
-            <section className="card">
-              <div className="card-title">Agendadas</div>
-              <div className="habits">{agendadas.map((t) => <TaskRow key={t.id} t={t} canComplete={false} />)}</div>
-            </section>
-          )}
-        </>
+      {zoom && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'rgba(0,0,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setZoom(null)}>
+          <img src={zoom} alt="prova" style={{ maxWidth: '90%', maxHeight: '90%', objectFit: 'contain', borderRadius: 'var(--radius-lg)' }} />
+          <button style={{ position: 'absolute', top: 'var(--space-4)', right: 'var(--space-4)', background: 'rgba(0,0,0,0.5)', border: 'none', color: '#fff', width: 40, height: 40, borderRadius: 20, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Icon name="x" size={20} />
+          </button>
+        </div>
       )}
-
-      {zoom && <div className="lightbox" onClick={() => setZoom(null)}><img src={zoom} alt="" /></div>}
     </div>
   )
 }

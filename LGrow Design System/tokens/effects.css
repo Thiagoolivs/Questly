@@ -1,0 +1,31 @@
+:root{
+  /* Hairline borders do the work shadows would in a light UI */
+  --border-card:1px solid var(--line-hairline);
+  --border-input:1px solid rgba(255,255,255,.10); /* @kind other */
+  --border-strong:1px solid var(--line-strong);
+
+  /* Elevation: used sparingly, only for floating sheets and the tab bar */
+  --shadow-sheet:0 18px 48px rgba(0,0,0,.65);
+  --shadow-tabbar:0 8px 28px rgba(0,0,0,.55);
+  --shadow-pop:0 10px 30px rgba(0,0,0,.5);
+
+  /* Blue Glow light: the brand's signature light source */
+  --glow-soft:0 0 40px rgba(75,69,244,.35);
+  --glow-ring:0 0 0 4px rgba(75,69,244,.25);
+  --glow-focus:0 0 0 2px var(--blue-glow);
+
+  /* Cone of light — the repeating background motif (spotlight from below) */
+  --bg-cone-up:radial-gradient(60% 90% at 50% 118%,rgba(139,133,240,.85) 0%,rgba(75,69,244,.45) 32%,rgba(75,69,244,.10) 58%,transparent 76%);
+  --bg-cone-down:radial-gradient(60% 90% at 50% -18%,rgba(139,133,240,.85) 0%,rgba(75,69,244,.45) 32%,rgba(75,69,244,.10) 58%,transparent 76%);
+  /* Card wash — blue bloom inside data cards */
+  --bg-card-bloom:radial-gradient(120% 90% at 50% 100%,rgba(155,147,245,.55) 0%,rgba(75,69,244,.42) 30%,rgba(18,18,18,.2) 70%,transparent 100%);
+  /* Marketing panel ground */
+  --bg-panel-violet:linear-gradient(160deg,#5B55F6 0%,#8C87F8 48%,#CFCCFB 100%);
+
+  /* Protection scrim over photography */
+  --scrim-bottom:linear-gradient(to top,rgba(0,0,0,.92) 0%,rgba(0,0,0,.65) 38%,transparent 100%); /* @kind color */
+  --scrim-top:linear-gradient(to bottom,rgba(0,0,0,.75) 0%,transparent 100%); /* @kind color */
+
+  --blur-glass:blur(18px) saturate(140%); /* @kind other */
+  --blur-chip:blur(10px); /* @kind other */
+}

@@ -1,0 +1,39 @@
+:root{
+  --font-ui:"Inter",-apple-system,"Helvetica Neue",Arial,sans-serif;
+  --font-numeric:"Doto","Inter",monospace; /* dot-matrix display numerals */
+
+  --fw-light:300; /* @kind font */
+  --fw-regular:400; /* @kind font */
+  --fw-medium:500; /* @kind font */
+  --fw-semibold:600; /* @kind font */
+  --fw-bold:700; /* @kind font */
+  --fw-numeric:700; /* @kind font */
+
+  /* Mobile type scale (390pt artboard) */
+  --fs-display:30px;  /* "Welcome to Our Zone" */
+  --fs-title-1:24px;  /* "Check Your Phone Number", "We need a few details" */
+  --fs-title-2:20px;  /* "Ready to workout?", screen titles */
+  --fs-title-3:17px;  /* section headers: "Discover New Exercises" */
+  --fs-body:15px;     /* default body / row labels */
+  --fs-body-sm:13px;  /* secondary body, helper copy */
+  --fs-label:12px;    /* field labels, chips */
+  --fs-caption:11px;  /* meta, timestamps */
+  --fs-micro:10px;    /* uppercase eyebrows: WEDNESDAY / MAY 13, 2026 */
+
+  /* Numeric display sizes (Doto) */
+  --fs-num-hero:46px; /* 93.2 daily process */
+  --fs-num-lg:34px;   /* 22.5 sec timer, streak 8 */
+  --fs-num-md:22px;   /* 32 MIN */
+  --fs-num-sm:16px;
+
+  --lh-tight:1.08; /* @kind font */
+  --lh-snug:1.22; /* @kind font */
+  --lh-normal:1.45; /* @kind font */
+  --lh-relaxed:1.6; /* @kind font */
+
+  --ls-display:-0.02em; /* @kind font */
+  --ls-title:-0.01em; /* @kind font */
+  --ls-body:0em; /* @kind font */
+  --ls-caps:0.08em; /* @kind font */   /* uppercase eyebrows + all-caps body copy */
+  --ls-caps-wide:0.12em; /* @kind font */
+}

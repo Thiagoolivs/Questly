@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useApp } from '../store.jsx'
 import { api } from '../api.js'
-import Icon from '../components/Icon.jsx'
+import { Card, Button, Input, Icon, ListRow } from '../design-system/components/index.js'
 import IconPicker from '../components/IconPicker.jsx'
 
 const WEEKDAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
@@ -45,7 +45,6 @@ export default function Config() {
     if (!groupId) return
     api.settings(groupId)
       .then((d) => {
-        // Junta o menu de sugestões com hábitos personalizados já salvos.
         const menuKeys = new Set((d.habits_menu || []).map((h) => h.key))
         const customs = (d.fixed_habits || []).filter((h) => !menuKeys.has(h.key))
         setMenu([...(d.habits_menu || []), ...customs])
@@ -55,15 +54,17 @@ export default function Config() {
       .catch((e) => setErr(e.message))
   }, [groupId])
 
-  if (err) return <div className="screen center error">{err}</div>
-  if (!s) return <div className="screen center muted">Carregando…</div>
+  if (err) return <div className="screen center error" style={{ padding: 'var(--space-6)', color: 'var(--error)' }}>{err}</div>
+  if (!s) return <div className="screen center muted" style={{ padding: 'var(--space-6)', color: 'var(--text-tertiary)' }}>Carregando…</div>
 
   const set = (patch) => setS({ ...s, ...patch })
+  
   const toggleHabit = (key) => {
     const next = new Set(selected)
     next.has(key) ? next.delete(key) : next.add(key)
     setSelected(next)
   }
+  
   const toggleRest = (i) => {
     const days = new Set(s.rest_days || [])
     days.has(i) ? days.delete(i) : days.add(i)
@@ -124,152 +125,223 @@ export default function Config() {
     : null
 
   return (
-    <div className="screen">
-      <header className="topbar">
-        <div className="brand">Configurações</div>
+    <div className="screen" style={{ paddingTop: 'var(--space-6)', paddingLeft: 'var(--gutter-screen)', paddingRight: 'var(--gutter-screen)', paddingBottom: 'calc(var(--tab-bar-height) + var(--space-8))' }}>
+      <header style={{ marginBottom: 'var(--space-8)' }}>
+        <h1 style={{ margin: 0, fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-title-1)', fontWeight: 'var(--fw-bold)', color: 'var(--text-primary)' }}>
+          Configurações
+        </h1>
+        <p style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-body)', color: 'var(--text-secondary)', marginTop: 'var(--space-2)' }}>
+          Ajuste as regras e metas do grupo.
+        </p>
       </header>
 
-      <section className="card">
-        <div className="card-title">Duração do desafio</div>
-        <div className="chips">
-          {DURATIONS.map((d) => (
-            <button
-              key={d}
-              className={'chip ' + (Number(s.duration_days) === d ? 'active' : '')}
-              onClick={() => set({ duration_days: d })}
-            >
-              {d} dias
-            </button>
-          ))}
-        </div>
-      </section>
-
-      <section className="card">
-        <div className="card-title">Desafios por IA</div>
-        <div className="muted small" style={{ marginBottom: 10 }}>
-          Gera um lote novo de desafios variados (misturados aos fixos). O app sorteia
-          desse lote a cada dia — os dois veem o mesmo desafio.
-        </div>
-        {s.ai_enabled ? (
-          <>
-            <div className="muted small" style={{ marginBottom: 10 }}>
-              {s.ai_pool_count > 0
-                ? `${s.ai_pool_count} desafios de IA no lote${aiUpdated ? ` · atualizado em ${aiUpdated}` : ''}.`
-                : 'Nenhum lote gerado ainda — só os desafios fixos por enquanto.'}
-            </div>
-            <button className="btn full btn-primary icon-btn" disabled={genBusy} onClick={generateAI}>
-              <Icon name="refresh" size={15} /> {genBusy ? 'Gerando…' : 'Gerar novos desafios'}
-            </button>
-            {genMsg && (
-              <div className={'small ' + (genMsg.ok ? 'muted' : 'error')} style={{ marginTop: 8 }}>
-                {genMsg.text}
-              </div>
-            )}
-          </>
-        ) : (
-          <div className="muted small">
-            Indisponível neste servidor. Para ativar, configure a variável
-            <code> GROQ_API_KEY</code> (ou <code>OPENAI_API_KEY</code>) no backend.
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-8)' }}>
+        <Card padding="md">
+          <div style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-title-3)', color: 'var(--text-primary)', marginBottom: 'var(--space-3)' }}>
+            Duração do desafio
           </div>
-        )}
-      </section>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
+            {DURATIONS.map((d) => (
+              <button
+                key={d}
+                style={{
+                  padding: 'var(--space-2) var(--space-4)',
+                  borderRadius: 'var(--radius-pill)',
+                  border: '1px solid',
+                  borderColor: Number(s.duration_days) === d ? 'var(--blue-glow)' : 'var(--line-hairline)',
+                  background: Number(s.duration_days) === d ? 'var(--blue-glow)' : 'var(--surface-sunken)',
+                  color: Number(s.duration_days) === d ? '#fff' : 'var(--text-secondary)',
+                  fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-body)', fontWeight: 'var(--fw-medium)',
+                  cursor: 'pointer'
+                }}
+                onClick={() => set({ duration_days: d })}
+              >
+                {d} dias
+              </button>
+            ))}
+          </div>
+        </Card>
 
-      <section className="card">
-        <div className="card-title">Metas diárias</div>
-        <label className="field row"><span>Água (L)</span>
-          <input type="number" step="0.1" value={s.water_goal_l} onChange={(e) => set({ water_goal_l: e.target.value })} /></label>
-        <label className="field row"><span>Passos</span>
-          <input type="number" value={s.steps_goal} onChange={(e) => set({ steps_goal: e.target.value })} /></label>
-        <label className="field row"><span>Proteína (g)</span>
-          <input type="number" value={s.protein_goal_g} onChange={(e) => set({ protein_goal_g: e.target.value })} /></label>
-        <label className="field row"><span>Calorias</span>
-          <input type="number" value={s.calories_goal} onChange={(e) => set({ calories_goal: e.target.value })} /></label>
-        <label className="field row"><span>Sono (h)</span>
-          <input type="number" step="0.5" value={s.sleep_goal_h} onChange={(e) => set({ sleep_goal_h: e.target.value })} /></label>
-      </section>
-
-      <ChallengesCard s={s} set={set} />
-
-      <section className="card">
-        <div className="card-title">Fuso horário</div>
-        <div className="muted small" style={{ marginBottom: 8 }}>
-          Define quando o dia vira à meia-noite (o placar zera no seu horário local, não em UTC).
-        </div>
-        <select
-          className="input"
-          value={s.timezone || 'America/Sao_Paulo'}
-          onChange={(e) => set({ timezone: e.target.value })}
-        >
-          {(TIMEZONES.some(([tz]) => tz === s.timezone) ? TIMEZONES : [[s.timezone, s.timezone], ...TIMEZONES]).map(
-            ([tz, label]) => (
-              <option key={tz} value={tz}>{label}</option>
-            ),
+        <Card padding="md">
+          <div style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-title-3)', color: 'var(--text-primary)', marginBottom: 'var(--space-1)' }}>
+            Desafios por IA
+          </div>
+          <p style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-caption)', color: 'var(--text-secondary)', marginBottom: 'var(--space-4)' }}>
+            Gera um lote novo de desafios variados. O app sorteia desse lote a cada dia — os dois veem o mesmo desafio.
+          </p>
+          
+          {s.ai_enabled ? (
+            <>
+              <div style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-caption)', color: 'var(--text-secondary)', marginBottom: 'var(--space-4)', background: 'var(--surface-sunken)', padding: 'var(--space-3)', borderRadius: 'var(--radius-md)' }}>
+                {s.ai_pool_count > 0
+                  ? <><strong style={{ color: 'var(--text-primary)' }}>{s.ai_pool_count} desafios</strong> de IA no lote{aiUpdated ? ` · atualizado em ${aiUpdated}` : ''}.</>
+                  : 'Nenhum lote gerado ainda — só os desafios fixos por enquanto.'}
+              </div>
+              <Button variant="secondary" block disabled={genBusy} onClick={generateAI}>
+                <Icon name="refresh-cw" size={16} /> {genBusy ? 'Gerando…' : 'Gerar novos desafios'}
+              </Button>
+              {genMsg && (
+                <div style={{ marginTop: 'var(--space-3)', fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-caption)', color: genMsg.ok ? 'var(--text-secondary)' : 'var(--error)' }}>
+                  {genMsg.text}
+                </div>
+              )}
+            </>
+          ) : (
+            <div style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-caption)', color: 'var(--text-secondary)', background: 'var(--surface-sunken)', padding: 'var(--space-3)', borderRadius: 'var(--radius-md)' }}>
+              Indisponível neste servidor. Para ativar, configure a API KEY no backend.
+            </div>
           )}
-        </select>
-      </section>
+        </Card>
 
-      <section className="card">
-        <div className="card-title">Dias de descanso</div>
-        <div className="chips">
-          {WEEKDAYS.map((w, i) => (
-            <button
-              key={w}
-              className={'chip ' + ((s.rest_days || []).includes(i) ? 'active' : '')}
-              onClick={() => toggleRest(i)}
-            >
-              {w}
-            </button>
-          ))}
-        </div>
-      </section>
+        <Card padding="md">
+          <div style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-title-3)', color: 'var(--text-primary)', marginBottom: 'var(--space-4)' }}>
+            Metas diárias (Padrão)
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)' }}>
+            <Input label="Água (L)" type="number" step="0.1" value={s.water_goal_l} onChange={(e) => set({ water_goal_l: e.target.value })} />
+            <Input label="Passos" type="number" value={s.steps_goal} onChange={(e) => set({ steps_goal: e.target.value })} />
+            <Input label="Proteína (g)" type="number" value={s.protein_goal_g} onChange={(e) => set({ protein_goal_g: e.target.value })} />
+            <Input label="Calorias" type="number" value={s.calories_goal} onChange={(e) => set({ calories_goal: e.target.value })} />
+            <Input label="Sono (h)" type="number" step="0.5" value={s.sleep_goal_h} onChange={(e) => set({ sleep_goal_h: e.target.value })} />
+          </div>
+        </Card>
 
-      <section className="card">
-        <div className="card-title">Hábitos <span className="muted small">(10 pts cada · adicione quantos quiser)</span></div>
-        <div className="habit-picker">
-          {menu.map((h) => (
-            <button
-              key={h.key}
-              className={'habit ' + (selected.has(h.key) ? 'done' : '')}
-              onClick={() => toggleHabit(h.key)}
-            >
-              <span className="habit-emoji">{h.icon ? <Icon name={h.icon} size={18} /> : h.emoji}</span>
-              <span className="habit-label">{h.label}</span>
-              <span className={'check ' + (selected.has(h.key) ? 'on' : '')}>{selected.has(h.key) ? <Icon name="check" size={14} /> : ''}</span>
-            </button>
-          ))}
-        </div>
+        <ChallengesCard s={s} set={set} />
 
-        <div className="add-habit">
-          <IconPicker
-            icon={newHabit.icon}
-            onPick={({ icon }) => setNewHabit({ ...newHabit, icon })}
-          />
-          <input
-            className="add-habit-label"
-            placeholder="Novo hábito (ex: Tomar sol 10 min)"
-            value={newHabit.label}
-            onChange={(e) => setNewHabit({ ...newHabit, label: e.target.value })}
-            onKeyDown={(e) => e.key === 'Enter' && addHabit()}
-          />
-          <button className="btn btn-primary small-btn" onClick={addHabit} disabled={!newHabit.label.trim()}>
-            + Add
-          </button>
-        </div>
-        {selected.size === 0 && <div className="muted small">Selecione ao menos 1 (senão mantém o padrão).</div>}
-      </section>
+        <Card padding="md">
+          <div style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-title-3)', color: 'var(--text-primary)', marginBottom: 'var(--space-1)' }}>
+            Fuso horário
+          </div>
+          <p style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-caption)', color: 'var(--text-secondary)', marginBottom: 'var(--space-4)' }}>
+            Define quando o dia vira à meia-noite (o placar zera no seu horário local).
+          </p>
+          <select
+            value={s.timezone || 'America/Sao_Paulo'}
+            onChange={(e) => set({ timezone: e.target.value })}
+            style={{
+              width: '100%', padding: 'var(--space-3)', borderRadius: 'var(--radius-md)',
+              border: '1px solid var(--line-hairline)', background: 'var(--surface-sunken)',
+              color: 'var(--text-primary)', fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-body)',
+              appearance: 'none', WebkitAppearance: 'none'
+            }}
+          >
+            {(TIMEZONES.some(([tz]) => tz === s.timezone) ? TIMEZONES : [[s.timezone, s.timezone], ...TIMEZONES]).map(
+              ([tz, label]) => (
+                <option key={tz} value={tz}>{label}</option>
+              ),
+            )}
+          </select>
+        </Card>
 
-      <button className="btn full btn-primary sticky-save" onClick={save}>
-        {saved ? '✓ Configurações salvas!' : 'Salvar configurações'}
-      </button>
+        <Card padding="md">
+          <div style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-title-3)', color: 'var(--text-primary)', marginBottom: 'var(--space-3)' }}>
+            Dias de descanso
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
+            {WEEKDAYS.map((w, i) => (
+              <button
+                key={w}
+                style={{
+                  padding: 'var(--space-2) var(--space-4)',
+                  borderRadius: 'var(--radius-pill)',
+                  border: '1px solid',
+                  borderColor: (s.rest_days || []).includes(i) ? 'var(--blue-glow)' : 'var(--line-hairline)',
+                  background: (s.rest_days || []).includes(i) ? 'rgba(0,122,255,0.1)' : 'var(--surface-sunken)',
+                  color: (s.rest_days || []).includes(i) ? 'var(--blue-glow)' : 'var(--text-secondary)',
+                  fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-body)', fontWeight: 'var(--fw-medium)',
+                  cursor: 'pointer'
+                }}
+                onClick={() => toggleRest(i)}
+              >
+                {w}
+              </button>
+            ))}
+          </div>
+        </Card>
+
+        <Card padding="none">
+          <div style={{ padding: 'var(--pad-card-md)', paddingBottom: 'var(--space-2)' }}>
+            <div style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-title-3)', color: 'var(--text-primary)', marginBottom: 'var(--space-1)' }}>
+              Hábitos
+            </div>
+            <p style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-caption)', color: 'var(--text-secondary)' }}>
+              10 pts cada · selecione quais estarão disponíveis
+            </p>
+          </div>
+
+          <div style={{ borderTop: '1px solid var(--line-hairline)' }}>
+            {menu.map((h, i) => (
+              <ListRow
+                key={h.key}
+                title={h.label}
+                left={
+                  <div style={{ 
+                    width: 32, height: 32, borderRadius: 'var(--radius-md)', 
+                    background: selected.has(h.key) ? 'rgba(0,122,255,0.1)' : 'var(--surface-sunken)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    color: selected.has(h.key) ? 'var(--blue-glow)' : 'var(--text-tertiary)',
+                    fontSize: h.icon ? 18 : 20
+                  }}>
+                    {h.icon ? <Icon name={h.icon} size={18} /> : h.emoji}
+                  </div>
+                }
+                right={
+                  <button
+                    className={'toggle ' + (selected.has(h.key) ? 'on' : '')}
+                    onClick={() => toggleHabit(h.key)}
+                    aria-pressed={selected.has(h.key)}
+                  >
+                    <span className="knob" />
+                  </button>
+                }
+                borderBottom={i < menu.length - 1}
+              />
+            ))}
+          </div>
+
+          <div style={{ padding: 'var(--pad-card-md)', borderTop: '1px solid var(--line-hairline)', background: 'var(--surface-sunken)', borderBottomLeftRadius: 'var(--radius-lg)', borderBottomRightRadius: 'var(--radius-lg)' }}>
+            <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+              <div style={{ background: 'var(--surface-overlay)', border: '1px solid var(--line-hairline)', borderRadius: 'var(--radius-md)' }}>
+                <IconPicker icon={newHabit.icon} onPick={({ icon }) => setNewHabit({ ...newHabit, icon })} />
+              </div>
+              <input
+                style={{
+                  flex: 1, padding: 'var(--space-2) var(--space-3)', borderRadius: 'var(--radius-md)',
+                  border: '1px solid var(--line-hairline)', background: 'var(--surface-overlay)',
+                  color: 'var(--text-primary)', fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-body)'
+                }}
+                placeholder="Novo hábito..."
+                value={newHabit.label}
+                onChange={(e) => setNewHabit({ ...newHabit, label: e.target.value })}
+                onKeyDown={(e) => e.key === 'Enter' && addHabit()}
+              />
+              <Button variant="primary" onClick={addHabit} disabled={!newHabit.label.trim()}>
+                +
+              </Button>
+            </div>
+            {selected.size === 0 && <div style={{ marginTop: 'var(--space-3)', fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-caption)', color: 'var(--warning)' }}>Selecione ao menos 1 (senão mantém o padrão).</div>}
+          </div>
+        </Card>
+
+      </div>
+      
+      {/* Sticky Save Footer */}
+      <div style={{
+        position: 'fixed', bottom: 'calc(var(--tab-bar-height) + env(safe-area-inset-bottom))', left: 0, right: 0,
+        padding: 'var(--space-4)', background: 'var(--surface-overlay)', borderTop: '1px solid var(--line-hairline)',
+        boxShadow: '0 -4px 12px rgba(0,0,0,0.05)', zIndex: 100
+      }}>
+        <Button variant="primary" block onClick={save}>
+          {saved ? '✓ Configurações salvas!' : 'Salvar configurações'}
+        </Button>
+      </div>
     </div>
   )
 }
 
-// Personalização dos desafios: liga/desliga áreas e deixa o grupo escrever os
-// seus próprios desafios por área e dificuldade.
 function ChallengesCard({ s, set }) {
   const areas = s.areas || ['Física', 'Mental', 'Social', 'Relação', 'Espiritual']
-  const diffs = s.difficulties || [
+  const diffs = [
     { key: 'facil', label: 'Fácil', points: 10 },
     { key: 'medio', label: 'Médio', points: 25 },
     { key: 'dificil', label: 'Difícil', points: 45 },
@@ -307,48 +379,114 @@ function ChallengesCard({ s, set }) {
   )
 
   return (
-    <section className="card">
-      <div className="card-title">Desafios</div>
-      <div className="muted small" style={{ marginTop: -4 }}>Áreas em jogo — o dia sorteia um desafio de cada área ativa.</div>
-      <div className="chips">
+    <Card padding="md">
+      <div style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-title-3)', color: 'var(--text-primary)', marginBottom: 'var(--space-1)' }}>
+        Desafios Pessoais
+      </div>
+      <p style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-caption)', color: 'var(--text-secondary)', marginBottom: 'var(--space-4)' }}>
+        Áreas ativas — o dia sorteia um desafio de cada área.
+      </p>
+      
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)', marginBottom: 'var(--space-6)' }}>
         {areas.map((a) => (
-          <button key={a} className={'chip ' + (off.includes(a) ? '' : 'active')} onClick={() => toggleArea(a)}>{a}</button>
+          <button 
+            key={a} 
+            style={{
+              padding: 'var(--space-2) var(--space-4)',
+              borderRadius: 'var(--radius-pill)',
+              border: '1px solid',
+              borderColor: off.includes(a) ? 'var(--line-hairline)' : 'var(--blue-glow)',
+              background: off.includes(a) ? 'var(--surface-sunken)' : 'rgba(0,122,255,0.1)',
+              color: off.includes(a) ? 'var(--text-secondary)' : 'var(--blue-glow)',
+              fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-caption)', fontWeight: 'var(--fw-medium)',
+              cursor: 'pointer'
+            }}
+            onClick={() => toggleArea(a)}
+          >
+            {a}
+          </button>
         ))}
       </div>
 
-      <div className="muted small" style={{ marginTop: 12 }}>Escreva desafios de vocês (entram no sorteio junto com os do app):</div>
-      <div className="chips">
+      <div style={{ height: 1, background: 'var(--line-hairline)', margin: '0 -var(--pad-card-md) var(--space-6)' }} />
+
+      <p style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-caption)', color: 'var(--text-secondary)', marginBottom: 'var(--space-3)' }}>
+        Escreva desafios de vocês (entram no sorteio junto com os do app):
+      </p>
+      
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)', marginBottom: 'var(--space-3)' }}>
         {areas.filter((a) => !off.includes(a)).map((a) => (
-          <button key={a} className={'chip ' + (area === a ? 'active' : '')} onClick={() => setArea(a)}>{a}</button>
+          <button 
+            key={a} 
+            style={{
+              padding: 'var(--space-2) var(--space-3)',
+              borderRadius: 'var(--radius-pill)',
+              border: 'none',
+              background: area === a ? 'var(--text-primary)' : 'var(--surface-sunken)',
+              color: area === a ? 'var(--surface-overlay)' : 'var(--text-secondary)',
+              fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-caption)', fontWeight: 'var(--fw-medium)',
+              cursor: 'pointer'
+            }}
+            onClick={() => setArea(a)}
+          >
+            {a}
+          </button>
         ))}
       </div>
-      <div className="chips">
+      
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
         {diffs.map((d) => (
-          <button key={d.key} className={'chip ' + (diff === d.key ? 'active' : '')} onClick={() => setDiff(d.key)}>
+          <button 
+            key={d.key} 
+            style={{
+              padding: 'var(--space-2) var(--space-3)',
+              borderRadius: 'var(--radius-pill)',
+              border: 'none',
+              background: diff === d.key ? 'var(--text-primary)' : 'var(--surface-sunken)',
+              color: diff === d.key ? 'var(--surface-overlay)' : 'var(--text-secondary)',
+              fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-caption)', fontWeight: 'var(--fw-medium)',
+              cursor: 'pointer'
+            }}
+            onClick={() => setDiff(d.key)}
+          >
             {d.label} · {d.points}pts
           </button>
         ))}
       </div>
-      <div className="meal-text-row">
+      
+      <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-6)' }}>
         <input
-          className="meal-text-input"
+          style={{
+            flex: 1, padding: 'var(--space-3)', borderRadius: 'var(--radius-md)',
+            border: '1px solid var(--line-hairline)', background: 'var(--surface-overlay)',
+            color: 'var(--text-primary)', fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-body)'
+          }}
           placeholder={`Ex: desafio de ${area.toLowerCase()}…`}
           value={text}
           maxLength={160}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && addChallenge()}
         />
-        <button className="btn btn-primary small-btn" disabled={!text.trim()} onClick={addChallenge}>Adicionar</button>
+        <Button variant="primary" disabled={!text.trim()} onClick={addChallenge}>+</Button>
       </div>
 
       {mine.length > 0 && (
-        <div className="custom-ch-list">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', marginBottom: 'var(--space-6)' }}>
           {mine.map((c) => (
-            <div className="custom-ch" key={c.area + c.diff + c.text}>
-              <span className="custom-ch-tag">{c.area} · {c.label}</span>
-              <span className="custom-ch-text">{c.text}</span>
-              <button className="habit-cam" title="Remover" onClick={() => removeChallenge(c.area, c.diff, c.text)}>
-                <Icon name="x" size={14} />
+            <div key={c.area + c.diff + c.text} style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 'var(--space-3)', background: 'var(--surface-sunken)', padding: 'var(--space-3)', borderRadius: 'var(--radius-md)' }}>
+              <div>
+                <div style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-caption)', color: 'var(--text-tertiary)', textTransform: 'uppercase', marginBottom: 2 }}>
+                  {c.area} · {c.label}
+                </div>
+                <div style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-body)', color: 'var(--text-primary)' }}>
+                  {c.text}
+                </div>
+              </div>
+              <button 
+                onClick={() => removeChallenge(c.area, c.diff, c.text)}
+                style={{ background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: 'var(--space-1)' }}
+              >
+                <Icon name="x" size={16} />
               </button>
             </div>
           ))}
@@ -359,8 +497,10 @@ function ChallengesCard({ s, set }) {
         const has = diffs.some((d) => listOf(a, d.key).length)
         if (!has) return null
         return (
-          <label className="row between custom-ch-only" key={a}>
-            <span className="muted small">Em {a}, usar só os desafios de vocês</span>
+          <div key={a} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'var(--space-3) 0', borderTop: '1px solid var(--line-hairline)' }}>
+            <span style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-caption)', color: 'var(--text-secondary)' }}>
+              Em <strong>{a}</strong>, usar só desafios criados
+            </span>
             <button
               className={'toggle ' + ((custom[a] && custom[a].only) ? 'on' : '')}
               onClick={() => patchArea(a, { only: !(custom[a] && custom[a].only) })}
@@ -368,9 +508,9 @@ function ChallengesCard({ s, set }) {
             >
               <span className="knob" />
             </button>
-          </label>
+          </div>
         )
       })}
-    </section>
+    </Card>
   )
 }

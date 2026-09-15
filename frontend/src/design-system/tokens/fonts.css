@@ -1,0 +1,4 @@
+/* LGrow webfonts. Inter (UI) + Doto (numeric/decorative dot-matrix).
+   Both fonts are served from Google Fonts; no binaries were supplied with the
+   source case study, so no local files are shipped. */
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300..800&family=Doto:wght@400..900&display=swap");

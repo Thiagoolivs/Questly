@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useApp } from '../store.jsx'
 import { api } from '../api.js'
+import { Button, Input, SegmentedControl, Card, Icon } from '../design-system/components/index.js'
 
 const AVATARS = ['🦊', '🐨', '🐼', '🦁', '🐯', '🐸', '🐵', '🦉', '🔥', '⚡', '🌟', '💜']
 
@@ -106,48 +107,84 @@ export default function Auth() {
     mode === 'login' ? 'Entrar' : mode === 'signup' ? 'Criar conta' : mode === 'forgot' ? 'Enviar link' : 'Redefinir e entrar'
 
   return (
-    <div className="auth-screen">
-      <div className="auth-card">
-        <div className="auth-brand">Questly</div>
-        <p className="muted small auth-sub">Evolução em dupla (ou em grupo), com constância.</p>
+    <div className="screen" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'var(--gutter-screen)' }}>
+      <div style={{ width: '100%', maxWidth: 400, display: 'flex', flexDirection: 'column', gap: 'var(--space-8)' }}>
+        <div style={{ textAlign: 'center' }}>
+          <h1 style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-title-1)', fontWeight: 'var(--fw-bold)', color: 'var(--text-primary)', marginBottom: 'var(--space-2)' }}>
+            Questly
+          </h1>
+          <p style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-body)', color: 'var(--text-secondary)' }}>
+            Evolução em dupla (ou em grupo), com constância.
+          </p>
+        </div>
 
-        {isAuthTabs && (
-          <div className="auth-tabs">
-            <button className={'auth-tab ' + (mode === 'login' ? 'active' : '')} onClick={() => { setMode('login'); setErr(null); setNotice(null) }} type="button">Entrar</button>
-            <button className={'auth-tab ' + (mode === 'signup' ? 'active' : '')} onClick={() => { setMode('signup'); setErr(null); setNotice(null) }} type="button">Criar conta</button>
-          </div>
-        )}
-        {title && <div className="card-title auth-title">{title}</div>}
+        <Card padding="lg" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
+          {isAuthTabs && (
+            <div style={{ display: 'flex', justifyContent: 'center' }}>
+              <SegmentedControl
+                options={[
+                  { value: 'login', label: 'Entrar' },
+                  { value: 'signup', label: 'Criar conta' }
+                ]}
+                value={mode}
+                onChange={(v) => { setMode(v); setErr(null); setNotice(null) }}
+              />
+            </div>
+          )}
+          
+          {title && <div style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-title-3)', fontWeight: 'var(--fw-semibold)', color: 'var(--text-primary)', textAlign: 'center' }}>{title}</div>}
 
-        <form onSubmit={submit}>
-          {mode === 'signup' && (
-            <>
-              <label className="field">
-                <span>Nome</span>
-                <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Como te chamam" required />
-              </label>
-              <div className="field">
-                <span>Avatar</span>
-                <div className="avatar-picker">
-                  {AVATARS.map((a) => (
-                    <button key={a} type="button" className={'avatar-opt ' + (a === avatar ? 'active' : '')} onClick={() => setAvatar(a)}>{a}</button>
-                  ))}
+          <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+            {mode === 'signup' && (
+              <>
+                <Input
+                  label="Nome"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Como te chamam"
+                  required
+                />
+                <div>
+                  <span style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-medium)', color: 'var(--text-secondary)', display: 'block', marginBottom: 'var(--space-2)' }}>
+                    Avatar
+                  </span>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
+                    {AVATARS.map((a) => (
+                      <button
+                        key={a}
+                        type="button"
+                        style={{
+                          width: 40, height: 40, borderRadius: 'var(--radius-pill)',
+                          border: a === avatar ? '2px solid var(--blue-glow)' : '1px solid var(--line-hairline)',
+                          background: a === avatar ? 'rgba(0, 122, 255, 0.1)' : 'transparent',
+                          fontSize: 20, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          cursor: 'pointer', transition: 'all var(--dur-fast) var(--ease-standard)'
+                        }}
+                        onClick={() => setAvatar(a)}
+                      >
+                        {a}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            </>
-          )}
+              </>
+            )}
 
-          {mode !== 'reset' && (
-            <label className="field">
-              <span>E-mail</span>
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="voce@email.com" autoComplete="email" required />
-            </label>
-          )}
+            {mode !== 'reset' && (
+              <Input
+                label="E-mail"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="voce@email.com"
+                autoComplete="email"
+                required
+              />
+            )}
 
-          {mode !== 'forgot' && (
-            <label className="field">
-              <span>{mode === 'reset' ? 'Nova senha' : 'Senha'}</span>
-              <input
+            {mode !== 'forgot' && (
+              <Input
+                label={mode === 'reset' ? 'Nova senha' : 'Senha'}
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -155,35 +192,66 @@ export default function Auth() {
                 autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
                 required
               />
-            </label>
+            )}
+
+            {mode === 'login' && (
+              <button
+                type="button"
+                onClick={() => { setMode('forgot'); setErr(null); setNotice(null) }}
+                style={{
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-label)', color: 'var(--text-tertiary)',
+                  textAlign: 'right', marginTop: '-var(--space-2)', textDecoration: 'underline'
+                }}
+              >
+                Esqueci minha senha
+              </button>
+            )}
+
+            {err && (
+              <div style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-body-sm)', color: 'var(--error)', padding: 'var(--space-3)', background: 'rgba(255, 69, 58, 0.1)', borderRadius: 'var(--radius-sm)' }}>
+                {err}
+              </div>
+            )}
+            {notice && (
+              <div style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-body-sm)', color: 'var(--success)', padding: 'var(--space-3)', background: 'rgba(50, 215, 75, 0.1)', borderRadius: 'var(--radius-sm)' }}>
+                {notice}
+              </div>
+            )}
+
+            <Button type="submit" variant="primary" disabled={busy} style={{ width: '100%', marginTop: 'var(--space-2)' }}>
+              {busy ? '…' : submitLabel}
+            </Button>
+          </form>
+
+          {isAuthTabs && cfg?.google_enabled && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: 'var(--space-3)' }}>
+                <div style={{ flex: 1, height: 1, background: 'var(--line-hairline)' }} />
+                <span style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-label)', color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>
+                  ou
+                </span>
+                <div style={{ flex: 1, height: 1, background: 'var(--line-hairline)' }} />
+              </div>
+              <div ref={googleDiv} style={{ width: '100%', display: 'flex', justifyContent: 'center' }} />
+            </div>
           )}
 
-          {mode === 'login' && (
-            <button type="button" className="auth-link auth-forgot" onClick={() => { setMode('forgot'); setErr(null); setNotice(null) }}>
-              Esqueci minha senha
+          {(mode === 'forgot' || mode === 'reset') && (
+            <button
+              type="button"
+              onClick={() => { setMode('login'); setErr(null); setNotice(null) }}
+              style={{
+                background: 'none', border: 'none', cursor: 'pointer',
+                fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-label)', color: 'var(--text-secondary)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'var(--space-2)',
+                marginTop: 'var(--space-2)'
+              }}
+            >
+              <Icon name="arrow-left" size={16} /> Voltar para o login
             </button>
           )}
-
-          {err && <div className="auth-err">{err}</div>}
-          {notice && <div className="auth-notice">{notice}</div>}
-
-          <button className="btn full btn-primary" disabled={busy} type="submit">
-            {busy ? '…' : submitLabel}
-          </button>
-        </form>
-
-        {isAuthTabs && cfg?.google_enabled && (
-          <>
-            <div className="auth-or"><span>ou</span></div>
-            <div className="google-btn" ref={googleDiv} />
-          </>
-        )}
-
-        {(mode === 'forgot' || mode === 'reset') && (
-          <button type="button" className="auth-link auth-back" onClick={() => { setMode('login'); setErr(null); setNotice(null) }}>
-            ← Voltar para o login
-          </button>
-        )}
+        </Card>
       </div>
     </div>
   )

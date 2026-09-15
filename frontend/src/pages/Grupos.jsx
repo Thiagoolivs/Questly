@@ -1,11 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
 import { useApp } from '../store.jsx'
 import { api } from '../api.js'
-import Icon from '../components/Icon.jsx'
 import { pendingInvite, clearInvite, shareInvite } from '../utils/invite.js'
+import { Card, Button, Input, Icon, SegmentedControl, ListRow } from '../design-system/components/index.js'
 
-// Tela de escolha/criação de grupo (mostrada quando o usuário ainda não tem
-// grupo selecionado). Um "casal" é só um grupo de 2 pessoas.
 export default function Grupos() {
   const { user, groups, refreshGroups, selectGroup, logout } = useApp()
   const invite = pendingInvite()
@@ -37,7 +35,6 @@ export default function Grupos() {
   const create = () => run(() => api.createGroup({ name: name.trim(), group_type: groupType }))
   const join = (c) => run(() => api.joinGroup({ invite_code: (c || code).trim() }))
 
-  // Veio por link de convite: entra automaticamente no grupo.
   useEffect(() => {
     if (invite && !autoTried.current) {
       autoTried.current = true
@@ -54,87 +51,122 @@ export default function Grupos() {
   }
 
   return (
-    <div className="auth-screen">
-      <div className="auth-card">
-        <div className="auth-brand">Seus grupos</div>
-        <p className="muted small auth-sub">
-          Olá, {user?.name || 'você'}! Crie um grupo e convide sua família, ou entre com um convite.
+    <div className="screen" style={{ paddingTop: 'var(--space-8)', paddingLeft: 'var(--gutter-screen)', paddingRight: 'var(--gutter-screen)', display: 'flex', flexDirection: 'column', minHeight: '100vh', justifyContent: 'center' }}>
+      
+      <div style={{ textAlign: 'center', marginBottom: 'var(--space-8)' }}>
+        <h1 style={{ margin: 0, fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-title-1)', fontWeight: 'var(--fw-bold)', color: 'var(--text-primary)' }}>
+          Seus grupos
+        </h1>
+        <p style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-body)', color: 'var(--text-secondary)', marginTop: 'var(--space-2)' }}>
+          Olá, {user?.name || 'você'}! Crie um grupo ou entre com um convite.
         </p>
+      </div>
 
-        {invite && (
-          <div className="auth-notice">
-            Você foi convidado com o código <b>{invite}</b>{busy ? ' — entrando…' : ''}
+      {invite && (
+        <Card padding="md" style={{ background: 'rgba(0,122,255,0.1)', borderColor: 'var(--blue-glow)', marginBottom: 'var(--space-6)' }}>
+          <div style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-body)', color: 'var(--blue-glow)', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Icon name="info" size={16} />
+            <span>Você foi convidado com o código <b>{invite}</b>{busy ? ' — entrando…' : ''}</span>
           </div>
-        )}
+        </Card>
+      )}
 
-        {groups.length > 0 && (
-          <div className="group-list">
-            {groups.map((g) => (
-              <div className="group-row-wrap" key={g.id}>
-                <button className="group-row" onClick={() => selectGroup(g.id)}>
-                  <span className="group-emoji"><Icon name="users" size={18} /></span>
-                  <span className="group-main">
-                    <span className="group-name">{g.name}</span>
-                    <span className="muted xsmall">{g.member_count} membro(s) · {g.role === 'owner' ? 'dono' : 'membro'}</span>
-                  </span>
-                  <span className="group-go"><Icon name="chevronRight" size={16} /></span>
-                </button>
-                <button className="btn ghost small-btn icon-btn group-share" onClick={() => share(g)} title="Convidar por link">
-                  <Icon name={shared === g.id ? 'check' : 'users'} size={14} /> {shared === g.id ? 'Link copiado' : 'Convidar'}
-                </button>
-              </div>
+      {groups.length > 0 && (
+        <div style={{ marginBottom: 'var(--space-8)' }}>
+          <Card padding="none">
+            {groups.map((g, i) => (
+              <ListRow
+                key={g.id}
+                title={g.name}
+                subtitle={`${g.member_count} membro(s) · ${g.role === 'owner' ? 'dono' : 'membro'}`}
+                borderBottom={i < groups.length - 1}
+                left={
+                  <div style={{ width: 40, height: 40, borderRadius: 20, background: 'var(--blue-glow)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}>
+                    <Icon name="users" size={20} />
+                  </div>
+                }
+                right={
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                    <Button variant="secondary" size="small" onClick={() => share(g)} disabled={shared === g.id}>
+                      <Icon name={shared === g.id ? 'check' : 'share'} size={14} /> {shared === g.id ? 'Copiado' : 'Convidar'}
+                    </Button>
+                    <Button variant="primary" size="small" onClick={() => selectGroup(g.id)}>
+                      Entrar
+                    </Button>
+                  </div>
+                }
+              />
             ))}
-          </div>
-        )}
-
-        <div className="auth-tabs">
-          <button className={'auth-tab ' + (tab === 'create' ? 'active' : '')} onClick={() => setTab('create')} type="button">
-            Criar grupo
-          </button>
-          <button className={'auth-tab ' + (tab === 'join' ? 'active' : '')} onClick={() => setTab('join')} type="button">
-            Entrar com código
-          </button>
+          </Card>
         </div>
+      )}
+
+      <Card padding="lg">
+        <SegmentedControl 
+          options={[{label: 'Criar grupo', value: 'create'}, {label: 'Entrar com código', value: 'join'}]}
+          value={tab}
+          onChange={setTab}
+          style={{ marginBottom: 'var(--space-6)' }}
+        />
 
         {tab === 'create' ? (
-          <>
-            <label className="field">
-              <span>Tipo de perfil</span>
-              <select value={groupType} onChange={(e) => setGroupType(e.target.value)}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+            <div>
+              <div style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-caption)', color: 'var(--text-secondary)', marginBottom: 'var(--space-2)' }}>Tipo de perfil</div>
+              <select 
+                value={groupType} 
+                onChange={(e) => setGroupType(e.target.value)}
+                style={{ 
+                  width: '100%', padding: '14px 16px', borderRadius: 'var(--radius-md)', 
+                  border: '1px solid var(--line-hairline)', background: 'var(--surface-sunken)', 
+                  color: 'var(--text-primary)', fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-body)' 
+                }}
+              >
                 <option value="individual">Apenas eu (Individual)</option>
                 <option value="couple">Casal (Atividades em dupla)</option>
                 <option value="group">Grupo de amigos / accountability</option>
               </select>
-            </label>
-            <label className="field">
-              <span>Nome do grupo/perfil</span>
-              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex: Família 💜" />
-            </label>
-            <button className="btn full btn-primary" disabled={busy || !name.trim()} onClick={create}>
-              {busy ? '…' : 'Criar grupo'}
-            </button>
-          </>
+            </div>
+            <Input 
+              label="Nome do grupo/perfil" 
+              value={name} 
+              onChange={(e) => setName(e.target.value)} 
+              placeholder="Ex: Família" 
+            />
+            <div style={{ marginTop: 'var(--space-4)' }}>
+              <Button variant="primary" block disabled={busy || !name.trim()} onClick={create}>
+                {busy ? 'Criando…' : 'Criar grupo'}
+              </Button>
+            </div>
+          </div>
         ) : (
-          <>
-            <label className="field">
-              <span>Código de convite</span>
-              <input
-                value={code}
-                onChange={(e) => setCode(e.target.value.toUpperCase())}
-                placeholder="Ex: 25NGVV"
-                maxLength={12}
-                style={{ textTransform: 'uppercase', letterSpacing: '2px' }}
-              />
-            </label>
-            <button className="btn full btn-primary" disabled={busy || !code.trim()} onClick={() => join()}>
-              {busy ? '…' : 'Entrar no grupo'}
-            </button>
-          </>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+            <Input 
+              label="Código de convite" 
+              value={code} 
+              onChange={(e) => setCode(e.target.value.toUpperCase())} 
+              placeholder="Ex: 25NGVV" 
+              maxLength={12}
+              style={{ textTransform: 'uppercase', letterSpacing: '2px' }}
+            />
+            <div style={{ marginTop: 'var(--space-4)' }}>
+              <Button variant="primary" block disabled={busy || !code.trim()} onClick={() => join()}>
+                {busy ? 'Entrando…' : 'Entrar no grupo'}
+              </Button>
+            </div>
+          </div>
         )}
 
-        {err && <div className="auth-err">{err}</div>}
+        {err && <div style={{ color: 'var(--error)', marginTop: 'var(--space-4)', textAlign: 'center', fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-caption)' }}>{err}</div>}
+      </Card>
 
-        <button className="link-btn logout-link" onClick={logout}>Sair da conta</button>
+      <div style={{ textAlign: 'center', marginTop: 'var(--space-8)', paddingBottom: 'var(--space-8)' }}>
+        <button 
+          onClick={logout} 
+          style={{ background: 'none', border: 'none', color: 'var(--text-tertiary)', fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-caption)', textDecoration: 'underline', cursor: 'pointer' }}
+        >
+          Sair da conta
+        </button>
       </div>
     </div>
   )

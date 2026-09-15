@@ -1,0 +1,23 @@
+<!-- @dsCard group="Spacing" viewport="700x180" name="Screen layout" subtitle="16px gutters, 10px card gaps, floating tab bar" -->
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><link rel="stylesheet" href="../styles.css">
+<style>html,body{margin:0}body{background:var(--surface-page);color:var(--text-primary);font-family:var(--font-ui);height:180px;box-sizing:border-box;padding:16px;overflow:hidden}
+.g{display:flex;gap:10px;align-items:stretch;height:100%}
+.sw{flex:1;border-radius:var(--radius-lg);display:flex;flex-direction:column;justify-content:flex-end;padding:10px;gap:2px}
+.nm{font-size:10px;text-transform:uppercase;letter-spacing:.08em;opacity:.85}
+.hx{font-size:11px;font-variant-numeric:tabular-nums;opacity:.65}
+.tk{font-size:10px;color:var(--text-tertiary);letter-spacing:.04em}
+.row{display:flex;align-items:center;gap:14px}
+</style></head><body><div style="height:100%;display:flex;gap:18px">
+<div style="width:200px;height:100%;border:var(--border-card);border-radius:var(--radius-2xl);background:var(--surface-raised);padding:0 var(--gutter-screen);box-sizing:border-box;position:relative">
+  <div style="display:flex;gap:var(--gap-card);padding-top:14px"><div style="flex:1;height:56px;background:var(--surface-card);border:var(--border-card);border-radius:var(--radius-xl)"></div><div style="flex:1;height:56px;background:var(--surface-card);border:var(--border-card);border-radius:var(--radius-xl)"></div></div>
+  <div style="height:44px;margin-top:var(--gap-card);background:var(--surface-card);border:var(--border-card);border-radius:var(--radius-xl)"></div>
+  <div style="position:absolute;left:var(--gutter-screen);right:var(--gutter-screen);bottom:10px;height:36px;border-radius:var(--radius-pill);background:var(--surface-glass);border:1px solid var(--line-hairline)"></div>
+</div>
+<div style="display:flex;flex-direction:column;gap:7px;justify-content:center;font-size:12px;color:var(--text-secondary)">
+<div>--gutter-screen <b style="color:var(--full-white)">16px</b> left/right on every screen</div>
+<div>--gap-card <b style="color:var(--full-white)">10px</b> between sibling cards</div>
+<div>--pad-card <b style="color:var(--full-white)">14px</b> inside cards, 18px for hero cards</div>
+<div>--control-h <b style="color:var(--full-white)">44px</b> minimum touch target · 52px full-width CTA</div>
+<div>Tab bar floats 10px above the safe area, inset by the gutter</div>
+</div>
+</div></body></html>

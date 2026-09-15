@@ -2,55 +2,11 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useApp } from '../store.jsx'
 import { api } from '../api.js'
-import Icon from '../components/Icon.jsx'
-import Section from '../components/Section.jsx'
-import Avatar from '../components/Avatar.jsx'
-
-function WeekStrip({ selectedDate, onDateSelect }) {
-  const days = []
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-
-  // Get start of week (Sunday)
-  const d = new Date(selectedDate)
-  d.setHours(0, 0, 0, 0)
-  const day = d.getDay()
-  const diff = d.getDate() - day
-  const startOfWeek = new Date(d.setDate(diff))
-
-  for (let i = 0; i < 7; i++) {
-    const cur = new Date(startOfWeek)
-    cur.setDate(startOfWeek.getDate() + i)
-    days.push(cur)
-  }
-
-  const isSameDay = (d1, d2) => d1 && d2 && d1.getDate() === d2.getDate() && d1.getMonth() === d2.getMonth() && d1.getFullYear() === d2.getFullYear()
-  const weekdays = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S']
-
-  return (
-    <div className="week-strip">
-      {days.map((date, i) => {
-        const selected = isSameDay(date, selectedDate)
-        const isToday = isSameDay(date, today)
-        return (
-          <button
-            key={i}
-            className={`week-day ${selected ? 'selected' : ''} ${isToday ? 'today' : ''}`}
-            onClick={() => onDateSelect(date)}
-          >
-            <span className="week-day-name">{weekdays[i]}</span>
-            <span className="week-day-num">{date.getDate()}</span>
-          </button>
-        )
-      })}
-    </div>
-  )
-}
+import { Avatar, Card, Chip, Icon, ListRow } from '../design-system/components/index.js'
 
 export default function MeuDia() {
   const { state, me, user, refresh, loading, error } = useApp()
   const [busy, setBusy] = useState(false)
-  const [selectedDate, setSelectedDate] = useState(new Date())
 
   // Data for today
   const [routines, setRoutines] = useState([])
@@ -59,7 +15,7 @@ export default function MeuDia() {
 
   useEffect(() => {
     loadDayData()
-  }, [selectedDate])
+  }, [])
 
   async function loadDayData() {
     setBusy(true)
@@ -69,9 +25,9 @@ export default function MeuDia() {
         api.habits(),
         api.calendar()
       ])
-      setRoutines(rs)
-      setHabits(hs)
-      setEvents(es)
+      setRoutines(rs.routines || [])
+      setHabits(hs.habits || [])
+      setEvents(es.activities || [])
     } catch (e) {
       console.error(e)
     } finally {
@@ -80,10 +36,10 @@ export default function MeuDia() {
   }
 
   if (loading) return <div className="screen center muted">Carregando…</div>
-  if (error) return <div className="screen center"><p className="error">Erro ao carregar</p><button className="btn" onClick={refresh}>Tentar de novo</button></div>
+  if (error) return <div className="screen center"><p className="error">Erro ao carregar</p><button className="btn btn-primary" onClick={refresh}>Tentar de novo</button></div>
   if (!user) return <div className="screen center muted">Sem dados do usuário.</div>
 
-  const dateStr = selectedDate.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'short' })
+  const todayStr = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'short' })
 
   const toggleHabit = async (h) => {
     // Optimistic update
@@ -91,9 +47,7 @@ export default function MeuDia() {
     const updated = habits.map(x => x.id === h.id ? { ...x, completed: !x.completed } : x)
     setHabits(updated)
     try {
-      await api.updateHabit(h.id, { active: true }) // FIXME: Update log, not habit active state
-      // Actually, since we're in Phase 2, we need a dedicated API for logging.
-      // But for now just simulate the UI interaction.
+      await api.updateHabit(h.id, { active: true }) 
     } catch (e) {
       setHabits(previousHabits)
       console.error(e)
@@ -101,85 +55,137 @@ export default function MeuDia() {
   }
 
   return (
-    <div className="screen">
-      <header className="topbar" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div>
-          <div className="brand">{state?.group?.name || 'Questly'}</div>
-          <div className="muted small" style={{ textTransform: 'capitalize' }}>{dateStr}</div>
+    <div className="screen" style={{ paddingTop: 'var(--space-6)', paddingLeft: 'var(--gutter-screen)', paddingRight: 'var(--gutter-screen)' }}>
+      {/* HEADER SIMPLIFICADO */}
+      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-8)' }}>
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          <span style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-micro)', fontWeight: 'var(--fw-bold)', color: 'var(--text-tertiary)', letterSpacing: 'var(--ls-caps)', textTransform: 'uppercase' }}>
+            {todayStr}
+          </span>
+          <h1 style={{ margin: 0, fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-title-2)', fontWeight: 'var(--fw-bold)', color: 'var(--text-primary)' }}>
+            O que fazer hoje
+          </h1>
         </div>
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-          <div className="streak-chip" title="Sequência atual"><Icon name="flame" size={15} /> {me?.stats?.streak || 0}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}>
+          {me?.stats?.streak > 0 && (
+            <Chip icon="flame" label={me.stats.streak.toString()} variant="glass" />
+          )}
           <Link to="/perfil">
-            <Avatar user={user} size={36} />
+            <Avatar name={user?.name} src={user?.photo} size={40} />
           </Link>
         </div>
       </header>
 
-      <WeekStrip selectedDate={selectedDate} onDateSelect={setSelectedDate} />
-
-      <Section id="rotinas" title="Rotinas" defaultOpen>
-        {routines.length === 0 ? (
-          <p className="muted xsmall">Nenhuma rotina para hoje.</p>
-        ) : (
-          <div className="routines-list">
-            {routines.map(r => (
-              <div key={r.id} className="routine-card">
-                <div className="routine-title">
-                  <Icon name="sun" size={16} /> {r.name}
-                </div>
-                <div className="routine-steps">
-                  {r.steps?.map(step => (
-                    <div key={step.id} className="routine-step">
-                      <div className="check"><Icon name="check" size={14} /></div>
-                      <span>{step.name}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </Section>
-
-      <Section id="eventos" title="Agenda" defaultOpen>
+      {/* AGENDA */}
+      <div style={{ marginBottom: 'var(--space-8)' }}>
+        <h2 style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-title-3)', color: 'var(--text-primary)', marginBottom: 'var(--space-4)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+          <Icon name="calendar" size={18} color="var(--blue-glow)" /> Agenda do dia
+        </h2>
         {events.length === 0 ? (
-          <p className="muted xsmall">Nenhum evento agendado.</p>
+          <p style={{ color: 'var(--text-tertiary)', fontSize: 'var(--fs-body)' }}>Nada agendado para hoje.</p>
         ) : (
-          <div className="events-list">
-            {events.map(ev => (
-              <div key={ev.id} className="event-item">
-                <div className="event-time">
-                  {ev.start_datetime ? new Date(ev.start_datetime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : 'Todo o dia'}
-                </div>
-                <div className="event-details">
-                  <div className="event-title">{ev.title}</div>
-                  {ev.description && <div className="muted xsmall">{ev.description}</div>}
-                </div>
-              </div>
+          <Card padding="none">
+            {events.map((ev, i) => (
+              <ListRow
+                key={ev.id}
+                title={ev.title}
+                subtitle={ev.description}
+                left={<div style={{ width: 44, textAlign: 'center', color: 'var(--text-secondary)', fontFamily: 'var(--font-numeric)' }}>
+                  {ev.start_datetime ? new Date(ev.start_datetime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : 'Dia'}
+                </div>}
+                borderBottom={i < events.length - 1}
+              />
             ))}
-          </div>
+          </Card>
         )}
-      </Section>
+      </div>
 
-      <Section id="habitos" title="Hábitos" defaultOpen>
+      {/* HÁBITOS */}
+      <div style={{ marginBottom: 'var(--space-8)' }}>
+        <h2 style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-title-3)', color: 'var(--text-primary)', marginBottom: 'var(--space-4)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+          <Icon name="check-circle" size={18} color="var(--success)" /> Hábitos
+        </h2>
         {habits.length === 0 ? (
-          <p className="muted xsmall">Nenhum hábito para hoje.</p>
+          <p style={{ color: 'var(--text-tertiary)', fontSize: 'var(--fs-body)' }}>Nenhum hábito configurado.</p>
         ) : (
-          <div className="habits">
-            {habits.map((h) => (
-              <div key={h.id} className={`habit-row ${h.completed ? 'done' : ''}`}>
-                <button className="habit habit-toggle" onClick={() => toggleHabit(h)}>
-                  <span className="habit-emoji">{h.icon ? <Icon name={h.icon} size={18} /> : '✅'}</span>
-                  <span className="habit-label">{h.name}</span>
-                  <span className={`check ${h.completed ? 'on' : ''}`}>
-                    {h.completed ? <Icon name="check" size={14} /> : ''}
-                  </span>
+          <Card padding="none">
+            {habits.map((h, i) => (
+              <div key={h.id} style={{ borderBottom: i < habits.length - 1 ? '1px solid var(--line-hairline)' : 'none' }}>
+                <button
+                  onClick={() => toggleHabit(h)}
+                  style={{
+                    width: '100%', display: 'flex', alignItems: 'center', gap: 'var(--space-4)', padding: 'var(--pad-row)',
+                    background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left',
+                    opacity: h.completed ? 0.5 : 1
+                  }}
+                >
+                  <div style={{
+                    width: 24, height: 24, borderRadius: 'var(--radius-sm)', border: h.completed ? 'none' : '1px solid var(--text-tertiary)',
+                    background: h.completed ? 'var(--success)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center'
+                  }}>
+                    {h.completed && <Icon name="check" size={16} color="#000" />}
+                  </div>
+                  <div style={{ flex: 1, fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-body)', color: 'var(--text-primary)', textDecoration: h.completed ? 'line-through' : 'none' }}>
+                    {h.name}
+                  </div>
                 </button>
               </div>
             ))}
+          </Card>
+        )}
+      </div>
+
+      {/* ROTINAS */}
+      <div style={{ marginBottom: 'var(--space-8)' }}>
+        <h2 style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-title-3)', color: 'var(--text-primary)', marginBottom: 'var(--space-4)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+          <Icon name="list-todo" size={18} color="var(--warning)" /> Rotinas
+        </h2>
+        {routines.length === 0 ? (
+          <p style={{ color: 'var(--text-tertiary)', fontSize: 'var(--fs-body)' }}>Nenhuma rotina para hoje.</p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--gap-card)' }}>
+            {routines.map(r => (
+              <Card key={r.id}>
+                <div style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-body)', fontWeight: 'var(--fw-semibold)', marginBottom: 'var(--space-4)' }}>
+                  {r.name}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                  {r.steps?.map(step => (
+                    <div key={step.id} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+                      <div style={{ width: 18, height: 18, borderRadius: '50%', border: '1px solid var(--text-tertiary)' }} />
+                      <span style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-body-sm)', color: 'var(--text-secondary)' }}>
+                        {step.name}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            ))}
           </div>
         )}
-      </Section>
+      </div>
+
+      {/* DESAFIO DIÁRIO CTA */}
+      <div style={{ marginBottom: 'var(--space-8)' }}>
+        <Card variant="bloom" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'var(--pad-card-lg)' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
+            <span style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-title-3)', fontWeight: 'var(--fw-semibold)', color: 'var(--text-primary)' }}>
+              Desafio Diário
+            </span>
+            <span style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-body-sm)', color: 'var(--text-secondary)' }}>
+              Supere seus limites hoje
+            </span>
+          </div>
+          <button style={{
+            background: 'var(--surface-inverse)', color: 'var(--text-on-light)', border: 'none',
+            borderRadius: 'var(--radius-pill)', padding: 'var(--space-3) var(--space-5)',
+            fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-semibold)', cursor: 'pointer'
+          }}>
+            Cumprir
+          </button>
+        </Card>
+      </div>
+
     </div>
   )
 }

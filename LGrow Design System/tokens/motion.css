@@ -1,0 +1,14 @@
+:root{
+  --dur-instant:90ms; /* @kind other */
+  --dur-fast:160ms; /* @kind other */
+  --dur-base:240ms; /* @kind other */
+  --dur-slow:420ms; /* @kind other */
+  --dur-glow:2400ms; /* @kind other */   /* breathing blue glow loop */
+
+  --ease-standard:cubic-bezier(.4,0,.2,1); /* @kind other */
+  --ease-out:cubic-bezier(.16,1,.3,1); /* @kind other */   /* iOS-like settle, used for sheets */
+  --ease-in:cubic-bezier(.4,0,1,1); /* @kind other */
+
+  --press-scale:0.97; /* @kind other */  /* buttons and cards shrink on press */
+  --hover-lift:0px; /* @kind other */    /* no lift: this is a touch-first product */
+}
