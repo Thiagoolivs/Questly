@@ -105,7 +105,18 @@ export default function Auth() {
     mode === 'login' ? 'Entrar' : mode === 'signup' ? 'Criar conta' : mode === 'forgot' ? 'Enviar link' : 'Redefinir e entrar'
 
   return (
-    <div className="screen" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'var(--gutter-screen)' }}>
+    <div
+      // O login fica fora do Shell, então carrega o próprio inset da status bar.
+      className="screen"
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 'var(--gutter-screen)',
+        paddingTop: 'calc(env(safe-area-inset-top, 0px) + var(--space-9))',
+        paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + var(--space-9))',
+      }}
+    >
       <div style={{ width: '100%', maxWidth: 400, display: 'flex', flexDirection: 'column', gap: 'var(--space-8)' }}>
         <div style={{ textAlign: 'center' }}>
           <h1 style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-title-1)', fontWeight: 'var(--fw-bold)', color: 'var(--text-primary)', marginBottom: 'var(--space-2)' }}>

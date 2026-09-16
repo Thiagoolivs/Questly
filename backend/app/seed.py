@@ -37,11 +37,6 @@ _NEW_COLUMNS = {
         "mood_note": "TEXT",
         "water_ml": "INTEGER",
     },
-    "activities": {
-        # O feed passou a desenhar ícone em vez de emoji; a coluna antiga fica
-        # para os itens já publicados não perderem o que mostravam.
-        "icon": "VARCHAR(24)",
-    },
     "settings": {
         "timezone": "VARCHAR(40)",
         "challenge_pool": "JSON",
@@ -57,6 +52,9 @@ _NEW_COLUMNS = {
         "image": "TEXT",
         "ref": "VARCHAR(40)",
         "day": "DATE",
+        # O feed desenha ícone em vez de emoji; a coluna emoji fica para os
+        # itens já publicados não perderem o que mostravam.
+        "icon": "VARCHAR(24)",
     },
     "task_completions": {
         "image": "TEXT",
@@ -77,17 +75,50 @@ _OBSOLETE_COLUMNS = {
 }
 
 
+def _missing_from_models(insp, existing: set) -> dict[str, dict[str, str]]:
+    """Colunas que as models esperam e o banco ainda não tem, derivadas do metadata.
+
+    Mantida à mão, esta lista esquece colunas novas em silêncio — e o sintoma só
+    aparece em produção, num SELECT que quebra a tela inteira. Derivar do
+    metadata faz qualquer coluna nova ser criada sem ninguém precisar lembrar.
+    """
+    out: dict[str, dict[str, str]] = {}
+    for table_name, table in Base.metadata.tables.items():
+        if table_name not in existing:
+            continue  # tabela nova: o create_all cria inteira
+        have = {c["name"] for c in insp.get_columns(table_name)}
+        for col in table.columns:
+            if col.name in have:
+                continue
+            try:
+                ddl = col.type.compile(dialect=engine.dialect)
+            except Exception:
+                continue  # tipo que o dialeto não sabe emitir: cai no dict manual
+            # Sempre NULL: uma coluna NOT NULL sem default não pode ser
+            # acrescentada a uma tabela que já tem linhas.
+            out.setdefault(table_name, {})[col.name] = ddl
+    return out
+
+
 def _ensure_columns() -> None:
     insp = inspect(engine)
     existing = set(insp.get_table_names())
-    with engine.begin() as conn:
-        for table, columns in _NEW_COLUMNS.items():
-            if table not in existing:
-                continue
+
+    # O dict manual vem por último e vence: ele existe para os casos em que o
+    # DDL precisa ser diferente do que o tipo da model emitiria.
+    planned = _missing_from_models(insp, existing)
+    for table, columns in _NEW_COLUMNS.items():
+        if table in existing:
             have = {c["name"] for c in insp.get_columns(table)}
             for name, ddl in columns.items():
                 if name not in have:
-                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}"))
+                    planned.setdefault(table, {})[name] = ddl
+
+    with engine.begin() as conn:
+        for table, columns in planned.items():
+            for name, ddl in columns.items():
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}"))
+                print(f"[schema] {table}.{name} adicionada ({ddl})")
 
         for table, columns in _OBSOLETE_COLUMNS.items():
             if table not in existing:
