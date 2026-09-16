@@ -5,32 +5,34 @@ import { useApp } from '../store.jsx'
 import { Card, Chip, Icon, ListRow } from '../design-system/components/index.js'
 
 /**
- * Meu Plano — onde se planeja, e não onde se executa (isso é o Meu Dia).
+ * Meu Plano — onde se decide o que vai acontecer. Executar é do Meu Dia.
  *
- * Treino e nutrição ficam lado a lado de propósito: são a mesma conta vista de
- * dois lados, e separá-los em abas distantes é o que faz parecerem assuntos
- * diferentes.
+ * Essa divisão é a razão da tela existir, então ela é dita em voz alta no topo
+ * e repetida em cada bloco: aqui aparecem plano, metas e regras; lá aparecem a
+ * sessão de hoje e as calorias de hoje.
  */
 export default function Plano() {
-  const { group } = useApp()
+  const { groupId, user } = useApp()
   const [dia, setDia] = useState(null)
   const [planos, setPlanos] = useState([])
-  const [nutricao, setNutricao] = useState(null)
+  const [metas, setMetas] = useState(null)
 
   const carregar = useCallback(async () => {
-    const [d, t] = await Promise.allSettled([api.today(), api.trainingPlans()])
+    const [d, t] = await Promise.allSettled([api.today(null, groupId), api.trainingPlans()])
     if (d.status === 'fulfilled') setDia(d.value)
     if (t.status === 'fulfilled') setPlanos(t.value.plans)
-
-    if (group) {
-      const e = await Promise.allSettled([api.state(group.id)])
-      if (e[0].status === 'fulfilled') setNutricao(e[0].value?.nutrition ?? null)
-    }
-  }, [group])
+  }, [groupId])
 
   useEffect(() => {
     carregar()
   }, [carregar])
+
+  // As metas vêm prontas do servidor. Sem peso e altura elas são só o padrão
+  // genérico, e aí a tela pede os dados em vez de fingir que são pessoais.
+  useEffect(() => {
+    const t = user?.nutrition_targets
+    setMetas(t?.has_profile ? t.targets : null)
+  }, [user])
 
   const ativo = planos.find((p) => p.status === 'active') ?? planos[0] ?? null
   const habitos = dia?.habits ?? []
@@ -46,13 +48,14 @@ export default function Plano() {
         paddingBottom: 'var(--space-11)',
       }}
     >
-      <header style={{ marginBottom: 'var(--space-8)' }}>
+      <header style={{ marginBottom: 'var(--space-7)' }}>
         <h1
           style={{
             margin: 0,
             fontFamily: 'var(--font-ui)',
             fontSize: 'var(--fs-title-1)',
             fontWeight: 'var(--fw-bold)',
+            letterSpacing: 'var(--ls-title)',
             color: 'var(--text-primary)',
           }}
         >
@@ -60,18 +63,23 @@ export default function Plano() {
         </h1>
         <p
           style={{
-            margin: 'var(--space-2) 0 0',
+            margin: '2px 0 0',
             fontFamily: 'var(--font-ui)',
-            fontSize: 'var(--fs-body)',
-            color: 'var(--text-secondary)',
+            fontSize: 'var(--fs-body-sm)',
+            color: 'var(--text-tertiary)',
           }}
         >
-          Treino e alimentação puxam o mesmo objetivo.
+          Aqui você decide o que vai fazer. Fazer é na aba Hoje.
         </p>
       </header>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-8)' }}>
-        <Bloco titulo="Treino" verTudo="/treino">
+        <Bloco
+          titulo="Plano de treino"
+          explica="Quantas sessões, em quais semanas, com qual objetivo."
+          verTudo="/treino"
+          rotuloVerTudo={ativo ? 'Editar' : null}
+        >
           {ativo ? (
             <Link to="/treino" style={{ textDecoration: 'none', color: 'inherit' }}>
               <Card tone="bloom" pad="var(--pad-card-lg)">
@@ -108,7 +116,8 @@ export default function Plano() {
                   <div style={{ width: `${ativo.progress.percent}%`, height: '100%', background: 'var(--blue-glow)' }} />
                 </div>
                 <div style={{ marginTop: 'var(--space-3)', fontFamily: 'var(--font-ui)', fontVariantNumeric: 'tabular-nums', fontSize: 'var(--fs-body-sm)', color: 'var(--text-tertiary)' }}>
-                  {ativo.progress.done} de {ativo.progress.total} sessões
+                  {ativo.progress.done} de {ativo.progress.total} sessões · {ativo.weeks}{' '}
+                  {ativo.weeks === 1 ? 'semana' : 'semanas'} · {ativo.days_per_week}x por semana
                 </div>
               </Card>
             </Link>
@@ -119,23 +128,39 @@ export default function Plano() {
           )}
         </Bloco>
 
-        <Bloco titulo="Alimentação" verTudo={group ? '/nutricao' : null}>
-          {nutricao ? (
+        <Bloco
+          titulo="Metas de alimentação"
+          explica="O alvo do dia. O que você comeu hoje aparece na aba Hoje."
+          verTudo="/perfil"
+          rotuloVerTudo="Ajustar"
+        >
+          {metas ? (
             <Card>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-5)' }}>
-                <Metrica rotulo="Calorias" valor={nutricao.calories ?? 0} meta={nutricao.calories_goal} />
-                <Metrica rotulo="Proteína" valor={nutricao.protein_g ?? 0} meta={nutricao.protein_goal_g} unidade="g" />
-                <Metrica rotulo="Água" valor={((nutricao.water_ml ?? 0) / 1000).toFixed(1)} meta={nutricao.water_goal_l} unidade="L" />
+                <Meta rotulo="Calorias" valor={metas.kcal} unidade="kcal" />
+                <Meta rotulo="Proteína" valor={metas.protein_g} unidade="g" />
+                <Meta rotulo="Carbo" valor={metas.carbs_g} unidade="g" />
+                <Meta rotulo="Água" valor={metas.water_l} unidade="L" />
               </div>
+              <p
+                style={{
+                  margin: 'var(--space-5) 0 0',
+                  fontFamily: 'var(--font-ui)',
+                  fontSize: 'var(--fs-body-sm)',
+                  color: 'var(--text-tertiary)',
+                }}
+              >
+                Calculadas do seu peso, altura, idade e nível de atividade.
+              </p>
             </Card>
           ) : (
-            <Vazio to={group ? '/nutricao' : '/grupo'} icone="utensils" titulo="Acompanhar a alimentação">
-              Registre refeições por foto ou texto e veja como elas conversam com o treino.
+            <Vazio to="/perfil" icone="utensils" titulo="Definir metas de alimentação">
+              Preencha peso, altura e objetivo no perfil — o app calcula calorias, macros e água.
             </Vazio>
           )}
         </Bloco>
 
-        <Bloco titulo="Rotinas e hábitos">
+        <Bloco titulo="O que se repete" explica="Rotinas e hábitos aparecem sozinhos nos dias certos.">
           <Card pad="0 var(--pad-card)">
             <Link to="/rotinas" style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}>
               <ListRow
@@ -151,19 +176,21 @@ export default function Plano() {
                 title="Hábitos"
                 subtitle={habitos.length ? `${habitos.length} para hoje` : 'Nenhum criado ainda'}
                 onClick={() => {}}
-                divider={false}
               />
+            </Link>
+            <Link to="/agenda" style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}>
+              <ListRow icon="calendar-days" title="Agenda" subtitle="Compromissos com dia e hora" onClick={() => {}} />
+            </Link>
+            <Link to="/tarefas" style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}>
+              <ListRow icon="list-check" title="Tarefas" subtitle="O que tem data para acontecer" onClick={() => {}} divider={false} />
             </Link>
           </Card>
         </Bloco>
 
-        <Bloco titulo="Acompanhar">
+        <Bloco titulo="Sua evolução" explica="O que já saiu do plano e virou resultado.">
           <Card pad="0 var(--pad-card)">
-            <Link to="/tarefas" style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}>
-              <ListRow icon="list-check" title="Tarefas" subtitle="To-dos e backlog" onClick={() => {}} />
-            </Link>
             <Link to="/conquistas" style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}>
-              <ListRow icon="trophy" title="Conquistas" subtitle="Medalhas e recordes" onClick={() => {}} divider={false} />
+              <ListRow icon="trophy" title="Conquistas" subtitle="Medalhas e marcos" onClick={() => {}} divider={false} />
             </Link>
           </Card>
         </Bloco>
@@ -172,49 +199,50 @@ export default function Plano() {
   )
 }
 
-function Bloco({ titulo, verTudo, children }) {
+function Bloco({ titulo, explica, verTudo, rotuloVerTudo = 'Ver tudo', children }) {
   return (
     <section>
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 'var(--space-5)' }}>
-        <h2
-          style={{
-            margin: 0,
-            fontFamily: 'var(--font-ui)',
-            fontSize: 'var(--fs-title-3)',
-            fontWeight: 'var(--fw-semibold)',
-            color: 'var(--text-primary)',
-          }}
-        >
-          {titulo}
-        </h2>
-        {verTudo && (
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 'var(--space-4)', marginBottom: 'var(--space-4)' }}>
+        <div style={{ minWidth: 0 }}>
+          <h2
+            style={{
+              margin: 0,
+              fontFamily: 'var(--font-ui)',
+              fontSize: 'var(--fs-title-3)',
+              fontWeight: 'var(--fw-semibold)',
+              color: 'var(--text-primary)',
+            }}
+          >
+            {titulo}
+          </h2>
+          {explica ? (
+            <p style={{ margin: '2px 0 0', fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-caption)', color: 'var(--text-tertiary)' }}>
+              {explica}
+            </p>
+          ) : null}
+        </div>
+        {verTudo && rotuloVerTudo ? (
           <Link
             to={verTudo}
-            style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-body-sm)', color: 'var(--blue-glow)', textDecoration: 'none' }}
+            style={{ flex: 'none', fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-body-sm)', color: 'var(--blue-glow)', textDecoration: 'none' }}
           >
-            Ver tudo
+            {rotuloVerTudo}
           </Link>
-        )}
+        ) : null}
       </div>
       {children}
     </section>
   )
 }
 
-function Metrica({ rotulo, valor, meta, unidade = '' }) {
+function Meta({ rotulo, valor, unidade = '' }) {
   return (
     <div style={{ flex: 1, minWidth: 0 }}>
       <div style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-micro)', color: 'var(--text-tertiary)' }}>{rotulo}</div>
-      <div style={{ marginTop: 2, fontFamily: 'var(--font-ui)', fontVariantNumeric: 'tabular-nums', fontSize: 'var(--fs-body)', color: 'var(--text-primary)' }}>
+      <div style={{ marginTop: 2, fontFamily: 'var(--font-ui)', fontVariantNumeric: 'tabular-nums', fontSize: 'var(--fs-body)', fontWeight: 'var(--fw-medium)', color: 'var(--text-primary)' }}>
         {valor}
-        {unidade}
+        <span style={{ fontSize: 'var(--fs-caption)', color: 'var(--text-tertiary)' }}>{unidade}</span>
       </div>
-      {meta ? (
-        <div style={{ fontFamily: 'var(--font-ui)', fontVariantNumeric: 'tabular-nums', fontSize: 'var(--fs-micro)', color: 'var(--text-tertiary)' }}>
-          de {meta}
-          {unidade}
-        </div>
-      ) : null}
     </div>
   )
 }

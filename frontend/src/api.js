@@ -107,6 +107,8 @@ export const api = {
   meals: (g, day) => req(`/api/groups/${g}/meals${qs(day)}`),
   addMeal: (g, b) => req(`/api/groups/${g}/meals`, { method: 'POST', body: b }),
   addMealText: (g, b) => req(`/api/groups/${g}/meals/text`, { method: 'POST', body: b }),
+  addMealFoods: (g, b) => req(`/api/groups/${g}/meals/foods`, { method: 'POST', body: b }),
+  searchFoods: (q) => req(`/api/foods?q=${encodeURIComponent(q)}`),
   updateMeal: (g, id, b) => req(`/api/groups/${g}/meals/${id}`, { method: 'PATCH', body: b }),
   deleteMeal: (g, id) => req(`/api/groups/${g}/meals/${id}`, { method: 'DELETE' }),
   addWater: (g, b) => req(`/api/groups/${g}/water`, { method: 'POST', body: b }),
@@ -124,7 +126,14 @@ export const api = {
   updateHabit: (id, b) => req(`/api/habits/${id}`, { method: 'PUT', body: b }),
   deleteHabit: (id) => req(`/api/habits/${id}`, { method: 'DELETE' }),
   // --- Meu Dia: agenda + rotinas + hábitos do dia numa chamada (Fase 4) ---
-  today: (day) => req(`/api/today${qs(day)}`),
+  today: (day, groupId) => {
+    // A alimentação do dia é do espaço atual; o resto do Meu Dia não depende dele.
+    const p = new URLSearchParams()
+    if (day) p.set('day', day)
+    if (groupId) p.set('group', groupId)
+    const q = p.toString()
+    return req(`/api/today${q ? `?${q}` : ''}`)
+  },
   insight: (day) => req(`/api/today/insight${qs(day)}`),
   modalities: () => req('/api/modalities'),
   // --- treino com IA (Fase 5) ---

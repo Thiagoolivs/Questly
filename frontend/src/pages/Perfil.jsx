@@ -186,22 +186,12 @@ export default function Perfil() {
         </Button>
       </section>
 
+      {/* Uma porta por assunto: o app se configura aqui, o grupo se configura
+          na engrenagem do próprio grupo. Antes as duas coisas apareciam em
+          três lugares diferentes e nenhum deles dizia qual era qual. */}
       <section>
         <Titulo>Ajustes</Titulo>
         <Card pad="0 var(--pad-card)" style={{ marginTop: 'var(--space-5)' }}>
-          <Link to="/nutricao" style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}>
-            <ListRow icon="utensils" title="Metas de nutrição" subtitle="Calorias, macros e água" onClick={() => {}} />
-          </Link>
-          {group && (
-            <Link to="/grupo/config" style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}>
-              <ListRow
-                icon="users"
-                title="Configurações do grupo"
-                subtitle={`Regras e metas de ${group.name}`}
-                onClick={() => {}}
-              />
-            </Link>
-          )}
           <Link to="/config" style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}>
             <ListRow
               icon="settings"
@@ -212,6 +202,17 @@ export default function Perfil() {
             />
           </Link>
         </Card>
+        <p
+          style={{
+            margin: 'var(--space-4) 0 0',
+            fontFamily: 'var(--font-ui)',
+            fontSize: 'var(--fs-body-sm)',
+            color: 'var(--text-tertiary)',
+          }}
+        >
+          Suas metas de calorias, macros e água saem dos dados acima. As regras
+          {group ? ` de ${group.name}` : ' do seu espaço'} ficam na engrenagem da aba Grupo.
+        </p>
       </section>
     </div>
   )

@@ -69,6 +69,7 @@
   --surface-pill:rgba(255,255,255,.10);
   --surface-glass:rgba(41,41,41,.72);
   --surface-accent:var(--blue-glow);
+  --surface-accent-soft:rgba(75,69,244,.16); /* fundo de estado ligado/selecionado */
   --surface-inverse:var(--full-white);
 
   /* ---- Semantic aliases: lines ---- */

@@ -132,6 +132,29 @@ class MealTextCreate(BaseModel):
     text: str = Field(..., min_length=2, max_length=400)  # ex: "um pão de queijo e um café com leite"
 
 
+class MealFoodItem(BaseModel):
+    """Um alimento escolhido pelo nome, com a quantidade em gramas.
+
+    Quando `food_id` está na tabela local, os macros vêm de lá — o cliente não
+    decide quanto tem num ovo. Os campos por 100 g existem só para itens de
+    fora dela (Open Food Facts), que o servidor não guarda.
+    """
+
+    food_id: str = Field(..., min_length=1, max_length=80)
+    grams: float = Field(..., gt=0, le=5000)
+    name: Optional[str] = Field(None, max_length=120)
+    calories: Optional[float] = Field(None, ge=0, le=1000)
+    protein_g: Optional[float] = Field(None, ge=0, le=100)
+    carbs_g: Optional[float] = Field(None, ge=0, le=100)
+    fat_g: Optional[float] = Field(None, ge=0, le=100)
+
+
+class MealFoodsCreate(BaseModel):
+    date: str
+    items: list[MealFoodItem] = Field(..., min_length=1, max_length=25)
+    label: Optional[str] = Field(None, max_length=120)
+
+
 class WaterRequest(BaseModel):
     date: str
     delta_ml: int = Field(..., ge=-5000, le=5000)  # ex.: +500 / -500

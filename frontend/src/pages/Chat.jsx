@@ -3,6 +3,7 @@ import { useApp } from '../store.jsx'
 import { api } from '../api.js'
 import { pickImage, fileToCompressedDataURL } from '../utils/image.js'
 import { Avatar, Icon } from '../design-system/components/index.js'
+import VoltarPara from '../components/VoltarPara.jsx'
 
 function timeLabel(iso) {
   const d = new Date(iso)
@@ -78,8 +79,26 @@ export default function Chat() {
 
   return (
     <div className="chat-screen">
-      <header className="topbar chat-topbar">
-        <div className="brand">Chat</div>
+      <header
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 'var(--space-5)',
+          padding: 'var(--space-5) var(--gutter-screen)',
+          borderBottom: '1px solid var(--line-hairline)',
+        }}
+      >
+        <VoltarPara para="/grupo" />
+        <span
+          style={{
+            fontFamily: 'var(--font-ui)',
+            fontSize: 'var(--fs-title-3)',
+            fontWeight: 'var(--fw-semibold)',
+            color: 'var(--text-primary)',
+          }}
+        >
+          Chat do grupo
+        </span>
       </header>
 
       <div className="chat-log">
