@@ -97,6 +97,11 @@ function Shell() {
         <main
           className="content"
           style={{
+            // O app roda com viewport-fit=cover e status bar translúcida, então
+            // o conteúdo começa DEBAIXO do relógio e do notch. O inset devolve
+            // essa faixa e o space-9 dá o respiro — some com o padding que cada
+            // tela já tem, então fica num lugar só em vez de em dez.
+            paddingTop: 'calc(env(safe-area-inset-top, 0px) + var(--space-9))',
             paddingBottom: 'calc(96px + env(safe-area-inset-bottom, 0px))',
             minHeight: '100vh',
             overflowY: 'auto',
