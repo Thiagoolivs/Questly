@@ -63,7 +63,7 @@ export default function Grupos() {
       </div>
 
       {invite && (
-        <Card padding="md" style={{ background: 'rgba(0,122,255,0.1)', borderColor: 'var(--blue-glow)', marginBottom: 'var(--space-6)' }}>
+        <Card style={{ background: 'var(--surface-accent-soft)', borderColor: 'var(--blue-glow)', marginBottom: 'var(--space-6)' }}>
           <div style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-body)', color: 'var(--blue-glow)', display: 'flex', alignItems: 'center', gap: 8 }}>
             <Icon name="info" size={16} />
             <span>Você foi convidado com o código <b>{invite}</b>{busy ? ' — entrando…' : ''}</span>
@@ -73,24 +73,44 @@ export default function Grupos() {
 
       {groups.length > 0 && (
         <div style={{ marginBottom: 'var(--space-8)' }}>
-          <Card padding="none">
+          <Card pad="0 var(--pad-card)">
             {groups.map((g, i) => (
               <ListRow
                 key={g.id}
                 title={g.name}
-                subtitle={`${g.member_count} membro(s) · ${g.role === 'owner' ? 'dono' : 'membro'}`}
-                borderBottom={i < groups.length - 1}
-                left={
-                  <div style={{ width: 40, height: 40, borderRadius: 20, background: 'var(--blue-glow)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}>
-                    <Icon name="users" size={20} />
+                subtitle={`${g.member_count} ${g.member_count === 1 ? 'participante' : 'participantes'} · ${g.role === 'owner' ? 'dono' : 'membro'}`}
+                divider={i < groups.length - 1}
+                chevron={false}
+                leading={
+                  <div
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 'var(--radius-pill)',
+                      background: 'var(--surface-input)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flex: 'none',
+                    }}
+                  >
+                    <Icon name="users" size={16} color="var(--text-secondary)" />
                   </div>
                 }
-                right={
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                    <Button variant="secondary" size="small" onClick={() => share(g)} disabled={shared === g.id}>
-                      <Icon name={shared === g.id ? 'check' : 'share'} size={14} /> {shared === g.id ? 'Copiado' : 'Convidar'}
-                    </Button>
-                    <Button variant="primary" size="small" onClick={() => selectGroup(g.id)}>
+                trailing={
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+                    {g.invite_code ? (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        iconLeft={shared === g.id ? 'check' : 'share'}
+                        onClick={() => share(g)}
+                        disabled={shared === g.id}
+                      >
+                        {shared === g.id ? 'Copiado' : 'Convidar'}
+                      </Button>
+                    ) : null}
+                    <Button variant="accent" size="sm" onClick={() => selectGroup(g.id)}>
                       Entrar
                     </Button>
                   </div>
@@ -101,7 +121,7 @@ export default function Grupos() {
         </div>
       )}
 
-      <Card padding="lg">
+      <Card>
         <SegmentedControl 
           options={[{label: 'Criar grupo', value: 'create'}, {label: 'Entrar com código', value: 'join'}]}
           value={tab}
@@ -118,7 +138,7 @@ export default function Grupos() {
                 onChange={(e) => setGroupType(e.target.value)}
                 style={{ 
                   width: '100%', padding: '14px 16px', borderRadius: 'var(--radius-md)', 
-                  border: '1px solid var(--line-hairline)', background: 'var(--surface-sunken)', 
+                  border: '1px solid var(--line-hairline)', background: 'var(--surface-input)', 
                   color: 'var(--text-primary)', fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-body)' 
                 }}
               >
@@ -134,7 +154,7 @@ export default function Grupos() {
               placeholder="Ex: Família" 
             />
             <div style={{ marginTop: 'var(--space-4)' }}>
-              <Button variant="primary" block disabled={busy || !name.trim()} onClick={create}>
+              <Button variant="primary" fullWidth disabled={busy || !name.trim()} onClick={create}>
                 {busy ? 'Criando…' : 'Criar grupo'}
               </Button>
             </div>
@@ -150,14 +170,14 @@ export default function Grupos() {
               style={{ textTransform: 'uppercase', letterSpacing: '2px' }}
             />
             <div style={{ marginTop: 'var(--space-4)' }}>
-              <Button variant="primary" block disabled={busy || !code.trim()} onClick={() => join()}>
+              <Button variant="primary" fullWidth disabled={busy || !code.trim()} onClick={() => join()}>
                 {busy ? 'Entrando…' : 'Entrar no grupo'}
               </Button>
             </div>
           </div>
         )}
 
-        {err && <div style={{ color: 'var(--error)', marginTop: 'var(--space-4)', textAlign: 'center', fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-caption)' }}>{err}</div>}
+        {err && <div style={{ color: 'var(--danger)', marginTop: 'var(--space-4)', textAlign: 'center', fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-caption)' }}>{err}</div>}
       </Card>
 
       <div style={{ textAlign: 'center', marginTop: 'var(--space-8)', paddingBottom: 'var(--space-8)' }}>

@@ -1,5 +1,14 @@
 /* =========================================================================
-   QUESTLY — Design System v2 (Apple Dark Mode)
+   QUESTLY — folha antiga (chat, tour, seletor de ícone)
+   =========================================================================
+   Esta folha é carregada DEPOIS dos tokens do LGrow, então tudo que ela
+   declarar em :root vence. Sete nomes coincidiam e estavam sobrescrevendo o
+   design system em silêncio — raio dos cartões, cinzas do texto, vermelho de
+   erro e a superfície elevada (a folha de baixo saía cinza-médio em vez de
+   quase preta). Esses nomes foram removidos daqui: quem também existe no
+   design system é dele.
+
+   Paleta antiga que sobrou vale só para as classes abaixo.
    =========================================================================
    Paleta: negro absoluto + superfícies escuras + accent teal/green
    Tipografia: Inter (Google Fonts)
@@ -15,17 +24,13 @@
   --surface:        #1C1C1E;
   --surface2:       #2C2C2E;
   --surface-tinted: #1B2A2D;
-  --surface-raised: #3A3A3C;
 
   /* Borders */
   --border:         rgba(255, 255, 255, 0.08);
-  --border-strong:  rgba(255, 255, 255, 0.14);
   --border-focus:   rgba(100, 210, 255, 0.5);
 
   /* Text */
   --text:           #FFFFFF;
-  --text-secondary: #8E8E93;
-  --text-tertiary:  #636366;
 
   /* Apple Accent Palette */
   --accent:         #32D74B; /* Acento 1 (Energia) */
@@ -43,14 +48,11 @@
   --orange:         #FF9F0A;
   --hot:            #FF6482;
   --hot-weak:       rgba(255, 100, 130, 0.14);
-  --danger:         #FF453A;
   --danger-weak:    rgba(255, 69, 58, 0.12);
 
   /* Radii */
   --radius-sm:      10px;
   --radius:         16px;
-  --radius-lg:      20px;
-  --radius-xl:      24px;
   --radius-full:    999px;
 
   /* Timing */
@@ -412,7 +414,7 @@ input, select, textarea { font-family: inherit; }
   border-radius: 50%;
   display: grid;
   place-items: center;
-  border: 2px solid var(--border-strong);
+  border: 2px solid var(--line-strong);
   background: var(--surface);
   color: var(--text-secondary);
   transition: all var(--duration) var(--ease);
@@ -454,7 +456,7 @@ input, select, textarea { font-family: inherit; }
   width: 24px;
   height: 24px;
   border-radius: var(--radius-full);
-  border: 2px solid var(--border-strong);
+  border: 2px solid var(--line-strong);
   display: grid;
   place-items: center;
   font-size: 14px;
@@ -540,7 +542,7 @@ input, select, textarea { font-family: inherit; }
   place-items: center;
   background: var(--surface);
   border-radius: 50%;
-  border: 2px solid var(--border-strong);
+  border: 2px solid var(--line-strong);
 }
 .avatar-picker { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
 .avatar-opt {
@@ -891,7 +893,7 @@ input[type='range'] { width: 100%; accent-color: var(--accent); height: 24px; }
   display: flex;
   gap: 2px;
   background: var(--surface);
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--line-strong);
   border-radius: var(--radius-full);
   padding: 6px 8px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
@@ -1281,7 +1283,7 @@ input[type='range'] { width: 100%; accent-color: var(--accent); height: 24px; }
 
 /* --- Radar ---------------------------------------------------------------- */
 .radar { width: 100%; max-width: 280px; }
-.radar-grid { fill: none; stroke: var(--border-strong); stroke-width: 1; }
+.radar-grid { fill: none; stroke: var(--line-strong); stroke-width: 1; }
 .radar-axis { stroke: var(--border); stroke-width: 1; }
 .radar-label { font-size: 14px; }
 .radar-legend {
@@ -1355,7 +1357,7 @@ input[type='range'] { width: 100%; accent-color: var(--accent); height: 24px; }
   left: 0;
   width: 260px;
   background: var(--surface);
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--line-strong);
   border-radius: var(--radius);
   padding: 12px;
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
@@ -1440,7 +1442,7 @@ input[type='range'] { width: 100%; accent-color: var(--accent); height: 24px; }
 .tour-card {
   position: fixed;
   background: var(--surface);
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--line-strong);
   border-radius: var(--radius-lg);
   padding: 20px 18px 18px;
   display: flex;
@@ -1840,7 +1842,7 @@ input[type='range'] { width: 100%; accent-color: var(--accent); height: 24px; }
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 1px solid var(--border-strong);
+  border-bottom: 1px solid var(--line-strong);
 }
 .modal-header h3 {
   margin: 0;
@@ -1969,7 +1971,7 @@ input[type='range'] { width: 100%; accent-color: var(--accent); height: 24px; }
 .sheet-handle {
   width: 40px;
   height: 4px;
-  background: var(--border-strong);
+  background: var(--line-strong);
   border-radius: 2px;
   margin: 0 auto 16px;
 }

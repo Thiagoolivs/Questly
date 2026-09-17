@@ -64,7 +64,7 @@ function Vazio({ children }) {
 }
 
 export default function MeuDia() {
-  const { user } = useApp()
+  const { user, groupId } = useApp()
   const [day, setDay] = useState(null)
   const [leitura, setLeitura] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -74,13 +74,13 @@ export default function MeuDia() {
     setLoading(true)
     setError(null)
     try {
-      setDay(await api.today())
+      setDay(await api.today(null, groupId))
     } catch (e) {
       setError(e.message)
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [groupId])
 
   useEffect(() => {
     carregar()
@@ -151,7 +151,7 @@ export default function MeuDia() {
     )
   }
 
-  const { agenda = [], habits = [], routines = [], summary = {}, rest_day: descanso } = day || {}
+  const { agenda = [], habits = [], routines = [], summary = {}, rest_day: descanso, training: treino, nutrition: nutricao } = day || {}
   const data = day ? new Date(`${day.date}T12:00:00`) : new Date()
   const tudoFeito = summary.total > 0 && summary.pending === 0 && !descanso
 
@@ -257,6 +257,13 @@ export default function MeuDia() {
           </div>
         </Card>
       )}
+
+      {/* Treino e alimentação são o que a pessoa executa no dia, então moram
+          aqui. Planejar os dois é outro assunto, e é do Meu Plano. */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--gap-card)', marginBottom: 'var(--space-9)' }}>
+        <CartaoTreino treino={treino} />
+        <CartaoAlimentacao nutricao={nutricao} />
+      </div>
 
       <Secao
         title="Agenda"
@@ -480,5 +487,175 @@ export default function MeuDia() {
         </p>
       ) : null}
     </div>
+  )
+}
+
+/**
+ * Os dois cartões de destaque da Home.
+ *
+ * Gradiente e anel de progresso vêm do design system: um número grande, uma
+ * linha de contexto e um caminho para a tela inteira. Sem plano/meta eles
+ * viram convite, nunca um cartão vazio.
+ */
+const GRADIENTE_TREINO = 'linear-gradient(135deg, rgba(75,69,244,.38) 0%, rgba(75,69,244,.06) 62%, transparent 100%)'
+const GRADIENTE_COMIDA = 'linear-gradient(135deg, rgba(255,122,24,.34) 0%, rgba(255,122,24,.05) 62%, transparent 100%)'
+
+function CartaoDestaque({ to, gradiente, icone, cor, titulo, numero, unidade, linha, percent, acao }) {
+  return (
+    <Link to={to} style={{ textDecoration: 'none', color: 'inherit', display: 'block', height: '100%' }}>
+      {/* O gradiente vai no fundo do próprio cartão: como filho absoluto ele
+          parava na caixa de conteúdo e deixava a moldura do padding sem cor. */}
+      <Card
+        pad="var(--pad-card-lg)"
+        style={{ height: '100%', background: `${gradiente}, var(--surface-card)` }}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+            <Icon name={icone} size={15} color={cor} />
+            <span
+              style={{
+                fontFamily: 'var(--font-ui)',
+                fontSize: 'var(--fs-micro)',
+                letterSpacing: 'var(--ls-caps)',
+                textTransform: 'uppercase',
+                color: 'var(--text-secondary)',
+              }}
+            >
+              {titulo}
+            </span>
+          </div>
+
+          {numero != null ? (
+            <div style={{ marginTop: 'var(--space-4)', display: 'flex', alignItems: 'baseline', gap: 3 }}>
+              <span
+                style={{
+                  fontFamily: 'var(--font-ui)',
+                  fontVariantNumeric: 'tabular-nums',
+                  fontSize: 'var(--fs-title-1)',
+                  fontWeight: 'var(--fw-bold)',
+                  lineHeight: 'var(--lh-tight)',
+                  color: 'var(--text-primary)',
+                }}
+              >
+                {numero}
+              </span>
+              {unidade ? (
+                <span style={{ fontFamily: 'var(--font-ui)', fontVariantNumeric: 'tabular-nums', fontSize: 'var(--fs-body-sm)', color: 'var(--text-tertiary)' }}>
+                  {unidade}
+                </span>
+              ) : null}
+            </div>
+          ) : null}
+
+          <p
+            style={{
+              margin: numero != null ? '2px 0 0' : 'var(--space-4) 0 0',
+              flex: 1,
+              fontFamily: 'var(--font-ui)',
+              fontSize: 'var(--fs-body-sm)',
+              color: 'var(--text-secondary)',
+            }}
+          >
+            {linha}
+          </p>
+
+          {acao ? (
+            <span
+              style={{
+                marginTop: 'var(--space-5)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+                fontFamily: 'var(--font-ui)',
+                fontSize: 'var(--fs-body-sm)',
+                fontWeight: 'var(--fw-medium)',
+                color: cor,
+              }}
+            >
+              {acao}
+              <Icon name="chevron-right" size={14} color={cor} />
+            </span>
+          ) : (
+            <div style={{ marginTop: 'var(--space-5)', height: 4, borderRadius: 999, background: 'var(--surface-input)', overflow: 'hidden' }}>
+              <div style={{ width: `${Math.min(100, percent)}%`, height: '100%', background: cor }} />
+            </div>
+          )}
+        </div>
+      </Card>
+    </Link>
+  )
+}
+
+function CartaoTreino({ treino }) {
+  if (!treino) {
+    return (
+      <CartaoDestaque
+        to="/plano"
+        gradiente={GRADIENTE_TREINO}
+        icone="dumbbell"
+        cor="var(--blue-glow)"
+        titulo="Treino"
+        linha="Nenhum plano ainda. A IA monta as semanas para você."
+        acao="Montar plano"
+      />
+    )
+  }
+  const sessao = treino.today
+  const linha = sessao
+    ? sessao.status === 'done'
+      ? `${sessao.title} — feito`
+      : sessao.scheduled_for_today
+        ? sessao.title
+        : `Próxima: ${sessao.title}`
+    : treino.logged_today
+      ? 'Plano concluído. Atividade registrada hoje.'
+      : 'Plano concluído.'
+  return (
+    <CartaoDestaque
+      to="/treino"
+      gradiente={GRADIENTE_TREINO}
+      icone="dumbbell"
+      cor="var(--blue-glow)"
+      titulo="Treino"
+      numero={treino.done}
+      unidade={`/${treino.total}`}
+      linha={linha}
+      percent={treino.percent}
+    />
+  )
+}
+
+function CartaoAlimentacao({ nutricao }) {
+  if (!nutricao) {
+    return (
+      <CartaoDestaque
+        to="/plano"
+        gradiente={GRADIENTE_COMIDA}
+        icone="utensils"
+        cor="var(--data-nutrition)"
+        titulo="Alimentação"
+        linha="Sem metas ainda. Complete o perfil para calculá-las."
+        acao="Definir metas"
+      />
+    )
+  }
+  const meta = nutricao.calories_goal || 0
+  const pct = meta ? Math.round((nutricao.calories / meta) * 100) : 0
+  return (
+    <CartaoDestaque
+      to="/nutricao"
+      gradiente={GRADIENTE_COMIDA}
+      icone="utensils"
+      cor="var(--data-nutrition)"
+      titulo="Alimentação"
+      numero={nutricao.calories}
+      unidade={meta ? `/${meta}` : 'kcal'}
+      linha={
+        nutricao.meals === 0
+          ? 'Nada registrado hoje.'
+          : `${nutricao.protein_g}g de proteína · ${nutricao.water_l} L de água`
+      }
+      percent={pct}
+    />
   )
 }

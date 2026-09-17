@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react'
 import { useApp } from '../store.jsx'
 import { api } from '../api.js'
-import { Button, Card, Chip, Icon, Input, ListRow } from '../design-system/components/index.js'
+import { Button, Card, Chip, Icon, IconButton, Input, ListRow, Select } from '../design-system/components/index.js'
 import IconPicker from '../components/IconPicker.jsx'
+import Switch from '../components/Switch.jsx'
+import VoltarPara from '../components/VoltarPara.jsx'
 
 const WEEKDAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 const TIMEZONES = [
@@ -53,7 +55,7 @@ export default function Config() {
       .catch((e) => setErr(e.message))
   }, [groupId])
 
-  if (err) return <div className="screen center error" style={{ padding: 'var(--space-6)', color: 'var(--error)' }}>{err}</div>
+  if (err) return <div className="screen center error" style={{ padding: 'var(--space-6)', color: 'var(--danger)' }}>{err}</div>
   if (!s) return <div className="screen center muted" style={{ padding: 'var(--space-6)', color: 'var(--text-tertiary)' }}>Carregando…</div>
 
   const set = (patch) => setS({ ...s, ...patch })
@@ -126,13 +128,16 @@ export default function Config() {
 
   return (
     <div className="screen" style={{ paddingTop: 'var(--space-6)', paddingLeft: 'var(--gutter-screen)', paddingRight: 'var(--gutter-screen)', paddingBottom: 'var(--space-11)' }}>
-      <header style={{ marginBottom: 'var(--space-8)' }}>
-        <h1 style={{ margin: 0, fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-title-1)', fontWeight: 'var(--fw-bold)', color: 'var(--text-primary)' }}>
+      <header style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-5)', marginBottom: 'var(--space-8)' }}>
+        <VoltarPara para="/grupo" />
+        <div style={{ flex: 1, minWidth: 0 }}>
+        <h1 style={{ margin: 0, fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-title-2)', fontWeight: 'var(--fw-bold)', color: 'var(--text-primary)' }}>
           Configurações do grupo
         </h1>
-        <p style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-body)', color: 'var(--text-secondary)', marginTop: 'var(--space-2)' }}>
-          Regras e metas valem para todo mundo aqui.
+        <p style={{ margin: '2px 0 0', fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-body-sm)', color: 'var(--text-tertiary)' }}>
+          Valem para todo mundo aqui
         </p>
+      </div>
       </header>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-8)' }}>
@@ -183,11 +188,11 @@ export default function Config() {
                   ? <><strong style={{ color: 'var(--text-primary)' }}>{s.ai_pool_count} desafios</strong> de IA no lote{aiUpdated ? ` · atualizado em ${aiUpdated}` : ''}.</>
                   : 'Nenhum lote gerado ainda — só os desafios fixos por enquanto.'}
               </div>
-              <Button variant="secondary" block disabled={genBusy} onClick={generateAI}>
+              <Button variant="secondary" fullWidth disabled={genBusy} onClick={generateAI}>
                 <Icon name="refresh-cw" size={16} /> {genBusy ? 'Gerando…' : 'Gerar novos desafios'}
               </Button>
               {genMsg && (
-                <div style={{ marginTop: 'var(--space-3)', fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-caption)', color: genMsg.ok ? 'var(--text-secondary)' : 'var(--error)' }}>
+                <div style={{ marginTop: 'var(--space-3)', fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-caption)', color: genMsg.ok ? 'var(--text-secondary)' : 'var(--danger)' }}>
                   {genMsg.text}
                 </div>
               )}
@@ -201,9 +206,9 @@ export default function Config() {
 
         <Card>
           <div style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-title-3)', color: 'var(--text-primary)', marginBottom: 'var(--space-4)' }}>
-            Metas diárias (Padrão)
+            Metas diárias do grupo
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 'var(--space-5)' }}>
             <Input label="Água (L)" type="number" step="0.1" value={s.water_goal_l} onChange={(e) => set({ water_goal_l: e.target.value })} />
             <Input label="Passos" type="number" value={s.steps_goal} onChange={(e) => set({ steps_goal: e.target.value })} />
             <Input label="Proteína (g)" type="number" value={s.protein_goal_g} onChange={(e) => set({ protein_goal_g: e.target.value })} />
@@ -221,52 +226,35 @@ export default function Config() {
           <p style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-caption)', color: 'var(--text-secondary)', marginBottom: 'var(--space-4)' }}>
             Define quando o dia vira à meia-noite (o placar zera no seu horário local).
           </p>
-          <select
+          <Select
             value={s.timezone || 'America/Sao_Paulo'}
             onChange={(e) => set({ timezone: e.target.value })}
-            style={{
-              width: '100%', padding: 'var(--space-3)', borderRadius: 'var(--radius-md)',
-              border: '1px solid var(--line-hairline)', background: 'var(--surface-input)',
-              color: 'var(--text-primary)', fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-body)',
-              appearance: 'none', WebkitAppearance: 'none'
-            }}
-          >
-            {(TIMEZONES.some(([tz]) => tz === s.timezone) ? TIMEZONES : [[s.timezone, s.timezone], ...TIMEZONES]).map(
-              ([tz, label]) => (
-                <option key={tz} value={tz}>{label}</option>
-              ),
+            options={(TIMEZONES.some(([tz]) => tz === s.timezone) ? TIMEZONES : [[s.timezone, s.timezone], ...TIMEZONES]).map(
+              ([tz, label]) => ({ value: tz, label }),
             )}
-          </select>
+          />
         </Card>
 
         <Card>
           <div style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-title-3)', color: 'var(--text-primary)', marginBottom: 'var(--space-3)' }}>
             Dias de descanso
           </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
+          <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
             {WEEKDAYS.map((w, i) => (
-              <button
+              <Chip
                 key={w}
-                style={{
-                  padding: 'var(--space-2) var(--space-4)',
-                  borderRadius: 'var(--radius-pill)',
-                  border: '1px solid',
-                  borderColor: (s.rest_days || []).includes(i) ? 'var(--blue-glow)' : 'var(--line-hairline)',
-                  background: (s.rest_days || []).includes(i) ? 'rgba(0,122,255,0.1)' : 'var(--surface-input)',
-                  color: (s.rest_days || []).includes(i) ? 'var(--blue-glow)' : 'var(--text-secondary)',
-                  fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-body)', fontWeight: 'var(--fw-medium)',
-                  cursor: 'pointer'
-                }}
+                selected={(s.rest_days || []).includes(i)}
                 onClick={() => toggleRest(i)}
+                style={{ flex: 1, minWidth: 0, padding: 0 }}
               >
                 {w}
-              </button>
+              </Chip>
             ))}
           </div>
         </Card>
 
         <Card pad="0 var(--pad-card)">
-          <div style={{ padding: 'var(--pad-card-md)', paddingBottom: 'var(--space-2)' }}>
+          <div style={{ padding: 'var(--pad-card)', paddingBottom: 'var(--space-2)' }}>
             <div style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-title-3)', color: 'var(--text-primary)', marginBottom: 'var(--space-1)' }}>
               Hábitos
             </div>
@@ -280,66 +268,85 @@ export default function Config() {
               <ListRow
                 key={h.key}
                 title={h.label}
-                left={
-                  <div style={{ 
-                    width: 32, height: 32, borderRadius: 'var(--radius-md)', 
-                    background: selected.has(h.key) ? 'rgba(0,122,255,0.1)' : 'var(--surface-input)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    color: selected.has(h.key) ? 'var(--blue-glow)' : 'var(--text-tertiary)',
-                    fontSize: h.icon ? 18 : 20
-                  }}>
-                    <Icon name={h.icon || "check-circle"} size={18} />
+                divider={i < menu.length - 1}
+                chevron={false}
+                leading={
+                  <div
+                    style={{
+                      width: 32,
+                      height: 32,
+                      flex: 'none',
+                      borderRadius: 'var(--radius-md)',
+                      background: selected.has(h.key) ? 'var(--surface-accent-soft)' : 'var(--surface-input)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Icon
+                      name={h.icon || 'check-circle'}
+                      size={16}
+                      color={selected.has(h.key) ? 'var(--blue-glow)' : 'var(--text-tertiary)'}
+                    />
                   </div>
                 }
-                right={
-                  <button
-                    className={'toggle ' + (selected.has(h.key) ? 'on' : '')}
-                    onClick={() => toggleHabit(h.key)}
-                    aria-pressed={selected.has(h.key)}
-                  >
-                    <span className="knob" />
-                  </button>
+                trailing={
+                  <Switch checked={selected.has(h.key)} onChange={() => toggleHabit(h.key)} label={h.label} />
                 }
-                borderBottom={i < menu.length - 1}
               />
             ))}
           </div>
 
-          <div style={{ padding: 'var(--pad-card-md)', borderTop: '1px solid var(--line-hairline)', background: 'var(--surface-input)', borderBottomLeftRadius: 'var(--radius-lg)', borderBottomRightRadius: 'var(--radius-lg)' }}>
-            <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-              <div style={{ background: 'var(--surface-overlay)', border: '1px solid var(--line-hairline)', borderRadius: 'var(--radius-md)' }}>
+          <div style={{ padding: 'var(--pad-card) 0', borderTop: '1px solid var(--line-hairline)' }}>
+            <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center' }}>
+              <div style={{ flex: 'none', background: 'var(--surface-input)', border: 'var(--border-input)', borderRadius: 'var(--radius-md)' }}>
                 <IconPicker icon={newHabit.icon} onPick={({ icon }) => setNewHabit({ ...newHabit, icon })} />
               </div>
-              <input
-                style={{
-                  flex: 1, padding: 'var(--space-2) var(--space-3)', borderRadius: 'var(--radius-md)',
-                  border: '1px solid var(--line-hairline)', background: 'var(--surface-overlay)',
-                  color: 'var(--text-primary)', fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-body)'
-                }}
-                placeholder="Novo hábito..."
-                value={newHabit.label}
-                onChange={(e) => setNewHabit({ ...newHabit, label: e.target.value })}
-                onKeyDown={(e) => e.key === 'Enter' && addHabit()}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <Input
+                  placeholder="Criar um hábito novo"
+                  value={newHabit.label}
+                  onChange={(e) => setNewHabit({ ...newHabit, label: e.target.value })}
+                  onKeyDown={(e) => e.key === 'Enter' && addHabit()}
+                />
+              </div>
+              <IconButton
+                icon="plus"
+                tone="accent"
+                label="Adicionar hábito"
+                onClick={addHabit}
+                disabled={!newHabit.label.trim()}
               />
-              <Button variant="primary" onClick={addHabit} disabled={!newHabit.label.trim()}>
-                +
-              </Button>
             </div>
-            {selected.size === 0 && <div style={{ marginTop: 'var(--space-3)', fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-caption)', color: 'var(--warning)' }}>Selecione ao menos 1 (senão mantém o padrão).</div>}
+            {selected.size === 0 && (
+              <p style={{ margin: 'var(--space-4) 0 0', fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-caption)', color: 'var(--warning)' }}>
+                Selecione ao menos 1 — sem nenhum, o app mantém a lista padrão.
+              </p>
+            )}
           </div>
         </Card>
 
-      </div>
-      
-      {/* Sticky Save Footer */}
-      <div style={{
-        position: 'fixed', bottom: 'calc(var(--tab-bar-height) + env(safe-area-inset-bottom))', left: 0, right: 0,
-        padding: 'var(--space-4)', background: 'var(--surface-overlay)', borderTop: '1px solid var(--line-hairline)',
-        boxShadow: '0 -4px 12px rgba(0,0,0,0.05)', zIndex: 100
-      }}>
-        <Button variant="primary" block onClick={save}>
-          {saved ? 'Configurações salvas' : 'Salvar configurações'}
-        </Button>
+
+        {/* `sticky`, não `fixed`: o botão acompanha a rolagem mas continua no
+            fluxo, então a página reserva o espaço dele. Fixo e semitransparente
+            ele pairava no meio do conteúdo e escondia os campos de trás. */}
+        <div
+          style={{
+            position: 'sticky',
+            bottom: 0,
+            zIndex: 1,
+            marginLeft: 'calc(-1 * var(--gutter-screen))',
+            marginRight: 'calc(-1 * var(--gutter-screen))',
+            padding: 'var(--space-5) var(--gutter-screen)',
+            paddingBottom: 'calc(var(--space-5) + env(safe-area-inset-bottom, 0px))',
+            background: 'var(--surface-page)',
+            borderTop: '1px solid var(--line-hairline)',
+          }}
+        >
+          <Button variant="accent" size="lg" fullWidth onClick={save}>
+            {saved ? 'Configurações salvas' : 'Salvar configurações'}
+          </Button>
+        </div>
       </div>
     </div>
   )
@@ -393,88 +400,68 @@ function ChallengesCard({ s, set }) {
         Áreas ativas — o dia sorteia um desafio de cada área.
       </p>
       
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)', marginBottom: 'var(--space-6)' }}>
+      {/* Uma fileira de áreas só: antes havia duas quase idênticas — uma para
+          ligar/desligar a área, outra para escolher onde escrever — e não dava
+          para saber o que cada clique fazia. Agora a área selecionada é a mesma
+          coisa nos dois casos. */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)', marginBottom: 'var(--space-5)' }}>
         {areas.map((a) => (
-          <button 
-            key={a} 
-            style={{
-              padding: 'var(--space-2) var(--space-4)',
-              borderRadius: 'var(--radius-pill)',
-              border: '1px solid',
-              borderColor: off.includes(a) ? 'var(--line-hairline)' : 'var(--blue-glow)',
-              background: off.includes(a) ? 'var(--surface-input)' : 'rgba(0,122,255,0.1)',
-              color: off.includes(a) ? 'var(--text-secondary)' : 'var(--blue-glow)',
-              fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-caption)', fontWeight: 'var(--fw-medium)',
-              cursor: 'pointer'
-            }}
-            onClick={() => toggleArea(a)}
-          >
+          <Chip key={a} selected={area === a} onClick={() => setArea(a)}>
             {a}
-          </button>
+          </Chip>
         ))}
       </div>
 
-      <div style={{ height: 1, background: 'var(--line-hairline)', margin: '0 -var(--pad-card-md) var(--space-6)' }} />
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 'var(--space-4)',
+          padding: 'var(--space-4) 0',
+          borderTop: '1px solid var(--line-hairline)',
+          borderBottom: '1px solid var(--line-hairline)',
+          marginBottom: 'var(--space-5)',
+        }}
+      >
+        <span style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-body-sm)', color: 'var(--text-secondary)' }}>
+          Sortear desafios de <strong style={{ color: 'var(--text-primary)' }}>{area}</strong>
+        </span>
+        <Switch checked={!off.includes(area)} onChange={() => toggleArea(area)} label={`Ativar área ${area}`} />
+      </div>
 
-      <p style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-caption)', color: 'var(--text-secondary)', marginBottom: 'var(--space-3)' }}>
-        Escreva desafios de vocês (entram no sorteio junto com os do app):
-      </p>
-      
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)', marginBottom: 'var(--space-3)' }}>
-        {areas.filter((a) => !off.includes(a)).map((a) => (
-          <button 
-            key={a} 
-            style={{
-              padding: 'var(--space-2) var(--space-3)',
-              borderRadius: 'var(--radius-pill)',
-              border: 'none',
-              background: area === a ? 'var(--text-primary)' : 'var(--surface-input)',
-              color: area === a ? 'var(--surface-overlay)' : 'var(--text-secondary)',
-              fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-caption)', fontWeight: 'var(--fw-medium)',
-              cursor: 'pointer'
-            }}
-            onClick={() => setArea(a)}
-          >
-            {a}
-          </button>
-        ))}
-      </div>
-      
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
-        {diffs.map((d) => (
-          <button 
-            key={d.key} 
-            style={{
-              padding: 'var(--space-2) var(--space-3)',
-              borderRadius: 'var(--radius-pill)',
-              border: 'none',
-              background: diff === d.key ? 'var(--text-primary)' : 'var(--surface-input)',
-              color: diff === d.key ? 'var(--surface-overlay)' : 'var(--text-secondary)',
-              fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-caption)', fontWeight: 'var(--fw-medium)',
-              cursor: 'pointer'
-            }}
-            onClick={() => setDiff(d.key)}
-          >
-            {d.label} · {d.points}pts
-          </button>
-        ))}
-      </div>
-      
-      <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-6)' }}>
-        <input
-          style={{
-            flex: 1, padding: 'var(--space-3)', borderRadius: 'var(--radius-md)',
-            border: '1px solid var(--line-hairline)', background: 'var(--surface-overlay)',
-            color: 'var(--text-primary)', fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-body)'
-          }}
-          placeholder={`Ex: desafio de ${area.toLowerCase()}…`}
-          value={text}
-          maxLength={160}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && addChallenge()}
-        />
-        <Button variant="primary" disabled={!text.trim()} onClick={addChallenge}>+</Button>
-      </div>
+      {off.includes(area) ? (
+        <p style={{ margin: 0, fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-body-sm)', color: 'var(--text-tertiary)' }}>
+          Área desligada — nada de {area.toLowerCase()} aparece no dia.
+        </p>
+      ) : (
+        <>
+          <p style={{ margin: '0 0 var(--space-4)', fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-body-sm)', color: 'var(--text-secondary)' }}>
+            Escreva desafios de vocês — eles entram no sorteio junto com os do app.
+          </p>
+
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
+            {diffs.map((d) => (
+              <Chip key={d.key} selected={diff === d.key} onClick={() => setDiff(d.key)}>
+                {d.label} · {d.points} pts
+              </Chip>
+            ))}
+          </div>
+
+          <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center', marginBottom: 'var(--space-6)' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <Input
+                placeholder={`Desafio de ${area.toLowerCase()}…`}
+                value={text}
+                maxLength={160}
+                onChange={(e) => setText(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && addChallenge()}
+              />
+            </div>
+            <IconButton icon="plus" tone="accent" label="Adicionar desafio" disabled={!text.trim()} onClick={addChallenge} />
+          </div>
+        </>
+      )}
 
       {mine.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', marginBottom: 'var(--space-6)' }}>
@@ -507,13 +494,11 @@ function ChallengesCard({ s, set }) {
             <span style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-caption)', color: 'var(--text-secondary)' }}>
               Em <strong>{a}</strong>, usar só desafios criados
             </span>
-            <button
-              className={'toggle ' + ((custom[a] && custom[a].only) ? 'on' : '')}
-              onClick={() => patchArea(a, { only: !(custom[a] && custom[a].only) })}
-              aria-pressed={!!(custom[a] && custom[a].only)}
-            >
-              <span className="knob" />
-            </button>
+            <Switch
+              checked={!!(custom[a] && custom[a].only)}
+              onChange={() => patchArea(a, { only: !(custom[a] && custom[a].only) })}
+              label={`Em ${a}, usar só desafios criados`}
+            />
           </div>
         )
       })}

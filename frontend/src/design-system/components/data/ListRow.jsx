@@ -7,9 +7,13 @@ import Icon from "../core/Icon.jsx";
  * Além da API original (icon/title/meta/count/danger), aceita o que o Questly
  * precisa para listas acionáveis: `subtitle`, um controle à direita (`trailing`)
  * e o chevron opcional — numa linha com checkbox o chevron não faz sentido.
+ *
+ * `leading` substitui o ícone quando a esquerda precisa ser um controle de
+ * verdade (checkbox, avatar, posição no ranking) e não um glifo.
  */
 export default function ListRow({
   icon,
+  leading,
   title,
   subtitle,
   meta,
@@ -46,13 +50,14 @@ export default function ListRow({
         ...style,
       }}
     >
-      {icon ? (
-        <Icon
-          name={icon}
-          size={16}
-          color={danger ? "var(--danger)" : "var(--text-secondary)"}
-        />
-      ) : null}
+      {leading ??
+        (icon ? (
+          <Icon
+            name={icon}
+            size={16}
+            color={danger ? "var(--danger)" : "var(--text-secondary)"}
+          />
+        ) : null)}
 
       <div style={{ flex: 1, minWidth: 0 }}>
         <span

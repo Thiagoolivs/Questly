@@ -17,7 +17,9 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from . import ai
+from . import foods
 from . import mailer
+from . import openfoodfacts
 from . import nutrition
 from . import scoring
 from . import scoring_v2
@@ -75,6 +77,7 @@ from .schemas import (
     HabitPhotoRequest,
     JointActivityCreate,
     MealCreate,
+    MealFoodsCreate,
     MealTextCreate,
     MealUpdate,
     ReactRequest,
@@ -235,6 +238,12 @@ def parse_date(value: str | None, default: date | None = None) -> date:
         return date.fromisoformat(value)
     except ValueError:
         raise HTTPException(400, f"Data inválida: {value!r} (use YYYY-MM-DD).")
+
+
+MESES_PT = [
+    "janeiro", "fevereiro", "março", "abril", "maio", "junho",
+    "julho", "agosto", "setembro", "outubro", "novembro", "dezembro",
+]
 
 
 def month_bounds(d: date) -> tuple[date, date]:
@@ -1699,6 +1708,72 @@ def create_meal_text(gid: int, payload: MealTextCreate, user: User = Depends(get
     return {"meal": serialize_meal(meal), "nutrition": nutrition_payload(db, gid, me, d, s)}
 
 
+@app.get("/api/foods")
+def search_foods(q: str = "", user: User = Depends(get_current_user)):
+    """Busca alimento por nome para registrar refeição sem depender de IA.
+
+    A tabela local (TACO) responde primeiro e sozinha resolve comida de verdade.
+    Só quando ela traz pouca coisa é que o Open Food Facts entra, para produto
+    de marca — e se ele estiver fora do ar a busca local segue valendo.
+    """
+    locais = foods.buscar(q)
+    resultado = list(locais)
+    if len(locais) < 5:
+        vistos = {f["id"] for f in locais}
+        for item in openfoodfacts.buscar(q, limite=8 - len(locais)):
+            if item["id"] not in vistos:
+                resultado.append(item)
+    return {"foods": resultado}
+
+
+@app.post("/api/groups/{gid}/meals/foods")
+def create_meal_foods(gid: int, payload: MealFoodsCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Registra refeição a partir de alimentos e quantidades — número exato,
+    sem estimativa e sem chave de IA."""
+    me = get_membership(db, user, gid)
+    s_obj = get_group_settings(db, gid)
+    today = today_of(s_obj)
+    d = parse_date(payload.date, today)
+    ensure_today(d, today)
+
+    calculados = []
+    for item in payload.items:
+        exato = foods.macros(item.food_id, item.grams)
+        if exato is None:
+            # Item de fora da tabela (Open Food Facts): os valores por 100 g
+            # vêm no corpo, porque o servidor não guarda cópia daquela base.
+            if item.calories is None:
+                raise HTTPException(400, f"Alimento desconhecido: {item.food_id}")
+            fator = item.grams / 100.0
+            exato = {
+                "id": item.food_id,
+                "name": (item.name or "Alimento").strip()[:120],
+                "grams": round(item.grams, 1),
+                "calories": round(item.calories * fator),
+                "protein_g": round((item.protein_g or 0) * fator, 1),
+                "carbs_g": round((item.carbs_g or 0) * fator, 1),
+                "fat_g": round((item.fat_g or 0) * fator, 1),
+            }
+        calculados.append(exato)
+
+    total = foods.somar(calculados)
+    meal = Meal(
+        group_id=gid,
+        membership_id=me.id,
+        date=d,
+        label=(payload.label or foods.rotulo(calculados)).strip()[:120],
+        calories=total["calories"],
+        protein_g=total["protein_g"],
+        carbs_g=total["carbs_g"],
+        fat_g=total["fat_g"],
+        ai_confidence=None,  # tabelado, não estimado
+    )
+    db.add(meal)
+    db.commit()
+    db.refresh(meal)
+    return {"meal": serialize_meal(meal), "items": calculados, "nutrition": nutrition_payload(db, gid, me, d, s_obj)}
+
+
 @app.patch("/api/groups/{gid}/meals/{meal_id}")
 def update_meal(gid: int, meal_id: int, payload: MealUpdate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     me = get_membership(db, user, gid)
@@ -1873,39 +1948,76 @@ def create_activity_record(gid: int, payload: s.ActivityRecordCreate, user: User
 # --- rotas: grupo (ranking e feed) -------------------------------------
 @app.get("/api/groups/{gid}/ranking")
 def get_ranking(gid: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    membership = get_membership(db, user, gid)
-    
-    period_start, period_end = month_bounds(date.today())
+    """Placar do mês.
 
-    # Membros do grupo
+    Devolve tudo o que a tela do grupo precisa para parecer uma disputa: posição,
+    distância para quem está na frente, sequência e o recorte por origem do
+    ponto. Antes ela montava isso sozinha a partir de campos que não existiam.
+    """
+    me = get_membership(db, user, gid)
+    group = db.get(Group, gid)
+    settings = get_group_settings(db, gid)
+    today = today_of(settings)
+    period_start, period_end = month_bounds(today)
+
     members = group_members(db, gid)
-    
+    joint = joint_points_map(db, gid)
+
     ranking = []
     for m_obj in members:
-        # Pega o score competitivo do período
-        cs = db.query(m.CompetitiveScore).filter(
-            m.CompetitiveScore.membership_id == m_obj.id,
-            m.CompetitiveScore.period_start == period_start,
-            m.CompetitiveScore.period_end == period_end
-        ).first()
-        
-        # Pega o user progress (para Level)
+        cs = (
+            db.query(m.CompetitiveScore)
+            .filter(
+                m.CompetitiveScore.membership_id == m_obj.id,
+                m.CompetitiveScore.period_start == period_start,
+                m.CompetitiveScore.period_end == period_end,
+            )
+            .first()
+        )
         up = db.query(m.UserProgress).filter(m.UserProgress.user_id == m_obj.user_id).first()
-        level = up.level if up else 1
-        
-        ranking.append({
-            "membership_id": m_obj.id,
-            "user_id": m_obj.user.id,
-            "name": m_obj.user.name,
-            "level": level,
-            "effort_score": cs.effort_score if cs else 0,
-            "consistency_score": cs.consistency_score if cs else 0,
-            "challenge_score": cs.challenge_score if cs else 0,
-            "total_score": cs.total_score if cs else 0,
-        })
-        
-    ranking.sort(key=lambda x: x["total_score"], reverse=True)
-    return {"period": f"{period_start.strftime('%B %Y')}", "ranking": ranking}
+        days = build_member_days(settings, m_obj, joint, today)
+        stats = scoring.player_stats(settings, days, today)
+
+        ranking.append(
+            {
+                "membership_id": m_obj.id,
+                "user_id": m_obj.user.id,
+                "name": m_obj.user.name,
+                "photo": m_obj.user.photo,
+                "level": (up.level if up else 1) or 1,
+                "xp": (up.total_xp if up else 0) or 0,
+                "streak": stats["streak"],
+                "effort_score": round(cs.effort_score if cs else 0.0),
+                "consistency_score": round(cs.consistency_score if cs else 0.0),
+                "challenge_score": round(cs.challenge_score if cs else 0.0),
+                "total_score": round(cs.total_score if cs else 0.0),
+                "is_me": m_obj.id == me.id,
+            }
+        )
+
+    ranking.sort(key=lambda x: (-x["total_score"], x["name"].lower()))
+    lider = ranking[0]["total_score"] if ranking else 0
+    for i, r in enumerate(ranking):
+        r["position"] = i + 1
+        # Distância para quem está imediatamente à frente: é o número que faz
+        # alguém sair para correr, não o total do líder.
+        r["gap_to_next"] = 0 if i == 0 else ranking[i - 1]["total_score"] - r["total_score"]
+        r["gap_to_leader"] = lider - r["total_score"]
+
+    eu = next((r for r in ranking if r["is_me"]), None)
+    return {
+        "period": f"{MESES_PT[period_start.month - 1]} de {period_start.year}",
+        "period_start": period_start.isoformat(),
+        "period_end": period_end.isoformat(),
+        "days_left": (period_end - today).days,
+        "ranking": ranking,
+        "total_score": sum(r["total_score"] for r in ranking),
+        "me": eu,
+        # Um espaço individual não tem contra quem competir; a tela usa isto
+        # para trocar o placar por progresso pessoal em vez de mostrar um
+        # ranking de uma pessoa só.
+        "competitive": bool(group_rules(group)["ranking"]) and len(ranking) > 1,
+    }
 
 
 @app.get("/api/groups/{gid}/activities")
@@ -2174,7 +2286,10 @@ def state(gid: int, user: User = Depends(get_current_user), db: Session = Depend
 
     return {
         "date": today.isoformat(),
-        "group": {"id": gid, "name": membership.group.name, "invite_code": membership.group.invite_code, "role": membership.role},
+        # O resumo completo (com `rules` e `member_count`): a tela do grupo lê o
+        # grupo daqui, e sem as regras ela não sabia se havia convite nem quantas
+        # pessoas competiam — mostrava "0 pessoas" e escondia o código.
+        "group": group_summary(membership.group, membership.role, len(members)),
         "me_id": membership.id,
         "day_number": scoring.day_number(s, today),
         "duration_days": s.duration_days,
@@ -2485,12 +2600,84 @@ def remove_rest_day(day: str, user: User = Depends(get_current_user), db: Sessio
     return {"ok": True}
 
 
+def _treino_de_hoje(db: Session, user: User, d: date, records: list) -> dict | None:
+    """O treino do dia: a sessão marcada para hoje, ou a próxima pendente.
+
+    Devolve None quando não há plano — a Home então convida a montar um em vez
+    de mostrar um cartão vazio.
+    """
+    plano = (
+        db.query(m.TrainingPlan)
+        .filter(m.TrainingPlan.user_id == user.id, m.TrainingPlan.status == "active")
+        .order_by(m.TrainingPlan.id.desc())
+        .first()
+    )
+    if plano is None:
+        return None
+
+    sessoes = (
+        db.query(m.TrainingSession)
+        .filter(m.TrainingSession.plan_id == plano.id)
+        .order_by(m.TrainingSession.week, m.TrainingSession.order)
+        .all()
+    )
+    feitas = len([x for x in sessoes if x.status == "done"])
+    hoje = next((x for x in sessoes if x.scheduled_date == d), None)
+    proxima = hoje or next((x for x in sessoes if x.status == "pending"), None)
+
+    return {
+        "plan_id": plano.id,
+        "modality": plano.modality,
+        "goal": plano.goal,
+        "done": feitas,
+        "total": len(sessoes),
+        "percent": round(feitas / len(sessoes) * 100) if sessoes else 0,
+        "today": None if proxima is None else {
+            "id": proxima.id,
+            "title": proxima.title,
+            "focus": proxima.focus,
+            "duration_min": proxima.duration_min,
+            "status": proxima.status,
+            "items": len(proxima.items or []),
+            "scheduled_for_today": proxima.scheduled_date == d,
+        },
+        # Atividade solta registrada hoje conta como treino feito, mesmo fora do plano.
+        "logged_today": len(records),
+    }
+
+
+def _nutricao_de_hoje(db: Session, user: User, d: date, gid: int | None) -> dict | None:
+    """Resumo de calorias e água do dia, do espaço atual da pessoa."""
+    q = db.query(Membership).filter(Membership.user_id == user.id)
+    membership = q.filter(Membership.group_id == gid).first() if gid else None
+    if membership is None:
+        membership = q.order_by(Membership.id).first()
+    if membership is None:
+        return None
+
+    s_obj = get_group_settings(db, membership.group_id)
+    dados = nutrition_payload(db, membership.group_id, membership, d, s_obj)
+    return {
+        "group_id": membership.group_id,
+        "calories": dados["calories"],
+        "calories_goal": dados["calories_goal"],
+        "protein_g": dados["protein_g"],
+        "protein_goal_g": dados["protein_goal_g"],
+        "water_l": dados["water_l"],
+        "water_goal_l": dados["water_goal_l"],
+        "meals": dados["count"],
+    }
+
+
 @app.get("/api/today")
-def my_day(day: str | None = None, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def my_day(day: str | None = None, group: int | None = None, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Tudo que o usuário precisa fazer hoje, numa chamada só.
 
     É o payload do Meu Dia: agenda, rotinas e hábitos do dia já cruzados com o
     que foi registrado. Não depende de grupo — o Questly funciona sozinho.
+
+    `group` é opcional e só serve para a alimentação, que é registrada dentro
+    de um espaço. Sem ele, usa o primeiro espaço da pessoa.
     """
     d = parse_date(day, date.today())
     resting = is_rest_day(db, user.id, d)
@@ -2615,6 +2802,10 @@ def my_day(day: str | None = None, user: User = Depends(get_current_user), db: S
             "xp_earned": r.xp_earned,
             "score_earned": r.score_earned,
         } for r in records],
+        # Treino e alimentação aparecem na Home porque são o que a pessoa
+        # realmente faz no dia. O planejamento dos dois fica no Meu Plano.
+        "training": _treino_de_hoje(db, user, d, records),
+        "nutrition": _nutricao_de_hoje(db, user, d, group),
         "summary": {
             "total": total_items,
             "done": done_items,

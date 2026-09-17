@@ -9,18 +9,19 @@ const TONES = {
   bare: { background: "transparent", color: "var(--text-secondary)", border: "1px solid transparent" },
 };
 
-export default function IconButton({ icon, size = 36, tone = "dark", label, style, ...rest }) {
+export default function IconButton({ icon, size = 36, tone = "dark", label, disabled = false, style, ...rest }) {
   const [down, setDown] = React.useState(false);
   return (
     <button
-      type="button" aria-label={label || icon}
+      type="button" aria-label={label || icon} disabled={disabled}
       onPointerDown={() => setDown(true)} onPointerUp={() => setDown(false)} onPointerLeave={() => setDown(false)}
       {...rest}
       style={{
         width: size, height: size, borderRadius: "var(--radius-pill)", display: "inline-flex",
-        alignItems: "center", justifyContent: "center", cursor: "pointer", flex: "none",
-        transform: down ? "scale(var(--press-scale))" : "scale(1)",
-        transition: "transform var(--dur-instant) var(--ease-standard)",
+        alignItems: "center", justifyContent: "center", flex: "none",
+        cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.4 : 1,
+        transform: down && !disabled ? "scale(var(--press-scale))" : "scale(1)",
+        transition: "transform var(--dur-instant) var(--ease-standard), opacity var(--dur-fast) var(--ease-standard)",
         WebkitTapHighlightColor: "transparent", ...TONES[tone], ...style,
       }}
     >

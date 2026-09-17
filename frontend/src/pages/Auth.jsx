@@ -127,7 +127,7 @@ export default function Auth() {
           </p>
         </div>
 
-        <Card padding="lg" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
+        <Card style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
           {isAuthTabs && (
             <div style={{ display: 'flex', justifyContent: 'center' }}>
               <SegmentedControl
@@ -195,7 +195,7 @@ export default function Auth() {
             )}
 
             {err && (
-              <div style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-body-sm)', color: 'var(--error)', padding: 'var(--space-3)', background: 'rgba(255, 69, 58, 0.1)', borderRadius: 'var(--radius-sm)' }}>
+              <div style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-body-sm)', color: 'var(--danger)', padding: 'var(--space-3)', background: 'var(--danger-bg)', borderRadius: 'var(--radius-sm)' }}>
                 {err}
               </div>
             )}

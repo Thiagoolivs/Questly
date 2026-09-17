@@ -20,6 +20,9 @@ export default function Button({
   iconLeft, iconRight, disabled = false, style, onClick, ...rest
 }) {
   const [down, setDown] = React.useState(false);
+  // Um tamanho fora da escala derrubava a tela inteira em `SIZES[size].borderRadius`.
+  const dims = SIZES[size] || SIZES.md;
+  const surface = SURFACES[variant] || SURFACES.primary;
   return (
     <button
       type="button"
@@ -37,8 +40,8 @@ export default function Button({
         transform: down && !disabled ? "scale(var(--press-scale))" : "scale(1)",
         transition: "transform var(--dur-instant) var(--ease-standard), opacity var(--dur-fast) var(--ease-standard)",
         WebkitTapHighlightColor: "transparent",
-        ...SIZES[size], ...SURFACES[variant],
-        borderRadius: pill ? "var(--radius-pill)" : SIZES[size].borderRadius,
+        ...dims, ...surface,
+        borderRadius: pill ? "var(--radius-pill)" : dims.borderRadius,
         ...style,
       }}
     >
