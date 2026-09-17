@@ -367,9 +367,40 @@ def _metric_value(metric: str, days: list[dict], stats: dict) -> int:
     return stats.get(metric, 0)
 
 
-def achievements_for(days: list[dict], stats: dict, casal_days: int = 0) -> list[dict]:
+def achievement_applies(a: dict, settings=None, group_type: str | None = None) -> bool:
+    """A conquista pode ser desbloqueada neste espaço?
+
+    Medalha que ninguém consegue tirar não é meta, é frustração na prateleira:
+    "Casal Inabalável" num grupo de cinco, "Mestre da Água" onde o hábito de
+    água está desligado, "Equilíbrio" onde uma das áreas foi desativada.
+    """
+    tipos = a.get("group_types")
+    if tipos and (group_type or "group") not in tipos:
+        return False
+    if settings is None:
+        return True
+
+    habito = a.get("needs_habit")
+    if habito and habito not in {h["key"] for h in _fixed_habits(settings)}:
+        return False
+
+    areas = a.get("needs_areas")
+    if areas and not set(areas).issubset(set(active_categories(settings))):
+        return False
+    return True
+
+
+def achievements_for(
+    days: list[dict],
+    stats: dict,
+    casal_days: int = 0,
+    settings=None,
+    group_type: str | None = None,
+) -> list[dict]:
     result = []
     for a in ACHIEVEMENTS:
+        if not achievement_applies(a, settings, group_type):
+            continue
         current = casal_days if a["metric"] == "casal" else _metric_value(a["metric"], days, stats)
         target = a["target"]
         result.append({

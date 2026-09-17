@@ -163,6 +163,11 @@ DIFFICULTY_LABEL = {"facil": "Fácil", "medio": "Médio", "dificil": "Difícil"}
 
 # --- Conquistas ------------------------------------------------------------
 # Cada conquista define uma métrica e um alvo; a checagem fica em scoring.py.
+#
+# `group_types`, `needs_habit` e `needs_areas` dizem quando a conquista faz
+# sentido. Sem isso, um grupo de cinco pessoas via "Casal Inabalável" — que
+# ninguém ali pode desbloquear — e quem desligou a área Mental via uma medalha
+# presa para sempre. Conquista impossível não motiva, atrapalha.
 ACHIEVEMENTS = [
     {"key": "primeiros_7", "name": "Primeiros 7 dias", "icon": "medal",
      "desc": "Conclua 7 dias do desafio.", "metric": "completed_days", "target": 7},
@@ -171,24 +176,30 @@ ACHIEVEMENTS = [
     {"key": "completos_30", "name": "30 dias completos", "icon": "trophy",
      "desc": "Conclua 30 dias do desafio.", "metric": "completed_days", "target": 30},
     {"key": "mestre_agua", "name": "Mestre da Água", "icon": "droplet",
-     "desc": "Bata a meta de água em 15 dias.", "metric": "habit:agua", "target": 15},
+     "desc": "Bata a meta de água em 15 dias.", "metric": "habit:agua", "target": 15,
+     "needs_habit": "agua"},
     {"key": "rei_disciplina", "name": "Rei da Disciplina", "icon": "crown",
      "desc": "Cumpra todos os hábitos em 20 dias.", "metric": "all_habits_days", "target": 20},
     {"key": "leitor", "name": "Leitor Consistente", "icon": "library",
-     "desc": "Cumpra o hábito de leitura em 20 dias.", "metric": "habit:leitura", "target": 20},
+     "desc": "Cumpra o hábito de leitura em 20 dias.", "metric": "habit:leitura", "target": 20,
+     "needs_habit": "leitura"},
     {"key": "mente_forte", "name": "Mente Forte", "icon": "brain",
-     "desc": "Conclua 10 desafios da área Mental.", "metric": "cat:Mental", "target": 10},
+     "desc": "Conclua 10 desafios da área Mental.", "metric": "cat:Mental", "target": 10,
+     "needs_areas": ["Mental"]},
     {"key": "gentileza", "name": "Gentileza em Ação", "icon": "handshake",
-     "desc": "Conclua 10 desafios da área Social.", "metric": "cat:Social", "target": 10},
+     "desc": "Conclua 10 desafios da área Social.", "metric": "cat:Social", "target": 10,
+     "needs_areas": ["Social"]},
     {"key": "treino_sempre", "name": "Nunca faltou um treino", "icon": "dumbbell",
-     "desc": "Conclua 15 desafios da área Física.", "metric": "cat:Física", "target": 15},
+     "desc": "Conclua 15 desafios da área Física.", "metric": "cat:Física", "target": 15,
+     "needs_areas": ["Física"]},
     {"key": "equilibrio", "name": "Equilíbrio", "icon": "scale",
-     "desc": "Feche as 5 áreas no mesmo dia 5 vezes.", "metric": "balance_days", "target": 5},
+     "desc": "Feche as 5 áreas no mesmo dia 5 vezes.", "metric": "balance_days", "target": 5,
+     "needs_areas": CATEGORY_ORDER},
     {"key": "superacao", "name": "Superação", "icon": "zap",
      "desc": "Conclua 5 desafios difíceis.", "metric": "hard_done", "target": 5},
     {"key": "casal_inabalavel", "name": "Casal Inabalável", "icon": "heart",
      "desc": "Vocês dois concluírem o mesmo dia (dia perfeito em conjunto).",
-     "metric": "casal", "target": 1},
+     "metric": "casal", "target": 1, "group_types": ["couple"]},
 ]
 
 # --- Reações do feed (estilo LinkedIn) -------------------------------------

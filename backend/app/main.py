@@ -153,8 +153,57 @@ def _run_daily_reminders() -> None:
         db.close()
 
 
+# Horas (UTC) do empurrão de água. Padrão ≈ 15h e 18h de Brasília — a tarde é
+# quando o copo para de ser lembrado sozinho.
+WATER_REMINDER_HOURS = {
+    int(h) for h in os.getenv("WATER_REMINDER_HOURS", "18,21").split(",") if h.strip().isdigit()
+}
+# Abaixo disso a meta ainda está longe o bastante para o aviso ser útil.
+WATER_NUDGE_BELOW = 0.7
+
+
+def _run_water_reminders() -> None:
+    """Lembra de beber água só quem está atrasado na própria meta.
+
+    A meta de água existia sem nada que a lembrasse — era o hábito com mais a
+    ganhar com um empurrão no meio da tarde. Quem já bateu (ou está perto) não
+    recebe nada: aviso que chega depois de pronto ensina a ignorar os próximos.
+    """
+    if not pushmod.push_enabled():
+        return
+    db = SessionLocal()
+    try:
+        inscritos = {row.user_id for row in db.query(PushSubscription).all()}
+        for uid in inscritos:
+            membership = (
+                db.query(Membership).filter(Membership.user_id == uid).order_by(Membership.id).first()
+            )
+            if membership is None:
+                continue
+            s_obj = get_group_settings(db, membership.group_id)
+            hoje = today_of(s_obj)
+            if is_rest_day(db, uid, hoje):
+                continue
+
+            dados = nutrition_payload(db, membership.group_id, membership, hoje, s_obj)
+            meta = dados["water_goal_l"] or 0
+            if not meta or dados["water_l"] >= meta * WATER_NUDGE_BELOW:
+                continue
+
+            faltam = round(meta - dados["water_l"], 1)
+            pushmod.send_to_user(
+                db,
+                uid,
+                "Água",
+                f"Faltam {faltam} L para sua meta de hoje. Um copo agora resolve boa parte.",
+                "/nutricao",
+            )
+    finally:
+        db.close()
+
+
 async def _reminder_loop() -> None:
-    fired: set[tuple[str, int]] = set()
+    fired: set[tuple] = set()
     while True:
         try:
             now = datetime.utcnow()
@@ -165,6 +214,10 @@ async def _reminder_loop() -> None:
                     fired.clear()
                     fired.add(key)
                 await asyncio.to_thread(_run_daily_reminders)
+            chave_agua = ("agua", now.date().isoformat(), now.hour)
+            if now.hour in WATER_REMINDER_HOURS and now.minute < 5 and chave_agua not in fired:
+                fired.add(chave_agua)
+                await asyncio.to_thread(_run_water_reminders)
         except Exception:
             pass
         await asyncio.sleep(60)
@@ -1902,6 +1955,11 @@ def create_activity_record(gid: int, payload: s.ActivityRecordCreate, user: User
     up.level = scoring_v2.level_for(up.total_xp)
 
     period_start, period_end = month_bounds(d)
+    # Guardado antes de somar: sem o placar anterior não dá para saber quem foi
+    # ultrapassado por este registro.
+    placar_antes = _placar_do_periodo(db, gid, period_start, period_end)
+    meu_antes = placar_antes.get(membership.id, 0.0)
+
     cs = db.query(m.CompetitiveScore).filter(
         m.CompetitiveScore.membership_id == membership.id,
         m.CompetitiveScore.period_start == period_start,
@@ -1928,6 +1986,8 @@ def create_activity_record(gid: int, payload: s.ActivityRecordCreate, user: User
     db.commit()
     db.refresh(ar)
 
+    _avisar_ultrapassados(db, gid, membership, placar_antes, meu_antes, cs.total_score)
+
     text = f"registrou {payload.modality} (+{ar.score_earned} pts)"
     upsert_activity(db, gid, membership, "record", "activity", text,
                     ref=f"record:{ar.id}", image=ar.proof_image, day=d)
@@ -1946,6 +2006,72 @@ def create_activity_record(gid: int, payload: s.ActivityRecordCreate, user: User
 
 
 # --- rotas: grupo (ranking e feed) -------------------------------------
+def _placar_do_periodo(db: Session, gid: int, inicio: date, fim: date) -> dict[int, float]:
+    """Pontuação competitiva de cada membro do grupo no período."""
+    ids = [x.id for x in group_members(db, gid)]
+    if not ids:
+        return {}
+    linhas = (
+        db.query(m.CompetitiveScore)
+        .filter(
+            m.CompetitiveScore.membership_id.in_(ids),
+            m.CompetitiveScore.period_start == inicio,
+            m.CompetitiveScore.period_end == fim,
+        )
+        .all()
+    )
+    placar = {i: 0.0 for i in ids}
+    for linha in linhas:
+        placar[linha.membership_id] = linha.total_score or 0.0
+    return placar
+
+
+def _avisar_ultrapassados(
+    db: Session,
+    gid: int,
+    membership: Membership,
+    antes: dict[int, float],
+    meu_antes: float,
+    meu_depois: float,
+) -> None:
+    """Avisa quem acabou de ser passado no placar.
+
+    É a notificação que faz o placar valer alguma coisa: sem ela a pessoa só
+    descobre que perdeu a posição se abrir o app por conta própria. Só dispara
+    em espaço onde há disputa, e só para quem estava à frente e não está mais.
+    """
+    if meu_depois <= meu_antes:
+        return
+    grupo = db.get(Group, gid)
+    if grupo is None or not group_rules(grupo)["ranking"]:
+        return
+
+    passados = [
+        mid for mid, pontos in antes.items()
+        if mid != membership.id and meu_antes <= pontos < meu_depois
+    ]
+    if not passados:
+        return
+
+    quem = membership.user.name.split(" ")[0]
+    por_id = {x.id: x for x in group_members(db, gid)}
+    for mid in passados:
+        alvo = por_id.get(mid)
+        if alvo is None:
+            continue
+        atras = round(meu_depois - antes[mid])
+        try:
+            pushmod.send_to_user(
+                db,
+                alvo.user_id,
+                f"{quem} passou você",
+                f"{quem} está {atras} pts à frente em {grupo.name}. Sua vez.",
+                "/grupo",
+            )
+        except Exception:  # noqa: BLE001 — notificação nunca derruba o registro
+            pass
+
+
 @app.get("/api/groups/{gid}/ranking")
 def get_ranking(gid: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Placar do mês.
@@ -2103,7 +2229,8 @@ def achievements(gid: int, mid: int, user: User = Depends(get_current_user), db:
     days = build_member_days(s, membership, joint_points_map(db, gid), today)
     stats = scoring.player_stats(s, days, today)
     casal = casal_perfect_days(s, group_members(db, gid), today)
-    return {"achievements": scoring.achievements_for(days, stats, casal)}
+    tipo = getattr(membership.group, "group_type", None) or "group"
+    return {"achievements": scoring.achievements_for(days, stats, casal, s, tipo)}
 
 
 _MONTHS_PT = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"]
