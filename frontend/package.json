@@ -11,7 +11,9 @@
     "build": "vite build",
     "preview": "vite preview --host",
     "start": "serve -s dist -l tcp://0.0.0.0:${PORT:-3000}",
-    "verify:ui": "node scripts/verify-ui.mjs"
+    "verify:ui": "node scripts/verify-ui.mjs",
+    "verify:props": "node scripts/verify-props.mjs",
+    "verify": "npm run verify:props && npm run verify:ui"
   },
   "dependencies": {
     "@fontsource-variable/doto": "^5.3.0",

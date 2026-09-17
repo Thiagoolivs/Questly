@@ -10,15 +10,23 @@
  *
  * Como rodar:
  *   cd backend && QUESTLY_DB=/tmp/questly-ui.db python -m uvicorn app.main:app --port 8099
- *   cd frontend && npm run build && node scripts/verify-ui.mjs
+ *   cd frontend && npm run build && npm run verify:ui
+ *
+ * QUESTLY_BASE muda o endereço (o CI sobe o backend noutra porta).
  */
+import { existsSync } from 'node:fs'
 import { chromium } from '@playwright/test'
-const BASE = 'http://127.0.0.1:8099'
+
+const BASE = process.env.QUESTLY_BASE || 'http://127.0.0.1:8099'
+// O ambiente do agente traz o Chromium num caminho fixo; no CI e na máquina de
+// quem desenvolve, quem acha o navegador é o próprio Playwright.
+const CHROMIUM = '/opt/pw-browsers/chromium'
+const lancar = () => chromium.launch(existsSync(CHROMIUM) ? { executablePath: CHROMIUM } : {})
 const ROTAS = ['/', '/agenda', '/registrar', '/desafio', '/plano', '/treino', '/nutricao',
                '/rotinas', '/habitos', '/grupo', '/grupo/config', '/feed', '/mural',
                '/perfil', '/config', '/tarefas', '/conquistas', '/chat']
 
-const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' })
+const browser = await lancar()
 const page = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 })
 const erros = []
 page.on('console', (m) => { if (m.type() === 'error') erros.push(m.text()) })
