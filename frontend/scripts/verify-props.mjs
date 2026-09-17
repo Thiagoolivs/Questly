@@ -8,8 +8,15 @@
  * lista de hábitos da config do grupo virou texto sem botão, e que o Card
  * ignorou `padding=`. Nada disso aparece no build nem no console.
  *
- * O que ele NÃO pega: valor inválido num nome válido (`size="small"` no
- * Button). Para isso os próprios componentes caem no padrão em vez de estourar.
+ * Também confere nome de ícone, que é o mesmo buraco com outra cara: o registro
+ * do Icon é kebab-case e nome fora dele vira um vão vazio, sem erro. Foi assim
+ * que o botão de enviar do chat ficou sem seta nenhuma (`arrowRight` em vez de
+ * `send`) — o build passa, o console fica limpo e a varredura das telas não vê.
+ *
+ * O que ele NÃO pega: valor inválido num nome válido fora dos ícones
+ * (`size="small"` no Button). Para isso os componentes caem no padrão em vez
+ * de estourar. Nem nome de ícone vindo de variável (`name={x}`), que só o
+ * runtime resolve.
  *
  * Como rodar:  npm run verify:props
  */
@@ -213,17 +220,61 @@ for (const caminho of arquivos(CODIGO)) {
   }
 }
 
-// --- 3) relatório -----------------------------------------------------------
-console.log(`componentes conferidos: ${[...catalogo.keys()].sort().join(', ')}\n`)
+// --- 3) nomes de ícone -----------------------------------------------------
+// O registro é explícito (kebab-case). Nome fora dele não quebra nada: o Icon
+// devolve um <span> do tamanho certo e a tela fica com um buraco invisível.
+const fonteIcon = readFileSync(join(DS, 'core/Icon.jsx'), 'utf8')
+const blocoIcons = fonteIcon.slice(fonteIcon.indexOf('const ICONS'), fonteIcon.indexOf('export default'))
+const registrados = new Set(
+  [...blocoIcons.matchAll(/(?:"([\w-]+)"|^\s*([A-Za-z_]\w*))\s*:/gm)].map((m) => m[1] || m[2]),
+)
 
-if (!problemas.length) {
-  console.log('ok — nenhuma prop desconhecida.')
+const iconesRuins = []
+for (const caminho of arquivos(CODIGO)) {
+  const fonte = readFileSync(caminho, 'utf8')
+  const anota = (nome, indice) => {
+    if (registrados.has(nome)) return
+    iconesRuins.push({
+      arquivo: relative(RAIZ, caminho),
+      linha: fonte.slice(0, indice).split('\n').length,
+      nome,
+    })
+  }
+  // <Icon name="..."> — só o name de dentro da tag do Icon, não o de um <input>.
+  for (const abre of fonte.matchAll(/<Icon[\s/>]/g)) {
+    const inicioMiolo = abre.index + 5
+    const fim = fimDaTag(fonte, inicioMiolo)
+    if (fim === -1) continue
+    const m = fonte.slice(inicioMiolo, fim).match(/\bname="([^"]+)"/)
+    if (m) anota(m[1], abre.index)
+  }
+  // icon="..." em qualquer componente (IconButton, TabBar…): `icon` não é
+  // atributo de DOM, então literal aqui é sempre nome de ícone.
+  for (const m of fonte.matchAll(/\bicon="([^"]+)"/g)) anota(m[1], m.index)
+}
+
+// --- 4) relatório -----------------------------------------------------------
+console.log(`componentes conferidos: ${[...catalogo.keys()].sort().join(', ')}`)
+console.log(`ícones registrados: ${registrados.size}\n`)
+
+if (!problemas.length && !iconesRuins.length) {
+  console.log('ok — nenhuma prop desconhecida, nenhum ícone fora do registro.')
   process.exit(0)
+}
+
+for (const i of iconesRuins) {
+  console.log(`FALHA ${i.arquivo}:${i.linha}  ícone "${i.nome}" não está no registro`)
+  console.log(`      o Icon devolve um vão vazio: some da tela sem dar erro\n`)
 }
 
 for (const p of problemas) {
   console.log(`FALHA ${p.arquivo}:${p.linha}  <${p.componente} ${p.prop}=…>`)
   console.log(`      ${p.componente} aceita: ${p.aceitas}\n`)
 }
-console.log(`${problemas.length} prop(s) desconhecida(s). Elas somem no \`...rest\` sem dar erro.`)
+if (problemas.length) {
+  console.log(`${problemas.length} prop(s) desconhecida(s). Elas somem no \`...rest\` sem dar erro.`)
+}
+if (iconesRuins.length) {
+  console.log(`${iconesRuins.length} ícone(s) fora do registro.`)
+}
 process.exit(1)

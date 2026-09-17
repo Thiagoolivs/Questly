@@ -17,18 +17,25 @@ export default function Chat() {
   const [pending, setPending] = useState(null)
   const [sending, setSending] = useState(false)
   const [err, setErr] = useState(null)
-  const endRef = useRef(null)
+  const logRef = useRef(null)
   const lastIdRef = useRef(0)
 
   const merge = useCallback((incoming) => {
     if (!incoming.length) return
     setMessages((cur) => {
       const seen = new Set(cur.map((m) => m.id))
-      const next = [...cur, ...incoming.filter((m) => !seen.has(m.id))]
-      lastIdRef.current = next.length ? next[next.length - 1].id : 0
-      return next
+      const novas = incoming.filter((m) => !seen.has(m.id))
+      // Sem novidade, devolve o mesmo array: senão o polling re-renderiza a
+      // tela de 5 em 5 segundos à toa.
+      return novas.length ? [...cur, ...novas] : cur
     })
   }, [])
+
+  // Derivado das mensagens em vez de escrito dentro do setState: função de
+  // atualização precisa ser pura (o React pode chamá-la duas vezes).
+  useEffect(() => {
+    lastIdRef.current = messages.length ? messages[messages.length - 1].id : 0
+  }, [messages])
 
   useEffect(() => {
     if (!groupId) return
@@ -46,8 +53,11 @@ export default function Chat() {
     return () => clearInterval(t)
   }, [merge, groupId])
 
+  // Rola só o histórico. Com scrollIntoView quem rolava era a página inteira,
+  // e o cabeçalho — com o botão de voltar — saía da tela.
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth' })
+    const log = logRef.current
+    if (log) log.scrollTop = log.scrollHeight
   }, [messages.length, pending])
 
   async function attach() {
@@ -79,29 +89,12 @@ export default function Chat() {
 
   return (
     <div className="chat-screen">
-      <header
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 'var(--space-5)',
-          padding: 'var(--space-5) var(--gutter-screen)',
-          borderBottom: '1px solid var(--line-hairline)',
-        }}
-      >
+      <header className="chat-header">
         <VoltarPara para="/grupo" />
-        <span
-          style={{
-            fontFamily: 'var(--font-ui)',
-            fontSize: 'var(--fs-title-3)',
-            fontWeight: 'var(--fw-semibold)',
-            color: 'var(--text-primary)',
-          }}
-        >
-          Chat do grupo
-        </span>
+        <span className="chat-title">Chat do grupo</span>
       </header>
 
-      <div className="chat-log">
+      <div className="chat-log" ref={logRef}>
         {messages.length === 0 && (
           <p className="muted small center" style={{ marginTop: 24 }}>
             Sem mensagens ainda. Manda a primeira.
@@ -121,7 +114,6 @@ export default function Chat() {
             </div>
           )
         })}
-        <div ref={endRef} />
       </div>
 
       {err && <div className="chat-err">{err}</div>}
@@ -130,11 +122,15 @@ export default function Chat() {
         {pending && (
           <div className="chat-preview">
             <img src={pending} alt="prévia" />
-            <button className="chat-preview-x" onClick={() => setPending(null)}><Icon name="x" size={16} /></button>
+            <button className="chat-preview-x" onClick={() => setPending(null)} aria-label="Remover anexo">
+              <Icon name="x" size={16} />
+            </button>
           </div>
         )}
         <div className="chat-row">
-          <button className="chat-attach" onClick={attach} title="Anexar foto"><Icon name="camera" size={19} /></button>
+          <button className="chat-attach" onClick={attach} aria-label="Anexar foto">
+            <Icon name="camera" size={19} />
+          </button>
           <input
             className="chat-field"
             placeholder="Mensagem…"
@@ -142,7 +138,11 @@ export default function Chat() {
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && send()}
           />
-          <button className="chat-send" onClick={send} disabled={sending}><Icon name="arrowRight" size={18} /></button>
+          {/* `send`, não `arrowRight`: o registro do Icon é kebab-case e nome
+              desconhecido vira um vão vazio — o botão ficou sem seta nenhuma. */}
+          <button className="chat-send" onClick={send} disabled={sending} aria-label="Enviar">
+            <Icon name="send" size={18} />
+          </button>
         </div>
       </div>
     </div>
