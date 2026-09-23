@@ -503,6 +503,10 @@ class RestDay(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     date: Mapped[date] = mapped_column(Date, index=True)
     reason: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    # 'planned' = marcado antes, à vontade. 'rescue' = usado depois, para salvar
+    # um dia que já passou; esse é limitado por mês, e por isso precisa ser
+    # distinguível de uma folga comum na hora de contar quantos restam.
+    kind: Mapped[str] = mapped_column(String(10), default="planned")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 

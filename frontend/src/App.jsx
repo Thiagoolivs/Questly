@@ -25,6 +25,7 @@ import Tarefas from './pages/Tarefas.jsx'
 import Chat from './pages/Chat.jsx'
 import Mural from './pages/Mural.jsx'
 import Conquistas from './pages/Conquistas.jsx'
+import Semana from './pages/Semana.jsx'
 import Config from './pages/Config.jsx'
 import ConfigGrupo from './pages/ConfigGrupo.jsx'
 
@@ -132,6 +133,7 @@ function Shell() {
             <Route path="/chat" element={<Chat />} />
             <Route path="/mural" element={<Mural />} />
             <Route path="/conquistas" element={<Conquistas />} />
+            <Route path="/semana" element={<Semana />} />
             <Route path="/config" element={<Config />} />
             <Route path="/grupo/config" element={<ConfigGrupo />} />
             <Route path="*" element={<Navigate to="/" replace />} />

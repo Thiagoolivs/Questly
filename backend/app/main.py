@@ -38,6 +38,7 @@ from . import presets
 from . import push as pushmod
 from .data import (
     CATEGORY_ICON,
+    PERSONAL_ACHIEVEMENTS,
     CATEGORY_ORDER,
     DEFAULT_HABITS,
     DIFFICULTIES,
@@ -2332,7 +2333,16 @@ def achievements(gid: int, mid: int, user: User = Depends(get_current_user), db:
     stats = scoring.player_stats(s, days, today)
     casal = casal_perfect_days(s, group_members(db, gid), today)
     tipo = getattr(membership.group, "group_type", None) or "group"
-    return {"achievements": scoring.achievements_for(days, stats, casal, s, tipo)}
+
+    # As do desafio do grupo medem hábito fixo e desafio do dia; as pessoais
+    # medem o Meu Dia. Quem usa só um dos lados precisa ter medalha ao alcance
+    # de qualquer jeito, então as duas famílias vêm juntas e marcadas.
+    do_grupo = [
+        {**a, "scope": "grupo"}
+        for a in scoring.achievements_for(days, stats, casal, s, tipo)
+    ]
+    pessoais = personal_achievements(personal_metrics(db, membership.user_id, today))
+    return {"achievements": pessoais + do_grupo}
 
 
 _MONTHS_PT = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"]
@@ -2904,6 +2914,89 @@ def personal_streak(db: Session, user_id: int, today: date) -> int:
     return sequencia
 
 
+def best_personal_streak(db: Session, user_id: int, today: date) -> int:
+    """A maior sequência já alcançada.
+
+    Existe porque "sua melhor foi 12, você está em 9" puxa muito mais que um
+    número solto — e porque uma corrente quebrada deixa de ser só uma perda
+    quando o recorde continua lá.
+    """
+    inicio = today - timedelta(days=STREAK_WINDOW_DAYS)
+    janela = consistency_window(db, user_id, inicio, today)
+
+    melhor = atual = 0
+    d = inicio
+    while d <= today:
+        info = janela.get(d)
+        if info is None:
+            d += timedelta(days=1)
+            continue
+        if info["rest"] or info["planned"] == 0:
+            pass  # atravessa sem somar nem zerar, igual à sequência corrente
+        elif info["full"]:
+            atual += 1
+            melhor = max(melhor, atual)
+        elif d != today:
+            atual = 0  # o dia de hoje ainda não acabou: não conta como falha
+        d += timedelta(days=1)
+    return melhor
+
+
+def personal_metrics(db: Session, user_id: int, today: date) -> dict:
+    """Tudo que as conquistas pessoais medem, numa passada só.
+
+    Sai dos logs e dos registros, não de contadores guardados: conquista que
+    depende de contador acumulado passa a mentir assim que alguém desfaz algo.
+    """
+    janela = consistency_window(db, user_id, today - timedelta(days=STREAK_WINDOW_DAYS), today)
+
+    registros = db.query(m.ActivityRecord).filter(m.ActivityRecord.user_id == user_id).all()
+    distancia = 0.0
+    for r in registros:
+        try:
+            distancia += float((r.params or {}).get("distance") or 0)
+        except (TypeError, ValueError):
+            pass
+
+    progresso = db.query(m.UserProgress).filter(m.UserProgress.user_id == user_id).first()
+
+    return {
+        "full_days": sum(1 for v in janela.values() if v["full"]),
+        "best_streak": best_personal_streak(db, user_id, today),
+        "streak": personal_streak(db, user_id, today),
+        "habits_done": db.query(func.count(m.HabitLog.id)).filter(
+            m.HabitLog.user_id == user_id, m.HabitLog.completed.is_(True)).scalar() or 0,
+        "routines_done": db.query(func.count(m.RoutineLog.id)).filter(
+            m.RoutineLog.user_id == user_id, m.RoutineLog.completed.is_(True)).scalar() or 0,
+        "records": len(registros),
+        "modalities": len({r.modality for r in registros}),
+        "distance_km": int(distancia),
+        "training_sessions": db.query(func.count(m.TrainingSession.id)).filter(
+            m.TrainingSession.user_id == user_id, m.TrainingSession.status == "done").scalar() or 0,
+        "level": (progresso.level if progresso else 1) or 1,
+        "rest_days": db.query(func.count(m.RestDay.id)).filter(
+            m.RestDay.user_id == user_id).scalar() or 0,
+    }
+
+
+def personal_achievements(metricas: dict) -> list[dict]:
+    """Conquistas do progresso pessoal, com o progresso de cada uma."""
+    saida = []
+    for a in PERSONAL_ACHIEVEMENTS:
+        atual = int(metricas.get(a["metric"], 0))
+        saida.append({
+            "key": a["key"],
+            "name": a["name"],
+            "icon": a["icon"],
+            "desc": a["desc"],
+            "current": min(atual, a["target"]),
+            "target": a["target"],
+            "unlocked": atual >= a["target"],
+            "scope": "pessoal",
+        })
+    return saida
+
+
 def consistency_summary(db: Session, user_id: int, start: date, end: date, today: date,
                         streak: int | None = None) -> dict:
     """Pontos de constância do período + a sequência atual.
@@ -3027,6 +3120,7 @@ def _constancia_publica(db: Session, user: User, hoje: date | None = None) -> di
     return {
         "streak": resumo["streak"],
         "next_milestone": resumo["next_milestone"],
+        "best_streak": best_personal_streak(db, user.id, hoje),
         "xp": (up.total_xp if up else 0) or 0,
         "level": (up.level if up else 1) or 1,
     }
@@ -3118,13 +3212,99 @@ def add_rest_day(payload: s.RestDayCreate,
     d = parse_date(payload.date, date.today())
     row = db.query(m.RestDay).filter(m.RestDay.user_id == user.id, m.RestDay.date == d).first()
     if not row:
-        row = m.RestDay(user_id=user.id, date=d)
+        row = m.RestDay(user_id=user.id, date=d, kind="planned")
         db.add(row)
     row.reason = payload.reason
     db.flush()
     sync_constancy(db, user)
     db.commit()
     return {"date": d.isoformat(), "reason": row.reason, **_constancia_publica(db, user)}
+
+
+# Quantos dias já passados dá para salvar por mês. Dois: o bastante para um
+# imprevisto e uma doença, pouco o bastante para a sequência continuar querendo
+# dizer alguma coisa.
+RESCUES_PER_MONTH = 2
+# Até quantos dias para trás um resgate alcança. Salvar a semana inteira depois
+# do fato não é salvar, é reescrever.
+RESCUE_WINDOW_DAYS = 7
+
+
+def _rescues_left(db: Session, user_id: int, d: date) -> int:
+    """Quantos resgates sobraram no mês em que estamos.
+
+    A conta é por quando o resgate foi *usado*, não pelo mês do dia salvo: na
+    virada do mês a janela de 7 dias alcança o mês anterior, e contar pelo dia
+    salvo daria cota extra justo aí.
+    """
+    inicio, fim = month_bounds(d)
+    usados = db.query(func.count(m.RestDay.id)).filter(
+        m.RestDay.user_id == user_id,
+        m.RestDay.kind == "rescue",
+        m.RestDay.created_at >= datetime.combine(inicio, dtime.min),
+        m.RestDay.created_at <= datetime.combine(fim, dtime.max),
+    ).scalar() or 0
+    return max(0, RESCUES_PER_MONTH - usados)
+
+
+@app.get("/api/rest-days/rescues")
+def list_rescues(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Quantos resgates sobraram no mês e quais dias dá para salvar agora."""
+    hoje = date.today()
+    janela = consistency_window(db, user.id, hoje - timedelta(days=RESCUE_WINDOW_DAYS), hoje)
+    salvaveis = [
+        {"date": d.isoformat(), "pending": info["planned"] - info["done"]}
+        for d, info in sorted(janela.items())
+        if d < hoje and not info["rest"] and info["planned"] > 0 and not info["full"]
+    ]
+    return {
+        "left": _rescues_left(db, user.id, hoje),
+        "per_month": RESCUES_PER_MONTH,
+        "days": salvaveis,
+    }
+
+
+@app.post("/api/rest-days/rescue")
+def rescue_day(payload: s.RestDayCreate, user: User = Depends(get_current_user),
+               db: Session = Depends(get_db)):
+    """Salva um dia que já passou, para a sequência não morrer num tropeço.
+
+    O descanso planejado só protege quem marcou antes — e ninguém planeja ficar
+    doente. Sem uma saída depois do fato, o primeiro tropeço zera a corrente e é
+    aí que a maioria abandona. O limite mensal é o que impede isto de virar um
+    botão de "nunca falhei".
+    """
+    hoje = date.today()
+    d = parse_date(payload.date, hoje)
+    if d >= hoje:
+        raise HTTPException(400, "Resgate é para um dia que já passou. Hoje ainda dá para fechar.")
+    if (hoje - d).days > RESCUE_WINDOW_DAYS:
+        raise HTTPException(400, f"Só dá para salvar os últimos {RESCUE_WINDOW_DAYS} dias.")
+
+    janela = consistency_window(db, user.id, d, d)
+    info = janela.get(d)
+    if info is None or info["planned"] == 0:
+        raise HTTPException(400, "Nesse dia não havia nada marcado — ele já não quebra a sequência.")
+    if info["full"]:
+        raise HTTPException(400, "Esse dia já está fechado.")
+    if info["rest"]:
+        raise HTTPException(400, "Esse dia já está como descanso.")
+    if _rescues_left(db, user.id, hoje) <= 0:
+        raise HTTPException(
+            400,
+            f"Seus {RESCUES_PER_MONTH} resgates deste mês acabaram. Eles voltam no dia 1º.",
+        )
+
+    db.add(m.RestDay(user_id=user.id, date=d, kind="rescue",
+                     reason=payload.reason or "Dia salvo"))
+    db.flush()
+    sync_constancy(db, user)
+    db.commit()
+    return {
+        "date": d.isoformat(),
+        "left": _rescues_left(db, user.id, hoje),
+        **_constancia_publica(db, user),
+    }
 
 
 @app.delete("/api/rest-days/{day}")
@@ -3360,10 +3540,111 @@ def my_day(day: str | None = None, group: int | None = None, user: User = Depend
             "streak": constancia["streak"],
             "streak_bonus": constancia["streak_bonus"],
             "next_milestone": constancia["next_milestone"],
+            # "sua melhor foi 12, você está em 9" puxa mais que um número solto,
+            # e mantém o recorde de pé quando a corrente atual cai.
+            "best_streak": best_personal_streak(db, user.id, d),
             "points": constancia["points"],
             "habit_points": scoring_v2.HABIT_POINTS,
             "routine_points": scoring_v2.ROUTINE_POINTS,
         },
+    }
+
+
+def _segunda(d: date) -> date:
+    return d - timedelta(days=d.weekday())
+
+
+def _resumo_da_semana(db: Session, user_id: int, segunda: date, hoje: date) -> dict:
+    """Números de uma semana: o que fechou, o que saiu, quanto andou."""
+    domingo = segunda + timedelta(days=6)
+    janela = consistency_window(db, user_id, segunda, min(domingo, hoje))
+
+    registros = db.query(m.ActivityRecord).filter(
+        m.ActivityRecord.user_id == user_id,
+        m.ActivityRecord.date >= segunda,
+        m.ActivityRecord.date <= domingo,
+    ).all()
+    distancia = 0.0
+    minutos = 0.0
+    for r in registros:
+        for chave, acc in (("distance", "d"), ("duration", "m")):
+            try:
+                valor = float((r.params or {}).get(chave) or 0)
+            except (TypeError, ValueError):
+                valor = 0.0
+            if acc == "d":
+                distancia += valor
+            else:
+                minutos += valor
+
+    dias_com_algo = [(d, v) for d, v in janela.items() if v["done"] > 0]
+    melhor = max(dias_com_algo, key=lambda x: x[1]["done"], default=None)
+
+    return {
+        "week_start": segunda.isoformat(),
+        "week_end": domingo.isoformat(),
+        "label": _week_label(segunda),
+        "days_closed": sum(1 for v in janela.values() if v["full"]),
+        "days_counted": sum(1 for v in janela.values() if v["planned"] > 0 and not v["rest"]),
+        "habits_done": sum(v["habits_done"] for v in janela.values()),
+        "routines_done": sum(v["routines_done"] for v in janela.values()),
+        "rest_days": sum(1 for v in janela.values() if v["rest"]),
+        "records": len(registros),
+        "modalities": sorted({r.modality for r in registros}),
+        "distance_km": round(distancia, 1),
+        "minutes": int(minutos),
+        "points": round(
+            scoring_v2.habit_points(
+                sum(v["habits_done"] for v in janela.values()),
+                sum(v["routines_done"] for v in janela.values()),
+                sum(1 for v in janela.values() if v["full"]),
+            )
+            + sum(r.score_earned for r in registros),
+            2,
+        ),
+        "best_day": None if melhor is None else {
+            "date": melhor[0].isoformat(),
+            "done": melhor[1]["done"],
+        },
+    }
+
+
+@app.get("/api/week/recap")
+def week_recap(week: str | None = None, user: User = Depends(get_current_user),
+               db: Session = Depends(get_db)):
+    """Retrospectiva da semana, com a anterior ao lado para comparar.
+
+    Sem um momento em que o app diz o que aconteceu, a semana boa passa igual à
+    ruim: o esforço fica todo em check diário e nunca vira história. Por padrão
+    mostra a última semana FECHADA, que é a que tem um resultado para contar.
+    """
+    hoje = date.today()
+    base = _segunda(parse_date(week, hoje)) if week else _segunda(hoje) - timedelta(days=7)
+    atual = _resumo_da_semana(db, user.id, base, hoje)
+    anterior = _resumo_da_semana(db, user.id, base - timedelta(days=7), hoje)
+
+    fechados = atual["days_closed"]
+    antes = anterior["days_closed"]
+    if atual["days_counted"] == 0 and atual["records"] == 0:
+        veredito = "Semana sem registro nenhum. Recomeçar custa um toque."
+    elif fechados > antes:
+        veredito = f"Melhor que a semana anterior: {fechados} dias fechados contra {antes}."
+    elif fechados == antes and fechados > 0:
+        veredito = f"Mesma constância da semana anterior: {fechados} dias fechados."
+    elif fechados == 0:
+        veredito = "Nenhum dia fechou inteiro — comece pela semana com um hábito só."
+    else:
+        veredito = f"{fechados} dias fechados, contra {antes} na semana anterior. Dá para retomar."
+
+    return {
+        "current": atual,
+        "previous": anterior,
+        "verdict": veredito,
+        "streak": personal_streak(db, user.id, hoje),
+        "best_streak": best_personal_streak(db, user.id, hoje),
+        # A semana em que a retrospectiva foi pedida: a tela usa para saber se
+        # está olhando a última fechada ou uma antiga.
+        "is_last_closed": base == _segunda(hoje) - timedelta(days=7),
     }
 
 

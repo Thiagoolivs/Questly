@@ -24,7 +24,7 @@ const CHROMIUM = '/opt/pw-browsers/chromium'
 const lancar = () => chromium.launch(existsSync(CHROMIUM) ? { executablePath: CHROMIUM } : {})
 const ROTAS = ['/', '/agenda', '/registrar', '/desafio', '/plano', '/treino', '/nutricao',
                '/rotinas', '/habitos', '/grupo', '/grupo/config', '/feed', '/mural',
-               '/perfil', '/config', '/tarefas', '/conquistas', '/chat']
+               '/perfil', '/config', '/tarefas', '/conquistas', '/semana', '/chat']
 
 const browser = await lancar()
 const page = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 })

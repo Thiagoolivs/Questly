@@ -202,6 +202,53 @@ ACHIEVEMENTS = [
      "metric": "casal", "target": 1, "group_types": ["couple"]},
 ]
 
+# --- Conquistas do progresso pessoal ---------------------------------------
+# As de cima medem o desafio do grupo (hábitos fixos, desafio do dia, dia
+# perfeito do casal). Estas medem o que a pessoa faz sozinha — hábito próprio,
+# rotina, treino, sequência — e por isso valem em qualquer espaço, inclusive
+# individual. Sem elas, quem usa o app pelo Meu Dia não tinha medalha nenhuma
+# ao alcance: todas as 11 antigas dependiam de uma parte do app que essa pessoa
+# talvez nem abra.
+#
+# `metric` é resolvido em main.py (personal_metrics), a partir dos logs.
+PERSONAL_ACHIEVEMENTS = [
+    {"key": "p_primeiro_dia", "name": "Primeiro dia fechado", "icon": "check-circle",
+     "desc": "Feche tudo que vencia num dia.", "metric": "full_days", "target": 1},
+    {"key": "p_semana", "name": "Semana inteira", "icon": "flame",
+     "desc": "Alcance 7 dias seguidos.", "metric": "best_streak", "target": 7},
+    {"key": "p_mes", "name": "Um mês de pé", "icon": "trophy",
+     "desc": "Alcance 30 dias seguidos.", "metric": "best_streak", "target": 30},
+    {"key": "p_cem_dias", "name": "Cem dias", "icon": "crown",
+     "desc": "Alcance 100 dias seguidos.", "metric": "best_streak", "target": 100},
+    {"key": "p_habitos_50", "name": "Cinquenta marcas", "icon": "list-check",
+     "desc": "Cumpra 50 hábitos.", "metric": "habits_done", "target": 50},
+    {"key": "p_habitos_365", "name": "Trezentos e sessenta e cinco", "icon": "medal",
+     "desc": "Cumpra 365 hábitos.", "metric": "habits_done", "target": 365},
+    {"key": "p_rotinas_30", "name": "Rotina de verdade", "icon": "repeat",
+     "desc": "Feche 30 rotinas.", "metric": "routines_done", "target": 30},
+    {"key": "p_treinos_10", "name": "Dez treinos", "icon": "dumbbell",
+     "desc": "Registre 10 atividades.", "metric": "records", "target": 10},
+    {"key": "p_treinos_100", "name": "Cem treinos", "icon": "zap",
+     "desc": "Registre 100 atividades.", "metric": "records", "target": 100},
+    {"key": "p_variedade", "name": "Corpo completo", "icon": "scale",
+     "desc": "Registre 5 modalidades diferentes.", "metric": "modalities", "target": 5},
+    {"key": "p_distancia", "name": "Cem quilômetros", "icon": "footprints",
+     "desc": "Some 100 km entre corrida, caminhada, bike e natação.",
+     "metric": "distance_km", "target": 100},
+    {"key": "p_plano", "name": "Plano cumprido", "icon": "clipboard-list",
+     "desc": "Conclua 12 sessões de um plano de treino.",
+     "metric": "training_sessions", "target": 12},
+    {"key": "p_nivel_5", "name": "Nível 5", "icon": "star",
+     "desc": "Chegue ao nível 5.", "metric": "level", "target": 5},
+    {"key": "p_nivel_10", "name": "Nível 10", "icon": "crown",
+     "desc": "Chegue ao nível 10.", "metric": "level", "target": 10},
+    # Descanso planejado é parte do treino, não o oposto dele — a medalha
+    # existe para dizer isso em voz alta a quem acha que folgar é falhar.
+    {"key": "p_descanso", "name": "Descanso é treino", "icon": "moon",
+     "desc": "Planeje 5 dias de descanso.", "metric": "rest_days", "target": 5},
+]
+
+
 # --- Reações do feed (estilo LinkedIn) -------------------------------------
 # Cada membro pode dar UMA reação por item do feed (toca outra troca; toca a
 # mesma remove).

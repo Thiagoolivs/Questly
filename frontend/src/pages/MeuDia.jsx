@@ -73,6 +73,7 @@ export default function MeuDia() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [apagandoRegistro, setApagandoRegistro] = useState(null)
+  const [resgates, setResgates] = useState(null)
 
   const carregar = useCallback(async () => {
     setLoading(true)
@@ -96,6 +97,31 @@ export default function MeuDia() {
     api.insight().then((r) => setLeitura(r.text)).catch(() => {})
   }, [])
 
+  // Dias salváveis: só carrega uma vez, e some da tela sozinho quando não há
+  // nenhum. Recarregado junto de cada marcação porque fechar o dia muda a lista.
+  const carregarResgates = useCallback(() => {
+    api.rescues().then(setResgates).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    carregarResgates()
+  }, [carregarResgates])
+
+  const salvarDia = async (dia) => {
+    try {
+      const r = await api.rescueDay({ date: dia })
+      await carregar()
+      carregarResgates()
+      aviso({
+        text: `Dia salvo — sequência de ${r.streak} ${r.streak === 1 ? 'dia' : 'dias'} de pé`,
+        icon: 'flame',
+        tone: 'success',
+      })
+    } catch (e) {
+      setError(e.message)
+    }
+  }
+
   // As marcações são otimistas: o toque responde na hora e só volta atrás se o
   // servidor recusar. É o gesto mais repetido do app, não pode ter espera.
   const marcarHabito = async (habit, next) => {
@@ -106,6 +132,7 @@ export default function MeuDia() {
     try {
       const r = await api.logHabit(habit.id, { date: day.date, completed: next })
       await carregar()
+      carregarResgates()
       if (next) anunciarGanho(r, habit.name)
       else aviso({
         text: `"${habit.name}" desmarcado`,
@@ -148,6 +175,7 @@ export default function MeuDia() {
     try {
       const r = await api.logRoutineStep(routine.id, { date: day.date, step_id: step.id, done: next })
       await carregar()
+      carregarResgates()
       if (r.points) anunciarGanho(r, `${routine.name} fechada`)
       else if (!next) aviso({
         text: `"${step.name}" desmarcado`,
@@ -302,6 +330,8 @@ export default function MeuDia() {
             aparecia em lugar nenhum do dia a dia. */}
         <Sequencia summary={summary} descanso={descanso} />
       </Card>
+
+      <Resgate resgates={resgates} onSalvar={salvarDia} />
 
       {leitura && (
         <Card style={{ marginBottom: 'var(--space-8)' }}>
@@ -613,6 +643,39 @@ export default function MeuDia() {
   )
 }
 
+/**
+ * Salvar um dia que já passou.
+ *
+ * O descanso planejado só protege quem marcou antes — e ninguém planeja ficar
+ * doente. Sem uma saída depois do fato, o primeiro tropeço zera a corrente, e é
+ * aí que a maioria abandona. O cartão só aparece quando há dia salvável e cota,
+ * e diz quantos restam para não virar um botão de "nunca falhei".
+ */
+function Resgate({ resgates, onSalvar }) {
+  if (!resgates || resgates.left <= 0 || resgates.days.length === 0) return null
+  const dia = resgates.days[resgates.days.length - 1]  // o mais recente
+  const quando = new Date(`${dia.date}T12:00`).toLocaleDateString('pt-BR', { weekday: 'long' })
+
+  return (
+    <Card style={{ marginBottom: 'var(--space-8)' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-5)' }}>
+        <Icon name="flame" size={16} color="var(--warning)" />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p style={{ margin: 0, fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-body-sm)', color: 'var(--text-secondary)' }}>
+            {quando} ficou com {dia.pending} {dia.pending === 1 ? 'item' : 'itens'} em aberto e cortou sua
+            sequência. Dá para salvar esse dia — resta{resgates.left === 1 ? '' : 'm'} {resgates.left} neste mês.
+          </p>
+          <div style={{ marginTop: 'var(--space-5)' }}>
+            <Button variant="secondary" size="sm" iconLeft="undo-2" onClick={() => onSalvar(dia.date)}>
+              Salvar {quando}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </Card>
+  )
+}
+
 /** Descreve o registro pelos parâmetros que a pessoa informou. */
 function resumoDoRegistro(r) {
   const p = r.params || {}
@@ -637,10 +700,13 @@ function Sequencia({ summary, descanso }) {
   const marco = summary.next_milestone
   if (!dias && !marco) return null
 
+  const recorde = summary.best_streak ?? 0
   const texto = dias === 0
     ? descanso
       ? 'Hoje é descanso — sua sequência fica de pé.'
-      : `Feche tudo de hoje para começar a sequência${marco ? ` (+${marco.points} pts em ${marco.days} dias)` : ''}.`
+      : recorde > 0
+        ? `Sua melhor sequência foi ${recorde} ${recorde === 1 ? 'dia' : 'dias'}. Feche tudo de hoje para recomeçar.`
+        : `Feche tudo de hoje para começar a sequência${marco ? ` (+${marco.points} pts em ${marco.days} dias)` : ''}.`
     : marco
       ? `${dias} ${dias === 1 ? 'dia seguido' : 'dias seguidos'} · faltam ${marco.missing} para +${marco.points} pts`
       : `${dias} dias seguidos — você já passou de todos os marcos.`
@@ -661,6 +727,21 @@ function Sequencia({ summary, descanso }) {
         >
           {texto}
         </span>
+        {/* O recorde fica visível enquanto a corrente atual não o alcança: é o
+            número que sobrevive a uma queda e dá o que perseguir depois dela. */}
+        {recorde > dias && dias > 0 ? (
+          <span
+            style={{
+              flex: 'none',
+              fontFamily: 'var(--font-ui)',
+              fontVariantNumeric: 'tabular-nums',
+              fontSize: 'var(--fs-micro)',
+              color: 'var(--text-tertiary)',
+            }}
+          >
+            recorde {recorde}
+          </span>
+        ) : null}
       </div>
       <div
         style={{

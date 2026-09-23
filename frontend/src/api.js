@@ -156,7 +156,12 @@ export const api = {
   createRoutineWithAI: (b) => req('/api/routines/ai', { method: 'POST', body: b }),
   logHabit: (id, b = {}) => req(`/api/habits/${id}/log`, { method: 'POST', body: b }),
   logRoutineStep: (id, b) => req(`/api/routines/${id}/log`, { method: 'POST', body: b }),
+  // Retrospectiva da semana (sem `week`, a última fechada).
+  weekRecap: (week) => req(`/api/week/recap${week ? `?week=${encodeURIComponent(week)}` : ''}`),
   restDays: () => req('/api/rest-days'),
+  // Resgate: salvar um dia já passado para a sequência não morrer num tropeço.
+  rescues: () => req('/api/rest-days/rescues'),
+  rescueDay: (b) => req('/api/rest-days/rescue', { method: 'POST', body: b }),
   addRestDay: (b) => req('/api/rest-days', { method: 'POST', body: b }),
   removeRestDay: (day) => req(`/api/rest-days/${day}`, { method: 'DELETE' }),
 }
