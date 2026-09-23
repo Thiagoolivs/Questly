@@ -101,3 +101,39 @@ class TestXPeRanking:
         so_consistencia = sc.total_competitive(effort=0, consistency=100, challenge=0)
         com_esforco = sc.total_competitive(effort=100, consistency=0, challenge=0)
         assert com_esforco > so_consistencia
+
+
+class TestConstancia:
+    """Hábito e rotina pontuam pouco — mas pontuam, e a sequência recompensa."""
+
+    def test_habito_rende_menos_que_rotina_fechada(self):
+        assert sc.habit_points(1, 0, 0) < sc.habit_points(0, 1, 0)
+
+    def test_constancia_nao_encosta_num_treino_de_verdade(self):
+        # Cinco hábitos + a rotina + o dia completo ainda valem menos que meia
+        # hora de corrida: constância é o piso, não o atalho para o topo.
+        dia_inteiro = sc.habit_points(5, 1, 1)
+        corrida = sc.compute_effort_score({"distance": 5, "duration": 30}, "corrida")
+        assert dia_inteiro < corrida
+
+    def test_bonus_de_sequencia_e_acumulado_por_marco(self):
+        assert sc.streak_bonus(2) == 0
+        assert sc.streak_bonus(3) > 0
+        assert sc.streak_bonus(7) > sc.streak_bonus(3)
+        # Entre marcos o bônus não muda: é marco, não pontinho por dia.
+        assert sc.streak_bonus(4) == sc.streak_bonus(3)
+
+    def test_quebrar_a_sequencia_devolve_o_bonus(self):
+        assert sc.streak_bonus(0) == 0
+
+    def test_proximo_marco_sempre_a_frente(self):
+        proximo = sc.next_streak_milestone(5)
+        assert proximo["days"] == 7 and proximo["missing"] == 2
+        assert sc.next_streak_milestone(10**6) is None
+
+    def test_constancia_entra_no_total_sem_dominar(self):
+        so_habitos = sc.total_competitive(0, 0, 0, habits=sc.habit_points(5, 1, 1))
+        um_treino = sc.total_competitive(
+            sc.compute_effort_score({"distance": 5, "duration": 30}, "corrida"), 0, 0
+        )
+        assert 0 < so_habitos < um_treino

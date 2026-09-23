@@ -7,6 +7,8 @@ import CheckControl from '../components/CheckControl.jsx'
 import IconPicker from '../components/IconPicker.jsx'
 import VoltarPara from '../components/VoltarPara.jsx'
 import Sheet from '../components/Sheet.jsx'
+import Confirmar from '../components/Confirmar.jsx'
+import { useToast } from '../components/Toast.jsx'
 
 const WEEKDAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 const FORM_VAZIO = { icon: 'calendar', title: '', kind: 'once', date: '', time: '', weekdays: [] }
@@ -23,7 +25,9 @@ function taskWhen(t) {
 
 export default function Tarefas() {
   const { groupId } = useApp()
+  const aviso = useToast()
   const [tasks, setTasks] = useState(null)
+  const [apagando, setApagando] = useState(null)
   const [today, setToday] = useState(() => new Date().toISOString().slice(0, 10))
   const [err, setErr] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -59,11 +63,22 @@ export default function Tarefas() {
     }
   }
 
-  const toggle = (id) => run(() => api.completeTask(groupId, id, { date: today }))
+  const toggle = async (t) => {
+    await run(() => api.completeTask(groupId, t.id, { date: today }))
+    aviso({
+      text: t.checked_today ? `"${t.title}" desmarcada` : `"${t.title}" concluída`,
+      icon: t.checked_today ? 'undo-2' : 'check-circle',
+      tone: t.checked_today ? undefined : 'success',
+      onUndo: () => toggle({ ...t, checked_today: !t.checked_today }),
+    })
+  }
 
-  const remove = (id) => {
-    if (!confirm('Remover esta tarefa?')) return
-    run(() => api.deleteTask(groupId, id))
+  // O confirm() do navegador não é o app: é um alerta de sistema, sem o texto
+  // que diz o que se perde. A folha de confirmação diz.
+  const remove = async (t) => {
+    await api.deleteTask(groupId, t.id)
+    load()
+    aviso({ text: `"${t.title}" removida`, icon: 'trash' })
   }
 
   async function attachPhoto(id) {
@@ -111,7 +126,7 @@ export default function Tarefas() {
         chevron={false}
         leading={
           podeConcluir ? (
-            <CheckControl checked={!!t.checked_today} onChange={() => toggle(t.id)} label={t.title} />
+            <CheckControl checked={!!t.checked_today} onChange={() => toggle(t)} label={t.title} />
           ) : (
             <Icon name={t.icon || 'calendar'} size={16} color="var(--text-tertiary)" />
           )
@@ -139,7 +154,7 @@ export default function Tarefas() {
             {podeConcluir ? (
               <IconButton icon="camera" label="Anexar foto" size={32} disabled={busy} onClick={() => attachPhoto(t.id)} />
             ) : null}
-            <IconButton icon="x" tone="bare" label="Remover tarefa" size={32} disabled={busy} onClick={() => remove(t.id)} />
+            <IconButton icon="x" tone="bare" label="Remover tarefa" size={32} disabled={busy} onClick={() => setApagando(t)} />
           </div>
         }
       />
@@ -327,6 +342,16 @@ export default function Tarefas() {
             onChange={(e) => setForm({ ...form, time: e.target.value })}
           />
         </Sheet>
+      )}
+
+      {apagando && (
+        <Confirmar
+          titulo={`Remover "${apagando.title}"?`}
+          descricao="A tarefa sai da lista do grupo, com as conclusões que já tinham sido marcadas nela."
+          rotuloConfirmar="Remover"
+          onConfirmar={() => remove(apagando)}
+          onFechar={() => setApagando(null)}
+        />
       )}
 
       {zoom && (

@@ -2,8 +2,10 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useApp } from '../store.jsx'
 import { api } from '../api.js'
-import { Avatar, Button, Card, Chip, Icon } from '../design-system/components/index.js'
+import { Avatar, Button, Card, Chip, Icon, IconButton } from '../design-system/components/index.js'
 import CheckControl from '../components/CheckControl.jsx'
+import Confirmar from '../components/Confirmar.jsx'
+import { useToast } from '../components/Toast.jsx'
 
 const LONG_DATE = { weekday: 'long', day: '2-digit', month: 'long' }
 
@@ -65,10 +67,12 @@ function Vazio({ children }) {
 
 export default function MeuDia() {
   const { user, groupId } = useApp()
+  const aviso = useToast()
   const [day, setDay] = useState(null)
   const [leitura, setLeitura] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [apagandoRegistro, setApagandoRegistro] = useState(null)
 
   const carregar = useCallback(async () => {
     setLoading(true)
@@ -100,12 +104,32 @@ export default function MeuDia() {
       habits: d.habits.map((h) => (h.id === habit.id ? { ...h, completed: next } : h)),
     }))
     try {
-      await api.logHabit(habit.id, { date: day.date, completed: next })
+      const r = await api.logHabit(habit.id, { date: day.date, completed: next })
       await carregar()
+      if (next) anunciarGanho(r, habit.name)
+      else aviso({
+        text: `"${habit.name}" desmarcado`,
+        icon: 'undo-2',
+        onUndo: () => marcarHabito(habit, true),
+      })
     } catch (e) {
       setError(e.message)
       await carregar()
     }
+  }
+
+  // Marcar e não ver nada acontecer é o que faz parar de marcar: o ponto ganho
+  // e o marco de sequência à vista são a resposta imediata do app.
+  const anunciarGanho = (r, nome) => {
+    const marco = r.next_milestone
+    const partes = [r.points ? `+${r.points} pts` : null]
+    if (r.streak > 0) partes.push(`${r.streak} ${r.streak === 1 ? 'dia' : 'dias'} seguidos`)
+    else if (marco) partes.push(`faltam ${marco.missing} para +${marco.points}`)
+    aviso({
+      text: `${nome} — ${partes.filter(Boolean).join(' · ')}`,
+      icon: r.streak >= 3 ? 'flame' : 'check-circle',
+      tone: 'success',
+    })
   }
 
   const marcarPasso = async (routine, step, next) => {
@@ -122,19 +146,41 @@ export default function MeuDia() {
       ),
     }))
     try {
-      await api.logRoutineStep(routine.id, { date: day.date, step_id: step.id, done: next })
+      const r = await api.logRoutineStep(routine.id, { date: day.date, step_id: step.id, done: next })
       await carregar()
+      if (r.points) anunciarGanho(r, `${routine.name} fechada`)
+      else if (!next) aviso({
+        text: `"${step.name}" desmarcado`,
+        icon: 'undo-2',
+        onUndo: () => marcarPasso(routine, step, true),
+      })
     } catch (e) {
       setError(e.message)
       await carregar()
     }
   }
 
+  // Um registro errado (distância trocada, duplicado) travava a pontuação para
+  // sempre: agora ele some e devolve o XP e os pontos exatos que deu.
+  const apagarRegistro = async (registro) => {
+    await api.deleteActivityRecord(registro.group_id ?? groupId, registro.id)
+    await carregar()
+    aviso({ text: 'Registro apagado — XP e pontos devolvidos', icon: 'trash' })
+  }
+
   const alternarDescanso = async () => {
+    const eraDescanso = day.rest_day
     try {
-      if (day.rest_day) await api.removeRestDay(day.date)
+      if (eraDescanso) await api.removeRestDay(day.date)
       else await api.addRestDay({ date: day.date, reason: 'Descanso planejado' })
       await carregar()
+      aviso({
+        text: eraDescanso
+          ? 'Descanso cancelado'
+          : 'Hoje é descanso — não conta como falha e não quebra a sequência',
+        icon: eraDescanso ? 'sun' : 'moon',
+        onUndo: alternarDescanso,
+      })
     } catch (e) {
       setError(e.message)
     }
@@ -151,7 +197,10 @@ export default function MeuDia() {
     )
   }
 
-  const { agenda = [], habits = [], routines = [], summary = {}, rest_day: descanso, training: treino, nutrition: nutricao } = day || {}
+  const {
+    agenda = [], habits = [], routines = [], records = [], summary = {},
+    rest_day: descanso, training: treino, nutrition: nutricao,
+  } = day || {}
   const data = day ? new Date(`${day.date}T12:00:00`) : new Date()
   const tudoFeito = summary.total > 0 && summary.pending === 0 && !descanso
 
@@ -236,8 +285,22 @@ export default function MeuDia() {
                   : `${summary.done} de ${summary.total} concluídos`}
             </div>
           </div>
-          <Chip>Nível {summary.level ?? 1}</Chip>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 'var(--space-2)' }}>
+            <Chip>Nível {summary.level ?? 1}</Chip>
+            {summary.streak > 0 && (
+              <Chip>
+                <Icon name="flame" size={13} color="var(--warning)" />
+                <span style={{ marginLeft: 4, fontVariantNumeric: 'tabular-nums' }}>
+                  {summary.streak}
+                </span>
+              </Chip>
+            )}
+          </div>
         </div>
+
+        {/* A sequência é o que dói perder — e era a única coisa do app que não
+            aparecia em lugar nenhum do dia a dia. */}
+        <Sequencia summary={summary} descanso={descanso} />
       </Card>
 
       {leitura && (
@@ -464,6 +527,57 @@ export default function MeuDia() {
         )}
       </Secao>
 
+      {records.length > 0 && (
+        <Secao title="Registrado hoje">
+          <Card pad="0 var(--pad-card)">
+            {records.map((r, i) => (
+              <div
+                key={r.id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-5)',
+                  padding: 'var(--pad-row) 0',
+                  borderBottom: i < records.length - 1 ? '1px solid var(--line-hairline)' : 'none',
+                }}
+              >
+                <Icon name="activity" size={16} color="var(--blue-glow)" />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontFamily: 'var(--font-ui)',
+                      fontSize: 'var(--fs-body)',
+                      color: 'var(--text-primary)',
+                      textTransform: 'capitalize',
+                    }}
+                  >
+                    {r.modality}
+                  </div>
+                  <div
+                    style={{
+                      marginTop: 2,
+                      fontFamily: 'var(--font-ui)',
+                      fontVariantNumeric: 'tabular-nums',
+                      fontSize: 'var(--fs-body-sm)',
+                      color: 'var(--text-tertiary)',
+                    }}
+                  >
+                    {resumoDoRegistro(r)}
+                  </div>
+                </div>
+                <IconButton
+                  icon="trash"
+                  tone="bare"
+                  label={`Apagar registro de ${r.modality}`}
+                  size={32}
+                  onClick={() => setApagandoRegistro(r)}
+                />
+              </div>
+            ))}
+          </Card>
+        </Secao>
+      )}
+
       {/* Registrar e desafiar-se são ações, não conteúdo: ficam no fim, fora do caminho. */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--gap-stack)', marginBottom: 'var(--space-9)' }}>
         <Link to="/registrar" data-tour="dia-registrar" style={{ textDecoration: 'none' }}>
@@ -486,6 +600,79 @@ export default function MeuDia() {
           {error}
         </p>
       ) : null}
+
+      {apagandoRegistro && (
+        <Confirmar
+          titulo="Apagar este registro?"
+          descricao={`O XP e os pontos de ranking que ele rendeu voltam atrás (${apagandoRegistro.xp_earned} XP · ${apagandoRegistro.score_earned} pts). A publicação dele no feed sai junto.`}
+          onConfirmar={() => apagarRegistro(apagandoRegistro)}
+          onFechar={() => setApagandoRegistro(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+/** Descreve o registro pelos parâmetros que a pessoa informou. */
+function resumoDoRegistro(r) {
+  const p = r.params || {}
+  return [
+    p.distance ? `${p.distance} km` : null,
+    p.duration ? `${p.duration} min` : null,
+    p.rolas ? `${p.rolas} rolas` : null,
+    p.series ? `${p.series} séries` : null,
+    `+${r.xp_earned} XP`,
+    r.score_earned ? `${r.score_earned} pts` : null,
+  ].filter(Boolean).join(' · ')
+}
+
+/**
+ * Sequência e próximo marco.
+ *
+ * O bônus por sequência só motiva se a pessoa souber que ele existe e quanto
+ * falta — por isso o alvo aparece em número, não em frase de incentivo.
+ */
+function Sequencia({ summary, descanso }) {
+  const dias = summary.streak ?? 0
+  const marco = summary.next_milestone
+  if (!dias && !marco) return null
+
+  const texto = dias === 0
+    ? descanso
+      ? 'Hoje é descanso — sua sequência fica de pé.'
+      : `Feche tudo de hoje para começar a sequência${marco ? ` (+${marco.points} pts em ${marco.days} dias)` : ''}.`
+    : marco
+      ? `${dias} ${dias === 1 ? 'dia seguido' : 'dias seguidos'} · faltam ${marco.missing} para +${marco.points} pts`
+      : `${dias} dias seguidos — você já passou de todos os marcos.`
+
+  const progresso = marco ? Math.min(100, Math.round((dias / marco.days) * 100)) : 100
+
+  return (
+    <div style={{ marginTop: 'var(--space-6)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}>
+        <Icon name="flame" size={14} color={dias > 0 ? 'var(--warning)' : 'var(--text-tertiary)'} />
+        <span
+          style={{
+            flex: 1,
+            fontFamily: 'var(--font-ui)',
+            fontSize: 'var(--fs-body-sm)',
+            color: 'var(--text-secondary)',
+          }}
+        >
+          {texto}
+        </span>
+      </div>
+      <div
+        style={{
+          marginTop: 'var(--space-4)',
+          height: 4,
+          borderRadius: 999,
+          background: 'var(--surface-input)',
+          overflow: 'hidden',
+        }}
+      >
+        <div style={{ width: `${progresso}%`, height: '100%', background: 'var(--warning)' }} />
+      </div>
     </div>
   )
 }

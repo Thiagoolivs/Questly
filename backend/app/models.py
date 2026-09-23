@@ -485,6 +485,9 @@ class CompetitiveScore(Base):
     period_end: Mapped[date] = mapped_column(Date, index=True)
     effort_score: Mapped[float] = mapped_column(Float, default=0.0)
     consistency_score: Mapped[float] = mapped_column(Float, default=0.0)
+    # Constância: pontos pequenos por hábito cumprido, rotina fechada e marco de
+    # sequência. Derivado dos logs, nunca incrementado — desmarcar tira o ponto.
+    habit_score: Mapped[float] = mapped_column(Float, default=0.0)
     challenge_score: Mapped[float] = mapped_column(Float, default=0.0)
     total_score: Mapped[float] = mapped_column(Float, default=0.0)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

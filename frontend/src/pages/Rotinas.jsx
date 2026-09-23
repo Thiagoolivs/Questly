@@ -4,6 +4,9 @@ import { api } from '../api.js'
 import { Button, Card, Chip, Icon, IconButton, Input, Select } from '../design-system/components/index.js'
 import Sheet from '../components/Sheet.jsx'
 import TelaDeLista from '../components/TelaDeLista.jsx'
+import Confirmar from '../components/Confirmar.jsx'
+import EscolherProntos from '../components/EscolherProntos.jsx'
+import { useToast } from '../components/Toast.jsx'
 
 const DIAS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 
@@ -38,12 +41,16 @@ function resumo(r) {
 
 export default function Rotinas() {
   const navigate = useNavigate()
+  const aviso = useToast()
   const [rotinas, setRotinas] = useState([])
+  const [prontas, setProntas] = useState(null)
   const [iaLigada, setIaLigada] = useState(false)
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState(null)
   const [editando, setEditando] = useState(null)
   const [pedindoIA, setPedindoIA] = useState(false)
+  const [escolhendo, setEscolhendo] = useState(false)
+  const [apagando, setApagando] = useState(null)
 
   const carregar = useCallback(async () => {
     setErro(null)
@@ -61,31 +68,67 @@ export default function Rotinas() {
     carregar()
   }, [carregar])
 
+  useEffect(() => {
+    api.presets().then(setProntas).catch(() => {})
+  }, [])
+
   const remover = async (r) => {
-    try {
-      await api.deleteRoutine(r.id)
-      carregar()
-    } catch (e) {
-      setErro(e.message)
+    await api.deleteRoutine(r.id)
+    await carregar()
+    aviso({ text: `"${r.name}" apagada`, icon: 'trash' })
+  }
+
+  // Uma rotina pronta vira uma rotina de verdade (com passos) na criação normal:
+  // nada aqui é especial depois que entra, e tudo é editável.
+  const adicionarProntas = async (escolhidas) => {
+    for (const pronta of escolhidas) {
+      await api.createRoutine({
+        name: pronta.name,
+        category: pronta.category,
+        time_slot: pronta.time_slot,
+        frequency: pronta.frequency,
+        steps: pronta.steps.map((p, i) => ({
+          name: p.name,
+          order: i,
+          duration_min: p.duration_min ?? null,
+          is_required: p.is_required,
+        })),
+      })
     }
+    setEscolhendo(false)
+    await carregar()
+    const n = escolhidas.length
+    aviso({ text: `${n} ${n === 1 ? 'rotina adicionada' : 'rotinas adicionadas'}`, icon: 'check-circle', tone: 'success' })
   }
 
   return (
     <TelaDeLista
       titulo="Rotinas"
       onVoltar={() => navigate('/plano')}
-      acao={<IconButton icon="plus" label="Nova rotina" onClick={() => setEditando({ steps: [] })} />}
+      acao={
+        <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+          {prontas && (
+            <IconButton icon="sparkles" label="Escolher prontas" onClick={() => setEscolhendo(true)} />
+          )}
+          <IconButton icon="plus" label="Nova rotina" onClick={() => setEditando({ steps: [] })} />
+        </div>
+      }
       erro={erro}
       carregando={carregando}
       vazio={rotinas.length === 0}
-      textoVazio="Rotina é um conjunto de passos que você repete: manhã, pré-treino, antes de dormir. Marcar os passos é o que fecha a rotina do dia."
+      textoVazio="Rotina é um conjunto de passos que você repete: manhã, pré-treino, antes de dormir. Fechar todos os passos obrigatórios conclui a rotina do dia — e rende pontos."
       acaoVazio={
-        <div style={{ display: 'flex', gap: 'var(--space-5)' }}>
-          <Button variant="accent" iconLeft="plus" onClick={() => setEditando({ steps: [] })}>
-            Criar
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-5)' }}>
+          {prontas && (
+            <Button variant="accent" iconLeft="sparkles" onClick={() => setEscolhendo(true)}>
+              Escolher prontas
+            </Button>
+          )}
+          <Button variant="secondary" iconLeft="plus" onClick={() => setEditando({ steps: [] })}>
+            Criar do zero
           </Button>
           {iaLigada && (
-            <Button variant="secondary" iconLeft="sparkles" onClick={() => setPedindoIA(true)}>
+            <Button variant="ghost" iconLeft="wand" onClick={() => setPedindoIA(true)}>
               Pedir à IA
             </Button>
           )}
@@ -133,14 +176,20 @@ export default function Rotinas() {
             </div>
             <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
               <IconButton icon="pencil" label="Editar" size={32} onClick={() => setEditando(r)} />
-              <IconButton icon="trash" label="Remover" size={32} onClick={() => remover(r)} />
+              <IconButton icon="trash" label="Remover" size={32} onClick={() => setApagando(r)} />
             </div>
           </div>
         </Card>
       ))}
 
+      {rotinas.length > 0 && prontas && (
+        <Button variant="secondary" fullWidth iconLeft="sparkles" onClick={() => setEscolhendo(true)}>
+          Escolher rotinas prontas
+        </Button>
+      )}
+
       {rotinas.length > 0 && iaLigada && (
-        <Button variant="secondary" fullWidth iconLeft="sparkles" onClick={() => setPedindoIA(true)}>
+        <Button variant="ghost" fullWidth iconLeft="wand" onClick={() => setPedindoIA(true)}>
           Pedir uma rotina à IA
         </Button>
       )}
@@ -157,6 +206,30 @@ export default function Rotinas() {
         <RotinaPelaIA
           onFechar={() => setPedindoIA(false)}
           onPronto={() => { setPedindoIA(false); carregar() }}
+        />
+      )}
+
+      {escolhendo && prontas && (
+        <EscolherProntos
+          titulo="Rotinas prontas"
+          explicacao="Cada uma já vem com os passos na ordem. Ajuste depois o que não servir."
+          itens={prontas.routines}
+          jaExistem={rotinas.map((r) => r.name)}
+          resumo={(r) => ({
+            nome: r.name,
+            detalhe: `${r.description} · ${r.steps.length} passos`,
+          })}
+          onConfirmar={adicionarProntas}
+          onFechar={() => setEscolhendo(false)}
+        />
+      )}
+
+      {apagando && (
+        <Confirmar
+          titulo={`Apagar "${apagando.name}"?`}
+          descricao="Os passos e o histórico de execução dessa rotina vão junto, e os pontos que ela rendeu saem do placar."
+          onConfirmar={() => remover(apagando)}
+          onFechar={() => setApagando(null)}
         />
       )}
     </TelaDeLista>

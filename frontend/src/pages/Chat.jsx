@@ -4,6 +4,8 @@ import { api } from '../api.js'
 import { pickImage, fileToCompressedDataURL } from '../utils/image.js'
 import { Avatar, Icon } from '../design-system/components/index.js'
 import VoltarPara from '../components/VoltarPara.jsx'
+import Confirmar from '../components/Confirmar.jsx'
+import { useToast } from '../components/Toast.jsx'
 
 function timeLabel(iso) {
   const d = new Date(iso)
@@ -12,11 +14,13 @@ function timeLabel(iso) {
 
 export default function Chat() {
   const { groupId, myId, loading } = useApp()
+  const aviso = useToast()
   const [messages, setMessages] = useState([])
   const [text, setText] = useState('')
   const [pending, setPending] = useState(null)
   const [sending, setSending] = useState(false)
   const [err, setErr] = useState(null)
+  const [apagando, setApagando] = useState(null)
   const logRef = useRef(null)
   const lastIdRef = useRef(0)
 
@@ -85,6 +89,13 @@ export default function Chat() {
     }
   }
 
+  // Mensagem enviada por engano (ou com a foto errada) não tinha como sair.
+  async function apagar(msg) {
+    await api.deleteMessage(groupId, msg.id)
+    setMessages((cur) => cur.filter((x) => x.id !== msg.id))
+    aviso({ text: 'Mensagem apagada', icon: 'trash' })
+  }
+
   if (loading) return <div className="screen center muted">Carregando…</div>
 
   return (
@@ -109,7 +120,19 @@ export default function Chat() {
                 {!mine && <div className="chat-author">{m.name}</div>}
                 {m.image && <img className="chat-img" src={m.image} alt="anexo" />}
                 {m.text && <div className="chat-text">{m.text}</div>}
-                <div className="chat-time">{timeLabel(m.created_at)}</div>
+                <div className="chat-time">
+                  {timeLabel(m.created_at)}
+                  {mine && (
+                    <button
+                      type="button"
+                      className="chat-del"
+                      onClick={() => setApagando(m)}
+                      aria-label="Apagar mensagem"
+                    >
+                      <Icon name="trash" size={12} />
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           )
@@ -145,6 +168,15 @@ export default function Chat() {
           </button>
         </div>
       </div>
+
+      {apagando && (
+        <Confirmar
+          titulo="Apagar esta mensagem?"
+          descricao="Ela some do chat para todo mundo do grupo."
+          onConfirmar={() => apagar(apagando)}
+          onFechar={() => setApagando(null)}
+        />
+      )}
     </div>
   )
 }

@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom'
 import { useApp } from '../store.jsx'
 import { api } from '../api.js'
 import { Avatar, Button, Card, Icon, IconButton } from '../design-system/components/index.js'
+import Confirmar from '../components/Confirmar.jsx'
+import { useToast } from '../components/Toast.jsx'
 
 function haQuanto(iso) {
   const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000)
@@ -27,10 +29,12 @@ function rotuloDoDia(iso) {
 
 export default function Feed() {
   const { groupId, myId } = useApp()
+  const aviso = useToast()
   const [itens, setItens] = useState(null)
   const [tipos, setTipos] = useState([])
   const [erro, setErro] = useState(null)
   const [zoom, setZoom] = useState(null)
+  const [apagando, setApagando] = useState(null)
 
   const carregar = useCallback(() => {
     if (!groupId) return
@@ -54,6 +58,14 @@ export default function Feed() {
 
   const atualizar = (aid, mudanca) =>
     setItens((prev) => prev.map((a) => (a.id === aid ? { ...a, ...mudanca } : a)))
+
+  // O feed é público para o grupo e cheio de foto: sem apagar, um envio errado
+  // ficava exposto para sempre.
+  const apagarPublicacao = async (item) => {
+    await api.deleteActivity(groupId, item.id)
+    setItens((prev) => prev.filter((a) => a.id !== item.id))
+    aviso({ text: 'Publicação apagada', icon: 'trash' })
+  }
 
   // Agrupa por dia preservando a ordem em que o feed veio.
   const dias = []
@@ -154,12 +166,22 @@ export default function Feed() {
                   onZoom={setZoom}
                   onErro={setErro}
                   onAtualizar={(mudanca) => atualizar(a.id, mudanca)}
+                  onApagar={() => setApagando(a)}
                 />
               ))}
             </div>
           </div>
         ))}
       </div>
+
+      {apagando && (
+        <Confirmar
+          titulo="Apagar esta publicação?"
+          descricao="Ela sai do feed com a foto, as reações e os comentários. O que ela contava (treino, tarefa, desafio) continua registrado — para desfazer aquilo, é na tela onde foi feito."
+          onConfirmar={() => apagarPublicacao(apagando)}
+          onFechar={() => setApagando(null)}
+        />
+      )}
 
       {zoom && (
         <div
@@ -183,7 +205,7 @@ export default function Feed() {
   )
 }
 
-function ItemDoFeed({ item, tipos, groupId, myId, onZoom, onErro, onAtualizar }) {
+function ItemDoFeed({ item, tipos, groupId, myId, onZoom, onErro, onAtualizar, onApagar }) {
   const [abrindoReacoes, setAbrindoReacoes] = useState(false)
   const [comentando, setComentando] = useState(false)
   const [texto, setTexto] = useState('')
@@ -230,8 +252,13 @@ function ItemDoFeed({ item, tipos, groupId, myId, onZoom, onErro, onAtualizar })
       <div style={{ display: 'flex', gap: 'var(--space-5)' }}>
         <Avatar src={item.photo} name={item.author} size={36} />
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-body)', color: 'var(--text-primary)' }}>
-            <span style={{ fontWeight: 'var(--fw-semibold)' }}>{item.author}</span> {item.text}
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-4)' }}>
+            <div style={{ flex: 1, minWidth: 0, fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-body)', color: 'var(--text-primary)' }}>
+              <span style={{ fontWeight: 'var(--fw-semibold)' }}>{item.author}</span> {item.text}
+            </div>
+            {item.membership_id === myId && (
+              <IconButton icon="trash" tone="bare" label="Apagar publicação" size={28} onClick={onApagar} />
+            )}
           </div>
 
           {item.image && (
