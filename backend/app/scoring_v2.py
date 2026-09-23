@@ -248,13 +248,16 @@ def compute_challenge_score(challenges_completed: list | int) -> float:
     return float(max(0, count) * 50.0)
 
 
-def total_competitive(effort: float, consistency: float, challenge: float) -> float:
-    """Ranking = esforço + consistência + desafios.
+def total_competitive(effort: float, consistency: float, challenge: float,
+                      habits: float = 0.0) -> float:
+    """Ranking = esforço + constância + consistência + desafios.
 
     A consistência entra com peso menor porque é limitada a 100 por período:
-    sem isso ela viraria o atalho para o topo sem sair do lugar.
+    sem isso ela viraria o atalho para o topo sem sair do lugar. Já a constância
+    (`habits`) é contagem de pontos pequenos por hábito, rotina e marco de
+    sequência — entra inteira, porque já nasce calibrada baixa.
     """
-    return round(effort + consistency * 0.5 + challenge, 2)
+    return round(effort + consistency * 0.5 + challenge + habits, 2)
 
 
 # Catálogo exposto ao app. Fica aqui, junto das regras de pontuação, para o
@@ -296,3 +299,49 @@ def modality_catalog() -> list[dict]:
         {**mod, "fields": [FIELD_LABELS[f] for f in mod["fields"] if f in FIELD_LABELS]}
         for mod in MODALITIES
     ]
+
+
+# --- Constância: hábitos, rotinas e sequência ------------------------------
+# A pontuação aqui é de propósito pequena perto do esforço de um treino: um
+# hábito cumprido não pode valer uma corrida de 10 km. Mas precisa existir —
+# marcar o que se planejou e não ganhar nada é o caminho mais curto para parar
+# de marcar.
+HABIT_POINTS = 2.0          # por hábito cumprido
+ROUTINE_POINTS = 6.0        # por rotina fechada (todos os passos obrigatórios)
+FULL_DAY_BONUS = 5.0        # por fechar tudo que vencia no dia
+
+# Recompensa por sequência: marcos, não pontinho por dia. Um bônus diário some
+# no ruído; um marco à vista dá o que perder, que é o que sustenta a corrente.
+# Cada marco é pago uma vez, quando a sequência o alcança.
+STREAK_MILESTONES = [
+    (3, 10), (7, 25), (14, 50), (21, 80),
+    (30, 130), (45, 200), (60, 300), (90, 450), (180, 900), (365, 2000),
+]
+
+
+def habit_points(habits_done: int, routines_done: int, full_days: int) -> float:
+    """Pontos de constância do período, antes do bônus de sequência."""
+    return round(
+        max(0, habits_done) * HABIT_POINTS
+        + max(0, routines_done) * ROUTINE_POINTS
+        + max(0, full_days) * FULL_DAY_BONUS,
+        2,
+    )
+
+
+def streak_bonus(streak: int) -> int:
+    """Soma dos marcos já alcançados por uma sequência de `streak` dias.
+
+    É acumulado (e não incremental) para que a pontuação continue sendo uma
+    função do que está registrado: desmarcar um dia derruba a sequência e o
+    bônus vai embora junto, sem precisar de contabilidade à parte.
+    """
+    return sum(pontos for dias, pontos in STREAK_MILESTONES if streak >= dias)
+
+
+def next_streak_milestone(streak: int) -> dict | None:
+    """Próximo marco a alcançar — o número que a tela mostra como alvo."""
+    for dias, pontos in STREAK_MILESTONES:
+        if streak < dias:
+            return {"days": dias, "points": pontos, "missing": dias - streak}
+    return None

@@ -189,6 +189,32 @@ export default function Perfil() {
       {/* Uma porta por assunto: o app se configura aqui, o grupo se configura
           na engrenagem do próprio grupo. Antes as duas coisas apareciam em
           três lugares diferentes e nenhum deles dizia qual era qual. */}
+      {/* Retrospectiva e conquistas são o olhar para trás: ficam no perfil,
+          que é onde se olha para o próprio progresso, e não no Meu Dia, que é
+          onde se executa o de hoje. */}
+      <section>
+        <Titulo>Seu progresso</Titulo>
+        <Card pad="0 var(--pad-card)" style={{ marginTop: 'var(--space-5)' }}>
+          <Link to="/semana" style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}>
+            <ListRow
+              icon="calendar-days"
+              title="Sua semana"
+              subtitle="O que aconteceu na última semana fechada"
+              onClick={() => {}}
+            />
+          </Link>
+          <Link to="/conquistas" style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}>
+            <ListRow
+              icon="award"
+              title="Conquistas"
+              subtitle="Medalhas do seu progresso e do desafio do grupo"
+              onClick={() => {}}
+              divider={false}
+            />
+          </Link>
+        </Card>
+      </section>
+
       <section>
         <Titulo>Ajustes</Titulo>
         <Card pad="0 var(--pad-card)" style={{ marginTop: 'var(--space-5)' }}>

@@ -90,6 +90,9 @@ export const api = {
   sendMessage: (g, b) => req(`/api/groups/${g}/messages`, { method: 'POST', body: b }),
   activities: (g) => req(`/api/groups/${g}/activities`),
   createActivityRecord: (g, b) => req(`/api/groups/${g}/activity-record`, { method: 'POST', body: b }),
+  deleteActivityRecord: (g, id) => req(`/api/groups/${g}/activity-record/${id}`, { method: 'DELETE' }),
+  deleteActivity: (g, aid) => req(`/api/groups/${g}/activities/${aid}`, { method: 'DELETE' }),
+  deleteMessage: (g, id) => req(`/api/groups/${g}/messages/${id}`, { method: 'DELETE' }),
   reactActivity: (g, aid, b) => req(`/api/groups/${g}/activities/${aid}/react`, { method: 'POST', body: b }),
   comments: (g, aid) => req(`/api/groups/${g}/activities/${aid}/comments`),
   addComment: (g, aid, b) => req(`/api/groups/${g}/activities/${aid}/comments`, { method: 'POST', body: b }),
@@ -107,6 +110,8 @@ export const api = {
   meals: (g, day) => req(`/api/groups/${g}/meals${qs(day)}`),
   addMeal: (g, b) => req(`/api/groups/${g}/meals`, { method: 'POST', body: b }),
   addMealText: (g, b) => req(`/api/groups/${g}/meals/text`, { method: 'POST', body: b }),
+  // Valores já sabidos, sem IA — é também o caminho de volta de uma exclusão.
+  addMealManual: (g, b) => req(`/api/groups/${g}/meals/manual`, { method: 'POST', body: b }),
   addMealFoods: (g, b) => req(`/api/groups/${g}/meals/foods`, { method: 'POST', body: b }),
   searchFoods: (q) => req(`/api/foods?q=${encodeURIComponent(q)}`),
   updateMeal: (g, id, b) => req(`/api/groups/${g}/meals/${id}`, { method: 'PATCH', body: b }),
@@ -122,6 +127,10 @@ export const api = {
   updateRoutine: (id, b) => req(`/api/routines/${id}`, { method: 'PUT', body: b }),
   deleteRoutine: (id) => req(`/api/routines/${id}`, { method: 'DELETE' }),
   habits: () => req('/api/habits'),
+  createHabitsBulk: (b) => req('/api/habits/bulk', { method: 'POST', body: b }),
+  // Catálogo pronto (hábitos, rotinas, compromissos, metas): a alternativa a
+  // encarar a tela em branco com o teclado do celular.
+  presets: () => req('/api/presets'),
   createHabit: (b) => req('/api/habits', { method: 'POST', body: b }),
   updateHabit: (id, b) => req(`/api/habits/${id}`, { method: 'PUT', body: b }),
   deleteHabit: (id) => req(`/api/habits/${id}`, { method: 'DELETE' }),
@@ -147,7 +156,12 @@ export const api = {
   createRoutineWithAI: (b) => req('/api/routines/ai', { method: 'POST', body: b }),
   logHabit: (id, b = {}) => req(`/api/habits/${id}/log`, { method: 'POST', body: b }),
   logRoutineStep: (id, b) => req(`/api/routines/${id}/log`, { method: 'POST', body: b }),
+  // Retrospectiva da semana (sem `week`, a última fechada).
+  weekRecap: (week) => req(`/api/week/recap${week ? `?week=${encodeURIComponent(week)}` : ''}`),
   restDays: () => req('/api/rest-days'),
+  // Resgate: salvar um dia já passado para a sequência não morrer num tropeço.
+  rescues: () => req('/api/rest-days/rescues'),
+  rescueDay: (b) => req('/api/rest-days/rescue', { method: 'POST', body: b }),
   addRestDay: (b) => req('/api/rest-days', { method: 'POST', body: b }),
   removeRestDay: (day) => req(`/api/rest-days/${day}`, { method: 'DELETE' }),
 }

@@ -4,6 +4,7 @@ import { AppProvider, useApp } from './store.jsx'
 import { TabBar } from './design-system/components/index.js'
 import { useNavigate, useLocation } from 'react-router-dom'
 import Onboarding, { hasOnboarded, useTourTrigger } from './components/Onboarding.jsx'
+import { ToastProvider } from './components/Toast.jsx'
 import { captureInviteFromUrl } from './utils/invite.js'
 import Auth from './pages/Auth.jsx'
 import Grupos from './pages/Grupos.jsx'
@@ -24,6 +25,7 @@ import Tarefas from './pages/Tarefas.jsx'
 import Chat from './pages/Chat.jsx'
 import Mural from './pages/Mural.jsx'
 import Conquistas from './pages/Conquistas.jsx'
+import Semana from './pages/Semana.jsx'
 import Config from './pages/Config.jsx'
 import ConfigGrupo from './pages/ConfigGrupo.jsx'
 
@@ -33,7 +35,11 @@ captureInviteFromUrl()
 export default function App() {
   return (
     <AppProvider>
-      <Gate />
+      {/* O aviso do rodapé (e o "Desfazer" que mora nele) precisa sobreviver à
+          troca de tela: por isso fica acima das rotas, não dentro delas. */}
+      <ToastProvider>
+        <Gate />
+      </ToastProvider>
     </AppProvider>
   )
 }
@@ -127,6 +133,7 @@ function Shell() {
             <Route path="/chat" element={<Chat />} />
             <Route path="/mural" element={<Mural />} />
             <Route path="/conquistas" element={<Conquistas />} />
+            <Route path="/semana" element={<Semana />} />
             <Route path="/config" element={<Config />} />
             <Route path="/grupo/config" element={<ConfigGrupo />} />
             <Route path="*" element={<Navigate to="/" replace />} />

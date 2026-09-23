@@ -313,6 +313,10 @@ function Placar({ eu, dados, competitivo }) {
       {eu ? (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-3)', marginTop: 'var(--space-5)' }}>
           <Chip>Esforço {eu.effort_score}</Chip>
+          {/* Constância é o ponto do hábito e da rotina cumpridos, mais o bônus
+              dos marcos de sequência. Sem ela na tela, quem só marca hábitos
+              não entende de onde veio o próprio placar. */}
+          <Chip>Constância {eu.habit_score ?? 0}</Chip>
           <Chip>Consistência {eu.consistency_score}</Chip>
           <Chip>Desafios {eu.challenge_score}</Chip>
         </div>

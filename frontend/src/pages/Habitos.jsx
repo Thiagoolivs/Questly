@@ -4,6 +4,9 @@ import { api } from '../api.js'
 import { Button, Card, Chip, Icon, IconButton, Input, Select } from '../design-system/components/index.js'
 import Sheet from '../components/Sheet.jsx'
 import TelaDeLista from '../components/TelaDeLista.jsx'
+import Confirmar from '../components/Confirmar.jsx'
+import EscolherProntos from '../components/EscolherProntos.jsx'
+import { useToast } from '../components/Toast.jsx'
 
 const DIAS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 
@@ -40,10 +43,14 @@ function resumo(h) {
 
 export default function Habitos() {
   const navigate = useNavigate()
+  const aviso = useToast()
   const [habitos, setHabitos] = useState([])
+  const [prontos, setProntos] = useState(null)
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState(null)
   const [editando, setEditando] = useState(null)
+  const [escolhendo, setEscolhendo] = useState(false)
+  const [apagando, setApagando] = useState(null)
 
   const carregar = useCallback(async () => {
     setErro(null)
@@ -60,38 +67,82 @@ export default function Habitos() {
     carregar()
   }, [carregar])
 
+  // O catálogo é estático e pequeno: busca uma vez e fica.
+  useEffect(() => {
+    api.presets().then(setProntos).catch(() => {})
+  }, [])
+
   const remover = async (h) => {
+    await api.deleteHabit(h.id)
+    await carregar()
+    aviso({ text: `"${h.name}" apagado`, icon: 'trash' })
+  }
+
+  // Pausar tem volta imediata, então acontece e oferece o desfazer — sem
+  // confirmação no caminho de quem só quer dar uma folga num hábito.
+  const alternarAtivo = async (h) => {
     try {
-      await api.deleteHabit(h.id)
-      carregar()
+      await api.updateHabit(h.id, { active: !h.active })
+      await carregar()
+      aviso({
+        text: h.active ? `"${h.name}" pausado` : `"${h.name}" retomado`,
+        icon: h.active ? 'moon' : 'sun',
+        onUndo: async () => {
+          await api.updateHabit(h.id, { active: h.active })
+          await carregar()
+        },
+      })
     } catch (e) {
       setErro(e.message)
     }
   }
 
-  const alternarAtivo = async (h) => {
-    try {
-      await api.updateHabit(h.id, { active: !h.active })
-      carregar()
-    } catch (e) {
-      setErro(e.message)
-    }
+  const adicionarProntos = async (escolhidos) => {
+    const { created } = await api.createHabitsBulk({
+      habits: escolhidos.map(({ key, ...campos }) => campos),
+    })
+    setEscolhendo(false)
+    await carregar()
+    aviso({ text: `${created} ${created === 1 ? 'hábito adicionado' : 'hábitos adicionados'}`, icon: 'check-circle', tone: 'success' })
   }
 
   return (
     <TelaDeLista
       titulo="Hábitos"
       onVoltar={() => navigate('/plano')}
-      acao={<IconButton icon="plus" label="Novo hábito" onClick={() => setEditando({})} />}
+      acao={
+        <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+          {prontos && (
+            <IconButton icon="sparkles" label="Escolher prontos" onClick={() => setEscolhendo(true)} />
+          )}
+          <IconButton icon="plus" label="Novo hábito" onClick={() => setEditando({})} />
+        </div>
+      }
       erro={erro}
       carregando={carregando}
       vazio={habitos.length === 0}
-      textoVazio="Nenhum hábito ainda. Comece por um só — constância vem de poucos hábitos mantidos, não de muitos criados."
-      acaoVazio={<Button variant="accent" iconLeft="plus" onClick={() => setEditando({})}>Criar hábito</Button>}
+      textoVazio="Nenhum hábito ainda. Comece por um só — constância vem de poucos hábitos mantidos, não de muitos criados. Cada um cumprido vale pontos, e dias seguidos rendem bônus."
+      acaoVazio={
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-5)' }}>
+          {prontos && (
+            <Button variant="accent" iconLeft="sparkles" onClick={() => setEscolhendo(true)}>
+              Escolher prontos
+            </Button>
+          )}
+          <Button variant="secondary" iconLeft="plus" onClick={() => setEditando({})}>
+            Criar do zero
+          </Button>
+        </div>
+      }
     >
       {habitos.map((h) => (
         <Card key={h.id} style={{ opacity: h.active ? 1 : 0.55 }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-5)' }}>
+            {h.icon ? (
+              <div style={{ paddingTop: 2 }}>
+                <Icon name={h.icon} size={18} color="var(--text-tertiary)" />
+              </div>
+            ) : null}
             <div style={{ flex: 1, minWidth: 0 }}>
               <div
                 style={{
@@ -120,17 +171,54 @@ export default function Habitos() {
                 size={32}
                 onClick={() => alternarAtivo(h)}
               />
-              <IconButton icon="trash" label="Remover" size={32} onClick={() => remover(h)} />
+              <IconButton icon="trash" label="Remover" size={32} onClick={() => setApagando(h)} />
             </div>
           </div>
         </Card>
       ))}
+
+      {habitos.length > 0 && prontos && (
+        <Button variant="secondary" fullWidth iconLeft="sparkles" onClick={() => setEscolhendo(true)}>
+          Escolher hábitos prontos
+        </Button>
+      )}
 
       {editando && (
         <EditorDeHabito
           habito={editando}
           onFechar={() => setEditando(null)}
           onSalvo={() => { setEditando(null); carregar() }}
+        />
+      )}
+
+      {escolhendo && prontos && (
+        <EscolherProntos
+          titulo="Hábitos prontos"
+          explicacao="Marque os que fazem sentido agora. Dá para editar cada um depois — e criar os seus continua disponível."
+          itens={prontos.habits}
+          categorias={prontos.habit_categories}
+          jaExistem={habitos.map((h) => h.name)}
+          resumo={(h) => ({
+            nome: h.name,
+            detalhe: [
+              h.frequency === 'daily' ? 'Todo dia'
+                : h.frequency === 'weekdays' ? 'Seg a Sex'
+                  : (h.custom_days || []).map((d) => DIAS[d]).join(', '),
+              h.goal_qty ? `${h.goal_qty} ${h.goal_unit ?? ''}`.trim() : null,
+              h.time,
+            ].filter(Boolean).join(' · '),
+          })}
+          onConfirmar={adicionarProntos}
+          onFechar={() => setEscolhendo(false)}
+        />
+      )}
+
+      {apagando && (
+        <Confirmar
+          titulo={`Apagar "${apagando.name}"?`}
+          descricao="O histórico desse hábito vai junto, e os pontos que ele rendeu saem do placar. Para só dar uma folga, use Pausar — o passado fica de pé."
+          onConfirmar={() => remover(apagando)}
+          onFechar={() => setApagando(null)}
         />
       )}
     </TelaDeLista>

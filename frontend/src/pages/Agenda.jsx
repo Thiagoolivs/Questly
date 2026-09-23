@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { api } from '../api.js'
 import { Button, Card, Chip, Icon, IconButton, Input, Select } from '../design-system/components/index.js'
 import Sheet from '../components/Sheet.jsx'
+import { useToast } from '../components/Toast.jsx'
 
 const DIAS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 
@@ -49,6 +50,7 @@ function inicioDaSemana(d) {
 
 export default function Agenda() {
   const navigate = useNavigate()
+  const aviso = useToast()
   const [ancora, setAncora] = useState(() => new Date())
   const [selecionado, setSelecionado] = useState(() => iso(new Date()))
   const [dia, setDia] = useState(null)
@@ -184,6 +186,7 @@ export default function Agenda() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--gap-card)' }}>
           {agenda.map((ev) => (
             <Compromisso
+              aviso={aviso}
               key={ev.id}
               evento={ev}
               onMudou={() => carregar(selecionado)}
@@ -204,7 +207,7 @@ export default function Agenda() {
   )
 }
 
-function Compromisso({ evento, onMudou, onErro }) {
+function Compromisso({ evento, onMudou, onErro, aviso }) {
   const [ocupado, setOcupado] = useState(false)
   const feito = evento.status === 'done'
 
@@ -213,6 +216,12 @@ function Compromisso({ evento, onMudou, onErro }) {
     try {
       await api.updateCalendarActivity(evento.id, { status: feito ? 'pending' : 'done' })
       onMudou()
+      aviso({
+        text: feito ? `"${evento.title}" reaberto` : `"${evento.title}" concluído`,
+        icon: feito ? 'undo-2' : 'check-circle',
+        tone: feito ? undefined : 'success',
+        onUndo: alternar,
+      })
     } catch (e) {
       onErro(e.message)
     } finally {
@@ -220,11 +229,30 @@ function Compromisso({ evento, onMudou, onErro }) {
     }
   }
 
+  // Compromisso apagado volta com um toque: recriar é barato (são os mesmos
+  // campos), então aqui cabe desfazer de verdade, sem sheet de confirmação.
   const remover = async () => {
     setOcupado(true)
     try {
       await api.deleteCalendarActivity(evento.id)
       onMudou()
+      aviso({
+        text: `"${evento.title}" removido da agenda`,
+        icon: 'trash',
+        onUndo: async () => {
+          await api.createCalendarActivity({
+            title: evento.title,
+            description: evento.description,
+            category: evento.category,
+            start_datetime: evento.start,
+            end_datetime: evento.end,
+            duration_min: evento.duration_min,
+            reminder_minutes: evento.reminder_minutes || [],
+            visibility: evento.visibility,
+          })
+          onMudou()
+        },
+      })
     } catch (e) {
       onErro(e.message)
     } finally {
@@ -284,11 +312,24 @@ function NovoCompromisso({ data, onFechar, onCriado }) {
   const [hora, setHora] = useState('08:00')
   const [duracao, setDuracao] = useState('60')
   const [categoria, setCategoria] = useState('treino')
+  const [sugestoes, setSugestoes] = useState([])
   const [lembrete, setLembrete] = useState('30')
   const [repete, setRepete] = useState('')
   const [doGrupo, setDoGrupo] = useState(false)
   const [ocupado, setOcupado] = useState(false)
   const [erro, setErro] = useState('')
+
+  // Sugestões prontas: um toque preenche título, categoria e duração. O campo
+  // continua livre — elas só encurtam o caminho do que a pessoa marca sempre.
+  useEffect(() => {
+    api.presets().then((c) => setSugestoes(c.activities ?? [])).catch(() => {})
+  }, [])
+
+  const usarSugestao = (s) => {
+    setTitulo(s.title)
+    setCategoria(s.category)
+    setDuracao(String(s.duration_min))
+  }
 
   const salvar = async () => {
     if (ocupado || !titulo.trim()) return
@@ -336,6 +377,16 @@ function NovoCompromisso({ data, onFechar, onCriado }) {
         onChange={(e) => setTitulo(e.target.value)}
         autoFocus
       />
+
+      {sugestoes.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-3)' }}>
+          {sugestoes.map((s) => (
+            <Chip key={s.key} selected={titulo === s.title} onClick={() => usarSugestao(s)}>
+              {s.title}
+            </Chip>
+          ))}
+        </div>
+      )}
 
       <div style={{ display: 'flex', gap: 'var(--space-5)' }}>
         <div style={{ flex: 1 }}>

@@ -1,80 +1,116 @@
-# 🎯 Questly — Desafio de Evolução
+# 🎯 Questly
 
-> App gamificado de **desafios diários** para casais evoluírem juntos — físico, mental, social, espiritual e na **relação**. Recompensa a **constância**, não a perfeição.
+> App de hábitos, rotinas e treino que recompensa a **constância** — sozinho, em
+> casal ou em grupo. Tudo que é feito pode ser desfeito.
 
-Questly transforma o "Desafio de Evolução de 30 dias" em um jogo: hábitos fixos,
-desafios variáveis por categoria, desafios surpresa, pontuação, sequências (streaks),
-dias perfeitos, ranking em tempo real entre os dois participantes e conquistas —
-tudo numa interface **mobile-first** instalável como app (PWA).
+Questly organiza o dia em hábitos, rotinas e agenda, registra o treino e a
+alimentação de verdade, e transforma manter isso de pé num jogo: pontos,
+sequência com marcos, conquistas e um placar mensal entre quem está junto.
+Interface **mobile-first**, instalável como app (PWA).
 
 <p align="center">
-  <img src="docs/screenshots/01-home.png" width="30%" alt="Tela inicial" />
+  <img src="docs/screenshots/01-home.png" width="30%" alt="Meu Dia" />
   <img src="docs/screenshots/03-conquistas.png" width="30%" alt="Conquistas" />
   <img src="docs/screenshots/05-config.png" width="30%" alt="Configurações" />
 </p>
 
 ---
 
-## ✨ Funcionalidades
+## ✨ O que o app faz
 
-- 🏠 **Tela inicial**: ranking, anel de progresso do dia, desafio do dia, surpresa e hábitos pendentes.
-- 💪🧠🤝🙏💞 **5 categorias**: Física, Mental, Social, Espiritual e **Relação (casal)**.
-- ✅ **Hábitos fixos** configuráveis (10 pts cada).
-- 🎲 **Desafio do dia** variável, sorteado de forma **determinística por data** (os dois jogadores recebem o mesmo — competição justa).
-- 🔥 **Desafio surpresa** com frequência ajustável.
-- 🏆 **Ranking** com pontuação diária, semanal e total.
-- 🔥 **Sequências (streaks)**, ⭐ **dias perfeitos** e **% de conclusão**.
-- 🏅 **11 conquistas** com progresso (incluindo a **Casal Inabalável**).
-- 📅 **Histórico**: calendário, gráfico de desempenho e evolução.
-- 👤 **Perfil** por jogador (avatar, objetivo, peso, estatísticas).
-- ⚙️ **Configurações**: metas (água, passos, proteína, calorias, sono), duração (30/60/75/90 dias), dias de descanso, categoria espiritual e frequência de surpresas.
-- 📱 **PWA** instalável na tela inicial, feita para o celular.
-- 🚫 **Sem pontuação negativa** — o foco é recuperar e continuar.
+**O dia**
+- 🏠 **Meu Dia**: agenda, rotinas e hábitos de hoje numa tela só, com a sequência e o que falta para o próximo marco.
+- ✅ **Hábitos** próprios com frequência, horário, meta e lembrete.
+- 🔁 **Rotinas**: sequências de passos (manhã, pré-treino, antes de dormir) que fecham quando os obrigatórios saem.
+- 📅 **Agenda** pessoal com recorrência e lembretes.
+- 😴 **Descanso planejado**: dia marcado como folga não conta como falha nem quebra a sequência.
 
-## 🧮 Sistema de pontuação
+**O esforço**
+- 🏃 **Registro de atividade** por modalidade (corrida, bike, musculação, jiu-jitsu…), com os parâmetros que a pontuação realmente usa.
+- 🧠 **Plano de treino** gerado por IA em semanas e sessões marcáveis — e ajustável por conversa quando a vida muda.
+- 🍽️ **Alimentação**: refeição por foto, por texto, por alimento da tabela ou digitada; água com meta diária.
 
-| Item | Pontos |
-|---|---|
-| Cada hábito fixo cumprido | **10** (padrão: 5 hábitos = 50) |
-| Desafio do dia | **30** |
-| Desafio surpresa (quando aparece) | **20** |
-| Bônus por cumprir tudo do dia | **20** |
-| **Máximo diário** | **120** (num dia com surpresa) |
+**O grupo**
+- 👥 **Espaços**: individual, casal ou grupo — cada tipo liga o que faz sentido (ranking, atividade em dupla, convite).
+- 🏆 **Placar mensal** com esforço, constância e desafios, e aviso de quem passou você.
+- 📰 **Feed** com reações e comentários, **Mural** de fotos e **chat** do grupo.
+- 🎲 **Desafio do dia** por área (Física, Mental, Social, Relação, Espiritual), sorteado igual para todos.
 
-- **Dia concluído** (conta para a sequência): todos os hábitos fixos + desafio do dia.
-- **Dia perfeito** (ganha o bônus): tudo do dia, incluindo a surpresa quando houver.
+**O olhar para trás**
+- 📈 **Sua semana**: retrospectiva com números, comparação com a semana anterior e o melhor dia.
+- 🏅 **Conquistas** em duas famílias: o seu progresso (valem em qualquer espaço) e o desafio do grupo.
+- 🔥 **Sequência** com recorde pessoal e **resgate** de dia perdido (2 por mês).
+
+## 🧮 Como a pontuação funciona
+
+Duas moedas, de propósito:
+
+| | O que é | Tem teto? |
+|---|---|---|
+| **XP** | Evolução pessoal. Sobe com o que você fez e define seu nível. | Não |
+| **Score** | O que ordena o placar do grupo. | Sim |
+
+O score tem três origens:
+
+| Origem | Quanto | Por quê |
+|---|---|---|
+| **Esforço** — atividade registrada | Distância × ritmo (corrida, bike, natação, caminhada) ou MET × duração (o resto) | Onde há percurso, arrastar 10 km por duas horas não pode render mais que fazê-los forte |
+| **Constância** — hábito, rotina, dia fechado | 2 / 6 / 5 pts | Pequeno de propósito: um hábito não vale uma corrida. Mas marcar e não ganhar nada é o caminho mais curto para parar de marcar |
+| **Sequência** — marcos | +10 aos 3 dias, +25 aos 7, +50 aos 14… até +2000 aos 365 | Marco à vista dá o que perder; pontinho diário some no ruído |
+
+Limites que existem para o placar significar alguma coisa: retorno decrescente
+na mesma modalidade no mesmo dia, teto diário de esforço, e validação de
+plausibilidade (100 km em 20 min vira aviso, não pontuação).
+
+**Nada é somado em contador.** XP e score são recalculados a partir do que está
+gravado — é isso que faz desfazer devolver exatamente o que a ação deu.
+
+## ↩️ Desfazer
+
+Regra do app: **tudo que é feito pode ser desfeito**, e o caminho de volta
+depende de quanto custa.
+
+- **Tem volta** → acontece na hora e o aviso do rodapé oferece **Desfazer**: marcar/desmarcar hábito e rotina, concluir compromisso, água, refeição, tarefa, descanso.
+- **Não tem volta** → folha de confirmação que **diz o que se perde**: apagar hábito, rotina, plano de treino, publicação do feed, registro de atividade.
+
+Apagar um registro devolve o XP e os pontos exatos e tira a publicação do feed.
+Apagar um hábito leva o histórico dele junto; para só dar uma folga existe
+**pausar**, que preserva o passado.
 
 ## 🛠️ Tecnologias
 
-- **Backend:** Python · FastAPI · SQLAlchemy 2 · SQLite
+- **Backend:** Python · FastAPI · SQLAlchemy 2 · Alembic · SQLite (ou Postgres via `DATABASE_URL`)
 - **Frontend:** React 18 · Vite · React Router · PWA (vite-plugin-pwa)
-- Interface **mobile-first**, tema escuro gamificado.
+- **Opcionais:** IA (Gemini / OpenAI / Groq) para plano de treino, rotinas, desafios e contador de calorias; Web Push para lembretes
 
 ## 📂 Estrutura
 
 ```
 questly/
-├── backend/                # API FastAPI
+├── backend/
 │   ├── app/
 │   │   ├── main.py         # rotas
-│   │   ├── models.py       # ORM (Player, DayEntry, Settings)
-│   │   ├── scoring.py      # pontuação, streaks e conquistas
-│   │   ├── data.py         # hábitos, desafios, surpresas, conquistas
-│   │   ├── schemas.py      # validação (Pydantic)
-│   │   ├── seed.py         # banco inicial (2 jogadores)
-│   │   └── database.py
-│   └── requirements.txt
-└── frontend/               # PWA React (Vite)
+│   │   ├── models.py       # ORM
+│   │   ├── scoring.py      # desafio do grupo (hábitos fixos, áreas, conquistas)
+│   │   ├── scoring_v2.py   # esforço, XP, constância e marcos de sequência
+│   │   ├── presets.py      # hábitos, rotinas, compromissos e metas prontos
+│   │   ├── data.py         # desafios, conquistas, humores, reações
+│   │   ├── ai.py           # IA (plano, rotina, desafios, calorias)
+│   │   └── …
+│   ├── migrations/         # Alembic
+│   └── tests/              # pytest
+└── frontend/
     └── src/
-        ├── pages/          # Home, Perfil, Historico, Conquistas, Config
-        ├── components/     # BottomNav, PlayerSwitch, ProgressRing
-        ├── store.jsx       # estado global (Context)
+        ├── pages/          # MeuDia, Plano, Grupo, Feed, Perfil + sub-páginas
+        ├── components/     # Toast (Desfazer), Confirmar, EscolherProntos, Sheet…
+        ├── design-system/  # componentes e tokens
+        ├── store.jsx       # estado global
         └── api.js          # cliente da API
 ```
 
 ## 🚀 Como rodar
 
-### 1. Backend (API)
+### 1. Backend
 
 ```bash
 cd backend
@@ -84,10 +120,10 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
 ```
 
-A API sobe em `http://localhost:8000` (docs interativas em `/docs`). O banco SQLite
-e os dois jogadores são criados automaticamente na primeira execução.
+A API sobe em `http://localhost:8000` (docs em `/docs`). O banco SQLite é criado
+e migrado na primeira execução.
 
-### 2. Frontend (app)
+### 2. Frontend
 
 ```bash
 cd frontend
@@ -95,36 +131,57 @@ npm install
 npm run dev
 ```
 
-Abra `http://localhost:5173` no navegador (ou no celular, na mesma rede).
-Para apontar para outra URL de API, crie um `.env` com:
+Abra `http://localhost:5173`. Para apontar para outra API, crie um `.env`:
 
 ```
 VITE_API_URL=http://SEU_IP:8000
 ```
 
-> 💡 Rode os dois ao mesmo tempo (dois terminais). No celular, use o IP da sua
-> máquina na rede local e "Adicionar à tela inicial" para instalar como app.
+> 💡 Em produção o backend serve o frontend buildado (`frontend/dist`), então
+> tudo roda num serviço só — sem CORS e sem `VITE_API_URL`.
+
+### Variáveis de ambiente (todas opcionais)
+
+| Variável | Para quê |
+|---|---|
+| `SECRET_KEY` | Assina os tokens de sessão. **Defina em produção** — sem ela os tokens usam uma chave padrão |
+| `DATABASE_URL` | Usa Postgres em vez do SQLite local |
+| `QUESTLY_DB` | Caminho do arquivo SQLite |
+| `FRONTEND_DIST` | Onde está o `dist` que o backend serve |
+| `GEMINI_API_KEY` / `OPENAI_API_KEY` / `GROQ_API_KEY` | Liga os recursos de IA |
+| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Liga o Web Push |
+| `REMINDER_HOURS` / `WATER_REMINDER_HOURS` | Horas (UTC) dos lembretes |
+| `GOOGLE_CLIENT_ID` | Liga o login com Google |
+| `RESEND_API_KEY` / `BREVO_API_KEY` / `SMTP_*` | Envio do e-mail de redefinição de senha |
+
+## ✅ Testes
+
+```bash
+cd backend && python -m pytest tests/ -q     # testes da API e da pontuação
+cd frontend && npm run verify:props          # props e ícones fora do registro
+cd frontend && npm run verify:ui             # varredura das telas no Chromium
+```
+
+A varredura de telas precisa do backend rodando na porta 8099 e do `dist`
+buildado — veja o cabeçalho de `frontend/scripts/verify-ui.mjs`. As três rodam
+no CI a cada PR.
 
 ## 🔌 Principais endpoints
 
 | Método | Rota | Descrição |
 |---|---|---|
-| `GET` | `/api/state` | Payload agregado da tela inicial |
-| `GET` | `/api/challenges/today` | Desafio do dia + surpresa |
-| `POST` | `/api/day/{id}/toggle` | Marca/desmarca hábito ou desafio |
-| `GET` | `/api/ranking` | Ranking dos jogadores |
-| `GET` | `/api/history/{id}` | Calendário + desempenho |
-| `GET` | `/api/achievements/{id}` | Conquistas com progresso |
-| `GET` `PUT` | `/api/settings` | Configurações do desafio |
-| `GET` `PUT` | `/api/players/{id}` | Perfil do jogador |
+| `GET` | `/api/today` | Meu Dia: agenda, rotinas, hábitos, treino, alimentação, sequência |
+| `GET` | `/api/week/recap` | Retrospectiva da semana |
+| `GET` | `/api/presets` | Hábitos, rotinas, compromissos e metas prontos |
+| `POST` `DELETE` | `/api/habits`, `/api/routines`, `/api/calendar` | Planejamento pessoal |
+| `POST` | `/api/habits/{id}/log`, `/api/routines/{id}/log` | Marcar e desmarcar |
+| `POST` `DELETE` | `/api/rest-days`, `/api/rest-days/rescue` | Descanso planejado e resgate de dia |
+| `POST` `DELETE` | `/api/groups/{g}/activity-record` | Registrar e desfazer atividade |
+| `GET` | `/api/groups/{g}/ranking` | Placar do mês |
+| `GET` | `/api/groups/{g}/achievements/{m}` | Conquistas (pessoais + do grupo) |
+| `POST` | `/api/training/plans` | Plano de treino por IA |
 
-## 🗺️ Próximos passos (ideias)
-
-- Autenticação e múltiplos casais/duplas.
-- Notificações (lembretes de hábitos).
-- Registro de água/passos/proteína com valores (não só ✔️).
-- Gráficos de evolução semanal/mensal mais ricos.
-- Deploy (backend no Render/Fly, frontend no Vercel/Netlify).
+A lista completa e interativa fica em `/docs`.
 
 ## 📄 Licença
 

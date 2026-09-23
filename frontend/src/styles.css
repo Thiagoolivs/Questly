@@ -1121,11 +1121,26 @@ input[type='range'] { width: 100%; accent-color: var(--accent); height: 24px; }
   word-break: break-word;
 }
 .chat-time {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-3);
   font-family: var(--font-ui);
   font-size: var(--fs-caption);
   opacity: 0.65;
   text-align: right;
   margin-top: var(--space-1);
+}
+/* Apagar a própria mensagem: discreto ao lado da hora, sem competir com o texto. */
+.chat-del {
+  display: inline-flex;
+  align-items: center;
+  background: transparent;
+  border: none;
+  padding: 2px;
+  color: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
 .chat-err {
   flex: none;
@@ -2092,4 +2107,13 @@ input[type='range'] { width: 100%; accent-color: var(--accent); height: 24px; }
   font-size: 11px;
   font-weight: 500;
   text-align: center;
+}
+
+/* Aviso do rodapé (Toast). Entra de baixo, curto: é confirmação, não interrupção. */
+@keyframes questly-toast-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  @keyframes questly-toast-in { from { opacity: 0; } to { opacity: 1; } }
 }

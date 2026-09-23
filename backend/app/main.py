@@ -14,6 +14,7 @@ DEFAULT_TZ = "America/Sao_Paulo"
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from . import ai
@@ -33,9 +34,11 @@ from .auth import (
     verify_google_token,
     verify_password,
 )
+from . import presets
 from . import push as pushmod
 from .data import (
     CATEGORY_ICON,
+    PERSONAL_ACHIEVEMENTS,
     CATEGORY_ORDER,
     DEFAULT_HABITS,
     DIFFICULTIES,
@@ -148,9 +151,37 @@ def _run_daily_reminders() -> None:
                 if pending
                 else "Bora fechar o dia? Seus desafios de hoje te esperam."
             )
-            pushmod.send_to_user(db, uid, "Questly", body, "/")
+            # Uma sequência em risco vale mais que qualquer frase de incentivo:
+            # é a única coisa que a pessoa tem a perder ainda hoje, e é o aviso
+            # que ela quer receber. Só troca o texto quando há corrente de pé e
+            # o dia ainda está aberto.
+            titulo, body = _aviso_de_sequencia(db, uid, today) or ("Questly", body)
+            pushmod.send_to_user(db, uid, titulo, body, "/")
     finally:
         db.close()
+
+
+def _aviso_de_sequencia(db: Session, user_id: int, hoje: date) -> tuple[str, str] | None:
+    """Texto do lembrete quando a sequência está para ser perdida hoje."""
+    try:
+        janela = consistency_window(db, user_id, hoje, hoje)
+        dia = janela.get(hoje)
+        if not dia or dia["rest"] or dia["planned"] == 0 or dia["full"]:
+            return None  # nada em risco: descanso, dia vazio ou já fechado
+
+        sequencia = personal_streak(db, user_id, hoje)
+        if sequencia < 2:
+            return None  # ainda não há corrente que doa perder
+
+        faltam = dia["planned"] - dia["done"]
+        marco = scoring_v2.next_streak_milestone(sequencia)
+        alvo = f" Faltam {marco['missing']} dias para +{marco['points']} pts." if marco else ""
+        return (
+            f"{sequencia} dias seguidos em jogo",
+            f"{faltam} {'item' if faltam == 1 else 'itens'} para fechar o dia e manter a sequência.{alvo}",
+        )
+    except Exception:  # noqa: BLE001 — o lembrete genérico ainda sai
+        return None
 
 
 # Horas (UTC) do empurrão de água. Padrão ≈ 15h e 18h de Brasília — a tarde é
@@ -625,6 +656,7 @@ def serialize_activity(a: Activity, members_by_id: dict, reactions: dict | None 
         "icon": a.icon,
         "text": a.text,
         "image": a.image,
+        "membership_id": a.membership_id,
         "author": u.name if u else "?",
         "photo": u.photo if u else None,
         "day": a.day.isoformat() if a.day else None,
@@ -1729,6 +1761,39 @@ def create_meal(gid: int, payload: MealCreate, user: User = Depends(get_current_
     return {"meal": serialize_meal(meal), "nutrition": nutrition_payload(db, gid, me, d, s)}
 
 
+@app.post("/api/groups/{gid}/meals/manual")
+def create_meal_manual(gid: int, payload: s.MealManualCreate, user: User = Depends(get_current_user),
+                       db: Session = Depends(get_db)):
+    """Registra uma refeição com os valores já informados, sem IA.
+
+    Serve para quem tem o rótulo na mão e para desfazer uma exclusão: apagar uma
+    refeição só é reversível se existir um caminho que a recrie exatamente como
+    estava — pela foto, a IA estimaria valores diferentes na volta.
+    """
+    validate_image(payload.image)
+    me = get_membership(db, user, gid)
+    s_obj = get_group_settings(db, gid)
+    today = today_of(s_obj)
+    d = parse_date(payload.date, today)
+    ensure_today(d, today)
+
+    meal = Meal(
+        group_id=gid,
+        membership_id=me.id,
+        date=d,
+        label=payload.label.strip(),
+        calories=payload.calories,
+        protein_g=payload.protein_g,
+        carbs_g=payload.carbs_g,
+        fat_g=payload.fat_g,
+        image=payload.image,
+    )
+    db.add(meal)
+    db.commit()
+    db.refresh(meal)
+    return {"meal": serialize_meal(meal), "nutrition": nutrition_payload(db, gid, me, d, s_obj)}
+
+
 @app.post("/api/groups/{gid}/meals/text")
 def create_meal_text(gid: int, payload: MealTextCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Registra uma refeição descrita em TEXTO (sem foto). Ex.: 'comi um pão de
@@ -1893,6 +1958,21 @@ def create_message(gid: int, payload: MessageCreate, user: User = Depends(get_cu
     return serialize_message(m, {membership.id: membership})
 
 
+@app.delete("/api/groups/{gid}/messages/{mid}")
+def delete_message(gid: int, mid: int, user: User = Depends(get_current_user),
+                   db: Session = Depends(get_db)):
+    """Apaga uma mensagem sua do chat do grupo."""
+    membership = get_membership(db, user, gid)
+    msg = db.get(Message, mid)
+    if msg is None or msg.group_id != gid:
+        raise HTTPException(404, "Mensagem não encontrada.")
+    if msg.membership_id != membership.id:
+        raise HTTPException(403, "Só dá para apagar a própria mensagem.")
+    db.delete(msg)
+    db.commit()
+    return {"ok": True}
+
+
 @app.post("/api/groups/{gid}/activity-record")
 def create_activity_record(gid: int, payload: s.ActivityRecordCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Registra o que a pessoa realmente fez.
@@ -1943,45 +2023,15 @@ def create_activity_record(gid: int, payload: s.ActivityRecordCreate, user: User
     )
     db.add(ar)
 
-    up = db.query(m.UserProgress).filter(m.UserProgress.user_id == user.id).first()
-    if not up:
-        # Os defaults das colunas só valem no INSERT; recém-instanciado o objeto
-        # ainda tem None nos contadores, e `None += n` estoura no primeiro
-        # registro de cada usuário.
-        up = m.UserProgress(user_id=user.id, total_xp=0, effort_total=0.0, level=1)
-        db.add(up)
-    up.total_xp = (up.total_xp or 0) + ar.xp_earned
-    up.effort_total = (up.effort_total or 0.0) + ar.effort_score
-    up.level = scoring_v2.level_for(up.total_xp)
-
     period_start, period_end = month_bounds(d)
     # Guardado antes de somar: sem o placar anterior não dá para saber quem foi
     # ultrapassado por este registro.
     placar_antes = _placar_do_periodo(db, gid, period_start, period_end)
     meu_antes = placar_antes.get(membership.id, 0.0)
 
-    cs = db.query(m.CompetitiveScore).filter(
-        m.CompetitiveScore.membership_id == membership.id,
-        m.CompetitiveScore.period_start == period_start,
-        m.CompetitiveScore.period_end == period_end,
-    ).first()
-    if not cs:
-        cs = m.CompetitiveScore(
-            membership_id=membership.id,
-            period_start=period_start,
-            period_end=period_end,
-            effort_score=0.0,
-            consistency_score=0.0,
-            challenge_score=0.0,
-        )
-        db.add(cs)
-
-    cs.effort_score = (cs.effort_score or 0.0) + competitive
-    cs.consistency_score = cs.consistency_score or 0.0
-    cs.challenge_score = cs.challenge_score or 0.0
-    cs.total_score = scoring_v2.total_competitive(
-        cs.effort_score, cs.consistency_score, cs.challenge_score
-    )
+    db.flush()
+    recompute_user_progress(db, user.id)
+    cs = sync_competitive_score(db, user.id, membership, d)
 
     db.commit()
     db.refresh(ar)
@@ -2002,7 +2052,36 @@ def create_activity_record(gid: int, payload: s.ActivityRecordCreate, user: User
         # parece bug.
         "capped": round(effort - competitive, 2),
         "notes": notes,
+        **_constancia_publica(db, user, d),
     }
+
+
+@app.delete("/api/groups/{gid}/activity-record/{rid}")
+def delete_activity_record(gid: int, rid: int, user: User = Depends(get_current_user),
+                           db: Session = Depends(get_db)):
+    """Apaga um registro de atividade e devolve tudo o que ele deu.
+
+    Registrar errado (distância trocada, modalidade errada, duplicado) é comum,
+    e sem apagar a única saída era conviver com a pontuação torta para sempre.
+    Como XP e placar são derivados do que está gravado, basta recalcular: a
+    devolução é exata, sem operação inversa escrita à mão.
+    """
+    membership = get_membership(db, user, gid)
+    registro = db.get(m.ActivityRecord, rid)
+    if registro is None or registro.group_id != gid:
+        raise HTTPException(404, "Registro não encontrado.")
+    if registro.user_id != user.id:
+        raise HTTPException(403, "Só dá para apagar o próprio registro.")
+
+    d = registro.date
+    db.delete(registro)
+    db.flush()
+    recompute_user_progress(db, user.id)
+    sync_competitive_score(db, user.id, membership, d)
+    db.commit()
+
+    remove_activities_by_ref(db, gid, f"record:{rid}")  # sai do feed junto
+    return {"ok": True, **_constancia_publica(db, user, d)}
 
 
 # --- rotas: grupo (ranking e feed) -------------------------------------
@@ -2115,6 +2194,7 @@ def get_ranking(gid: int, user: User = Depends(get_current_user), db: Session = 
                 "streak": stats["streak"],
                 "effort_score": round(cs.effort_score if cs else 0.0),
                 "consistency_score": round(cs.consistency_score if cs else 0.0),
+                "habit_score": round((cs.habit_score or 0.0) if cs else 0.0),
                 "challenge_score": round(cs.challenge_score if cs else 0.0),
                 "total_score": round(cs.total_score if cs else 0.0),
                 "is_me": m_obj.id == me.id,
@@ -2164,6 +2244,29 @@ def list_activities(gid: int, limit: int = 40, user: User = Depends(get_current_
         "activities": [serialize_activity(a, members_by_id, rmap, cmap) for a in rows],
         "reaction_types": FEED_REACTIONS,
     }
+
+
+@app.delete("/api/groups/{gid}/activities/{aid}")
+def delete_activity(gid: int, aid: int, user: User = Depends(get_current_user),
+                    db: Session = Depends(get_db)):
+    """Tira do feed um item publicado por você (com a foto, reações e comentários).
+
+    O feed é público para o grupo e boa parte dele é foto: sem apagar, um envio
+    errado fica exposto para sempre. Remove só a publicação — o que ela contava
+    (treino, tarefa, desafio) continua onde foi registrado, e é lá que se desfaz.
+    """
+    membership = get_membership(db, user, gid)
+    item = db.get(Activity, aid)
+    if item is None or item.group_id != gid:
+        raise HTTPException(404, "Item do feed não encontrado.")
+    if item.membership_id != membership.id:
+        raise HTTPException(403, "Só dá para apagar a própria publicação.")
+
+    q = db.query(Activity).filter(Activity.id == aid)
+    _purge_activity_children(db, q)
+    q.delete(synchronize_session=False)
+    db.commit()
+    return {"ok": True}
 
 
 @app.post("/api/groups/{gid}/activities/{aid}/react")
@@ -2230,7 +2333,16 @@ def achievements(gid: int, mid: int, user: User = Depends(get_current_user), db:
     stats = scoring.player_stats(s, days, today)
     casal = casal_perfect_days(s, group_members(db, gid), today)
     tipo = getattr(membership.group, "group_type", None) or "group"
-    return {"achievements": scoring.achievements_for(days, stats, casal, s, tipo)}
+
+    # As do desafio do grupo medem hábito fixo e desafio do dia; as pessoais
+    # medem o Meu Dia. Quem usa só um dos lados precisa ter medalha ao alcance
+    # de qualquer jeito, então as duas famílias vêm juntas e marcadas.
+    do_grupo = [
+        {**a, "scope": "grupo"}
+        for a in scoring.achievements_for(days, stats, casal, s, tipo)
+    ]
+    pessoais = personal_achievements(personal_metrics(db, membership.user_id, today))
+    return {"achievements": pessoais + do_grupo}
 
 
 _MONTHS_PT = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"]
@@ -2493,17 +2605,23 @@ def delete_calendar(item_id: int, user: User = Depends(get_current_user), db: Se
     return {"ok": True}
 
 # --- rotas: rotinas (Fase 2) -----------------------------------------------
+def serialize_routine(db: Session, r: m.Routine) -> dict:
+    """Rotina sem os passos não é rotina: quem cria precisa ver o que criou."""
+    steps = (
+        db.query(m.RoutineStep)
+        .filter(m.RoutineStep.routine_id == r.id)
+        .order_by(m.RoutineStep.order)
+        .all()
+    )
+    out = {c.name: getattr(r, c.name) for c in r.__table__.columns}
+    out["steps"] = [{c.name: getattr(st, c.name) for c in st.__table__.columns} for st in steps]
+    return out
+
+
 @app.get("/api/routines")
 def list_routines(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     routines = db.query(m.Routine).filter(m.Routine.user_id == user.id).all()
-    # Pega os steps também
-    out = []
-    for r in routines:
-        steps = db.query(m.RoutineStep).filter(m.RoutineStep.routine_id == r.id).order_by(m.RoutineStep.order).all()
-        r_dict = {c.name: getattr(r, c.name) for c in r.__table__.columns}
-        r_dict["steps"] = [{c.name: getattr(st, c.name) for c in st.__table__.columns} for st in steps]
-        out.append(r_dict)
-    return {"routines": out}
+    return {"routines": [serialize_routine(db, r) for r in routines]}
 
 @app.post("/api/routines")
 def create_routine(payload: s.RoutineCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -2518,7 +2636,7 @@ def create_routine(payload: s.RoutineCreate, user: User = Depends(get_current_us
         db.add(m.RoutineStep(routine_id=routine.id, **sd))
     db.commit()
     db.refresh(routine)
-    return routine
+    return serialize_routine(db, routine)
 
 @app.put("/api/routines/{routine_id}")
 def update_routine(routine_id: int, payload: s.RoutineUpdate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -2527,18 +2645,31 @@ def update_routine(routine_id: int, payload: s.RoutineUpdate, user: User = Depen
         raise HTTPException(404, "Rotina não encontrada.")
     for key, value in payload.model_dump(exclude_unset=True).items():
         setattr(routine, key, value)
+    db.flush()
+    sync_constancy(db, user)  # pausar ou mudar a frequência muda o que vencia
     db.commit()
     db.refresh(routine)
-    return routine
+    return serialize_routine(db, routine)
 
 @app.delete("/api/routines/{routine_id}")
 def delete_routine(routine_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Apaga a rotina, os passos e o histórico de execução dela.
+
+    O log tem de ir junto: ele é o que vira ponto e XP, e log órfão de rotina
+    que não existe mais continuaria pontuando sem nenhuma tela onde desfazer.
+    """
     routine = db.query(m.Routine).filter(m.Routine.id == routine_id, m.Routine.user_id == user.id).first()
     if routine:
         db.query(m.RoutineStep).filter(m.RoutineStep.routine_id == routine.id).delete()
+        db.query(m.RoutineLog).filter(m.RoutineLog.routine_id == routine.id).delete()
+        db.query(m.ActivityLinkedRoutine).filter(
+            m.ActivityLinkedRoutine.routine_id == routine.id
+        ).delete()
         db.delete(routine)
+        db.flush()
+        sync_constancy(db, user)
         db.commit()
-    return {"ok": True}
+    return {"ok": True, **_constancia_publica(db, user)}
 
 # --- rotas: hábitos recorrentes (Fase 2) -----------------------------------
 @app.get("/api/habits")
@@ -2561,17 +2692,28 @@ def update_habit(habit_id: int, payload: s.HabitUpdate, user: User = Depends(get
         raise HTTPException(404, "Hábito não encontrado.")
     for key, value in payload.model_dump(exclude_unset=True).items():
         setattr(habit, key, value)
+    db.flush()
+    sync_constancy(db, user)  # pausar ou mudar a frequência muda o que vencia
     db.commit()
     db.refresh(habit)
     return habit
 
 @app.delete("/api/habits/{habit_id}")
 def delete_habit(habit_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Apaga o hábito e o histórico dele.
+
+    Quem só quer parar por um tempo usa "pausar" (`active: false`), que preserva
+    o passado. Apagar é para o hábito que não deveria existir — e aí o que ele
+    pontuou some junto, senão ficaria ponto sem origem e sem como desfazer.
+    """
     habit = db.query(m.Habit).filter(m.Habit.id == habit_id, m.Habit.user_id == user.id).first()
     if habit:
+        db.query(m.HabitLog).filter(m.HabitLog.habit_id == habit.id).delete()
         db.delete(habit)
+        db.flush()
+        sync_constancy(db, user)
         db.commit()
-    return {"ok": True}
+    return {"ok": True, **_constancia_publica(db, user)}
 
 
 
@@ -2654,6 +2796,361 @@ def _own_routine(db: Session, user: User, routine_id: int) -> m.Routine:
     return routine
 
 
+# --- constância: pontos por hábito, rotina e sequência ---------------------
+# O placar de constância é *derivado*: nada aqui soma ponto incrementalmente.
+# É o que faz "desfazer" funcionar de graça — desmarcar um hábito recalcula e o
+# ponto some, sem contabilidade paralela para sair do lugar.
+STREAK_WINDOW_DAYS = 400  # até onde a sequência é procurada para trás
+
+
+def _existia_em(obj, d: date) -> bool:
+    """Um hábito/rotina só é cobrado a partir do dia em que foi criado.
+
+    Sem isto, criar um hábito hoje reprovaria retroativamente todos os dias
+    anteriores e derrubaria a sequência de quem estava indo bem — o oposto do
+    que adicionar um hábito deveria provocar.
+    """
+    criado = getattr(obj, "created_at", None)
+    return criado is None or criado.date() <= d
+
+
+def consistency_window(db: Session, user_id: int, start: date, end: date) -> dict[date, dict]:
+    """Por dia do intervalo: o que vencia, o que saiu e se o dia fechou.
+
+    Carrega tudo de uma vez (hábitos, rotinas, logs e descansos) porque esta
+    função roda a cada marcação — uma consulta por dia seria proibitivo.
+    """
+    if end < start:
+        return {}
+
+    habitos = db.query(m.Habit).filter(
+        m.Habit.user_id == user_id, m.Habit.active.is_(True)
+    ).all()
+    rotinas = db.query(m.Routine).filter(
+        m.Routine.user_id == user_id, m.Routine.active.is_(True)
+    ).all()
+
+    feitos_h: dict[date, set[int]] = {}
+    for log in db.query(m.HabitLog).filter(
+        m.HabitLog.user_id == user_id, m.HabitLog.date >= start,
+        m.HabitLog.date <= end, m.HabitLog.completed.is_(True),
+    ).all():
+        feitos_h.setdefault(log.date, set()).add(log.habit_id)
+
+    feitas_r: dict[date, set[int]] = {}
+    for log in db.query(m.RoutineLog).filter(
+        m.RoutineLog.user_id == user_id, m.RoutineLog.date >= start,
+        m.RoutineLog.date <= end, m.RoutineLog.completed.is_(True),
+    ).all():
+        feitas_r.setdefault(log.date, set()).add(log.routine_id)
+
+    descansos = {
+        r.date for r in db.query(m.RestDay).filter(
+            m.RestDay.user_id == user_id, m.RestDay.date >= start, m.RestDay.date <= end
+        ).all()
+    }
+
+    janela: dict[date, dict] = {}
+    d = start
+    while d <= end:
+        vence_h = [h for h in habitos if _existia_em(h, d) and habit_due_on(h, d)]
+        vence_r = [r for r in rotinas if _existia_em(r, d) and routine_due_on(r, d)]
+        # Ponto ganho é ponto ganho: a contagem vem dos logs, não do que hoje
+        # ainda vence. Sem isso, pausar um hábito apagaria retroativamente tudo
+        # o que ele já tinha rendido — e pausar existe justamente para ser a
+        # alternativa sem perdas a apagar.
+        fez_h = len(feitos_h.get(d, ()))
+        fez_r = len(feitas_r.get(d, ()))
+        # Já o "dia fechado" olha só o que estava marcado para o dia: é ele que
+        # define a sequência, e um hábito pausado não pode cobrar nada de hoje.
+        no_prazo = (
+            len([h for h in vence_h if h.id in feitos_h.get(d, ())])
+            + len([r for r in vence_r if r.id in feitas_r.get(d, ())])
+        )
+        previstos = len(vence_h) + len(vence_r)
+        janela[d] = {
+            "planned": previstos,
+            "done": no_prazo,
+            "habits_done": fez_h,
+            "routines_done": fez_r,
+            # Dia fechado = fez alguma coisa e não deixou nada do dia pendente.
+            # A segunda metade sozinha diria que um dia vazio está fechado; a
+            # primeira sozinha daria o dia por fechado com pendência na lista.
+            "full": (fez_h + fez_r) > 0 and no_prazo == previstos,
+            "rest": d in descansos,
+        }
+        d += timedelta(days=1)
+    return janela
+
+
+def personal_streak(db: Session, user_id: int, today: date) -> int:
+    """Dias seguidos fechando tudo que vencia.
+
+    Um dia só quebra a corrente se havia algo a fazer e ficou pendente: descanso
+    planejado e dia sem nada previsto atravessam sem somar nem zerar. O dia de
+    hoje também não quebra enquanto não acabar — a sequência começa a ser lida
+    de ontem quando hoje ainda está aberto.
+    """
+    inicio = today - timedelta(days=STREAK_WINDOW_DAYS)
+    janela = consistency_window(db, user_id, inicio, today)
+    if not janela:
+        return 0
+
+    d = today
+    hoje = janela.get(today) or {}
+    if not hoje.get("full"):
+        d = today - timedelta(days=1)
+
+    sequencia = 0
+    while d in janela:
+        info = janela[d]
+        if info["rest"] or info["planned"] == 0:
+            d -= timedelta(days=1)
+            continue
+        if not info["full"]:
+            break
+        sequencia += 1
+        d -= timedelta(days=1)
+    return sequencia
+
+
+def best_personal_streak(db: Session, user_id: int, today: date) -> int:
+    """A maior sequência já alcançada.
+
+    Existe porque "sua melhor foi 12, você está em 9" puxa muito mais que um
+    número solto — e porque uma corrente quebrada deixa de ser só uma perda
+    quando o recorde continua lá.
+    """
+    inicio = today - timedelta(days=STREAK_WINDOW_DAYS)
+    janela = consistency_window(db, user_id, inicio, today)
+
+    melhor = atual = 0
+    d = inicio
+    while d <= today:
+        info = janela.get(d)
+        if info is None:
+            d += timedelta(days=1)
+            continue
+        if info["rest"] or info["planned"] == 0:
+            pass  # atravessa sem somar nem zerar, igual à sequência corrente
+        elif info["full"]:
+            atual += 1
+            melhor = max(melhor, atual)
+        elif d != today:
+            atual = 0  # o dia de hoje ainda não acabou: não conta como falha
+        d += timedelta(days=1)
+    return melhor
+
+
+def _param_num(params: dict, chave: str) -> float:
+    """Lê um parâmetro numérico de um registro sem confiar no que está gravado.
+
+    `params` é JSON livre — veio do cliente e pode ter texto onde devia ter
+    número. Somar direto derrubaria a tela inteira por causa de um registro
+    torto.
+    """
+    try:
+        return float((params or {}).get(chave) or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def personal_metrics(db: Session, user_id: int, today: date) -> dict:
+    """Tudo que as conquistas pessoais medem, numa passada só.
+
+    Sai dos logs e dos registros, não de contadores guardados: conquista que
+    depende de contador acumulado passa a mentir assim que alguém desfaz algo.
+    """
+    janela = consistency_window(db, user_id, today - timedelta(days=STREAK_WINDOW_DAYS), today)
+
+    registros = db.query(m.ActivityRecord).filter(m.ActivityRecord.user_id == user_id).all()
+    distancia = sum(_param_num(r.params, "distance") for r in registros)
+
+    progresso = db.query(m.UserProgress).filter(m.UserProgress.user_id == user_id).first()
+
+    return {
+        "full_days": sum(1 for v in janela.values() if v["full"]),
+        "best_streak": best_personal_streak(db, user_id, today),
+        "streak": personal_streak(db, user_id, today),
+        "habits_done": db.query(func.count(m.HabitLog.id)).filter(
+            m.HabitLog.user_id == user_id, m.HabitLog.completed.is_(True)).scalar() or 0,
+        "routines_done": db.query(func.count(m.RoutineLog.id)).filter(
+            m.RoutineLog.user_id == user_id, m.RoutineLog.completed.is_(True)).scalar() or 0,
+        "records": len(registros),
+        "modalities": len({r.modality for r in registros}),
+        "distance_km": int(distancia),
+        "training_sessions": db.query(func.count(m.TrainingSession.id)).filter(
+            m.TrainingSession.user_id == user_id, m.TrainingSession.status == "done").scalar() or 0,
+        "level": (progresso.level if progresso else 1) or 1,
+        "rest_days": db.query(func.count(m.RestDay.id)).filter(
+            m.RestDay.user_id == user_id).scalar() or 0,
+    }
+
+
+def personal_achievements(metricas: dict) -> list[dict]:
+    """Conquistas do progresso pessoal, com o progresso de cada uma."""
+    saida = []
+    for a in PERSONAL_ACHIEVEMENTS:
+        atual = int(metricas.get(a["metric"], 0))
+        saida.append({
+            "key": a["key"],
+            "name": a["name"],
+            "icon": a["icon"],
+            "desc": a["desc"],
+            "current": min(atual, a["target"]),
+            "target": a["target"],
+            "unlocked": atual >= a["target"],
+            "scope": "pessoal",
+        })
+    return saida
+
+
+def consistency_summary(db: Session, user_id: int, start: date, end: date, today: date,
+                        streak: int | None = None) -> dict:
+    """Pontos de constância do período + a sequência atual.
+
+    `streak` entra pronto quando quem chama já o calculou: a sequência varre até
+    400 dias para trás e é a mesma em todos os espaços da pessoa, então
+    recalculá-la por espaço seria repetir a varredura à toa.
+    """
+    janela = consistency_window(db, user_id, start, min(end, today))
+    habitos = sum(v["habits_done"] for v in janela.values())
+    rotinas = sum(v["routines_done"] for v in janela.values())
+    completos = sum(1 for v in janela.values() if v["full"])
+    # Dia de descanso sai da conta da razão: descansar de propósito não é falha.
+    previstos = sum(v["planned"] for v in janela.values() if not v["rest"])
+    feitos = sum(v["done"] for v in janela.values() if not v["rest"])
+
+    sequencia = personal_streak(db, user_id, today) if streak is None else streak
+    return {
+        "habits_done": habitos,
+        "routines_done": rotinas,
+        "full_days": completos,
+        "streak": sequencia,
+        "streak_bonus": scoring_v2.streak_bonus(sequencia),
+        "next_milestone": scoring_v2.next_streak_milestone(sequencia),
+        "points": round(
+            scoring_v2.habit_points(habitos, rotinas, completos)
+            + scoring_v2.streak_bonus(sequencia),
+            2,
+        ),
+        "consistency": scoring_v2.compute_consistency_score(previstos, feitos),
+    }
+
+
+def recompute_user_progress(db: Session, user_id: int) -> m.UserProgress:
+    """Refaz o XP e o nível a partir do que está registrado.
+
+    Derivado de propósito: apagar um registro tem de devolver exatamente o XP
+    que ele deu, e somar/subtrair à mão acumula erro a cada caminho novo.
+    """
+    up = db.query(m.UserProgress).filter(m.UserProgress.user_id == user_id).first()
+    if not up:
+        up = m.UserProgress(user_id=user_id, total_xp=0, effort_total=0.0, level=1)
+        db.add(up)
+
+    esforco, xp_registros = (
+        db.query(func.sum(m.ActivityRecord.effort_score), func.sum(m.ActivityRecord.xp_earned))
+        .filter(m.ActivityRecord.user_id == user_id)
+        .one()
+    )
+    habitos = db.query(func.count(m.HabitLog.id)).filter(
+        m.HabitLog.user_id == user_id, m.HabitLog.completed.is_(True)
+    ).scalar() or 0
+    rotinas = db.query(func.count(m.RoutineLog.id)).filter(
+        m.RoutineLog.user_id == user_id, m.RoutineLog.completed.is_(True)
+    ).scalar() or 0
+
+    up.effort_total = float(esforco or 0.0)
+    up.total_xp = int(xp_registros or 0) + scoring_v2.xp_for(
+        scoring_v2.habit_points(habitos, rotinas, full_days=0)
+    )
+    up.level = scoring_v2.level_for(up.total_xp)
+    return up
+
+
+def sync_competitive_score(db: Session, user_id: int, membership: Membership, d: date,
+                           streak: int | None = None) -> m.CompetitiveScore:
+    """Refaz a linha do placar do mês de `d` a partir do que está registrado.
+
+    Esforço vem dos registros de atividade; constância, dos hábitos e rotinas.
+    Nenhum dos dois é acumulado em coluna — por isso apagar qualquer um deles
+    devolve o placar ao que era, sem operação inversa escrita à mão.
+    """
+    inicio, fim = month_bounds(d)
+    cs = (
+        db.query(m.CompetitiveScore)
+        .filter(
+            m.CompetitiveScore.membership_id == membership.id,
+            m.CompetitiveScore.period_start == inicio,
+            m.CompetitiveScore.period_end == fim,
+        )
+        .first()
+    )
+    if not cs:
+        cs = m.CompetitiveScore(
+            membership_id=membership.id, period_start=inicio, period_end=fim,
+            effort_score=0.0, consistency_score=0.0, habit_score=0.0, challenge_score=0.0,
+        )
+        db.add(cs)
+
+    esforco = (
+        db.query(func.sum(m.ActivityRecord.score_earned))
+        .filter(
+            m.ActivityRecord.user_id == user_id,
+            m.ActivityRecord.group_id == membership.group_id,
+            m.ActivityRecord.date >= inicio,
+            m.ActivityRecord.date <= fim,
+        )
+        .scalar()
+    )
+    resumo = consistency_summary(
+        db, user_id, inicio, fim,
+        today_of(get_group_settings(db, membership.group_id)), streak=streak,
+    )
+
+    cs.effort_score = float(esforco or 0.0)
+    cs.habit_score = resumo["points"]
+    cs.consistency_score = resumo["consistency"]
+    cs.challenge_score = cs.challenge_score or 0.0
+    cs.total_score = scoring_v2.total_competitive(
+        cs.effort_score, cs.consistency_score, cs.challenge_score, cs.habit_score
+    )
+    return cs
+
+
+def _constancia_publica(db: Session, user: User, hoje: date | None = None) -> dict:
+    """Sequência, nível e próximo marco — o que a tela mostra depois de marcar."""
+    hoje = hoje or date.today()
+    inicio, fim = month_bounds(hoje)
+    resumo = consistency_summary(db, user.id, inicio, fim, hoje)
+    up = db.query(m.UserProgress).filter(m.UserProgress.user_id == user.id).first()
+    return {
+        "streak": resumo["streak"],
+        "next_milestone": resumo["next_milestone"],
+        "best_streak": best_personal_streak(db, user.id, hoje),
+        "xp": (up.total_xp if up else 0) or 0,
+        "level": (up.level if up else 1) or 1,
+    }
+
+
+def sync_constancy(db: Session, user: User) -> None:
+    """Propaga hábitos e rotinas para o XP e para o placar de cada espaço.
+
+    Hábito é pessoal, mas o placar é por espaço: quem está em três grupos leva a
+    mesma constância para os três. Não é ponto dobrado — são três disputas
+    diferentes, cada uma com o seu próprio recorte.
+    """
+    recompute_user_progress(db, user.id)
+    sequencia = personal_streak(db, user.id, date.today())
+    for membership in db.query(Membership).filter(Membership.user_id == user.id).all():
+        try:
+            hoje = today_of(get_group_settings(db, membership.group_id))
+            sync_competitive_score(db, user.id, membership, hoje, streak=sequencia)
+        except HTTPException:
+            continue  # grupo sem settings: não pode impedir a marcação do hábito
+
+
 @app.post("/api/habits/{habit_id}/log")
 def log_habit(habit_id: int, payload: s.HabitLogToggle,
               user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -2664,10 +3161,16 @@ def log_habit(habit_id: int, payload: s.HabitLogToggle,
     log.completed = (not log.completed) if payload.completed is None else payload.completed
     if payload.value is not None:
         log.value = payload.value
+    db.flush()
+    sync_constancy(db, user)
     db.commit()
     db.refresh(log)
     return {"habit_id": habit.id, "date": log.date.isoformat(),
-            "completed": log.completed, "value": log.value}
+            "completed": log.completed, "value": log.value,
+            # Marcar e não ganhar nada é o caminho mais curto para parar de
+            # marcar: o ponto ganho volta na resposta para a tela poder dizê-lo.
+            "points": scoring_v2.HABIT_POINTS if log.completed else 0,
+            **_constancia_publica(db, user)}
 
 
 @app.post("/api/routines/{routine_id}/log")
@@ -2692,11 +3195,16 @@ def log_routine_step(routine_id: int, payload: s.RoutineStepToggle,
         st.id for st in db.query(m.RoutineStep)
         .filter(m.RoutineStep.routine_id == routine.id, m.RoutineStep.is_required.is_(True)).all()
     ]
+    antes = log.completed
     log.completed = bool(required) and all(sid in done for sid in required)
+    db.flush()
+    sync_constancy(db, user)
     db.commit()
     db.refresh(log)
     return {"routine_id": routine.id, "date": log.date.isoformat(),
-            "steps_done": log.steps_done, "completed": log.completed}
+            "steps_done": log.steps_done, "completed": log.completed,
+            "points": scoring_v2.ROUTINE_POINTS if (log.completed and not antes) else 0,
+            **_constancia_publica(db, user)}
 
 
 @app.get("/api/rest-days")
@@ -2712,19 +3220,109 @@ def add_rest_day(payload: s.RestDayCreate,
     d = parse_date(payload.date, date.today())
     row = db.query(m.RestDay).filter(m.RestDay.user_id == user.id, m.RestDay.date == d).first()
     if not row:
-        row = m.RestDay(user_id=user.id, date=d)
+        row = m.RestDay(user_id=user.id, date=d, kind="planned")
         db.add(row)
     row.reason = payload.reason
+    db.flush()
+    sync_constancy(db, user)
     db.commit()
-    return {"date": d.isoformat(), "reason": row.reason}
+    return {"date": d.isoformat(), "reason": row.reason, **_constancia_publica(db, user)}
+
+
+# Quantos dias já passados dá para salvar por mês. Dois: o bastante para um
+# imprevisto e uma doença, pouco o bastante para a sequência continuar querendo
+# dizer alguma coisa.
+RESCUES_PER_MONTH = 2
+# Até quantos dias para trás um resgate alcança. Salvar a semana inteira depois
+# do fato não é salvar, é reescrever.
+RESCUE_WINDOW_DAYS = 7
+
+
+def _rescues_left(db: Session, user_id: int, d: date) -> int:
+    """Quantos resgates sobraram no mês em que estamos.
+
+    A conta é por quando o resgate foi *usado*, não pelo mês do dia salvo: na
+    virada do mês a janela de 7 dias alcança o mês anterior, e contar pelo dia
+    salvo daria cota extra justo aí.
+    """
+    inicio, fim = month_bounds(d)
+    usados = db.query(func.count(m.RestDay.id)).filter(
+        m.RestDay.user_id == user_id,
+        m.RestDay.kind == "rescue",
+        m.RestDay.created_at >= datetime.combine(inicio, dtime.min),
+        m.RestDay.created_at <= datetime.combine(fim, dtime.max),
+    ).scalar() or 0
+    return max(0, RESCUES_PER_MONTH - usados)
+
+
+@app.get("/api/rest-days/rescues")
+def list_rescues(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Quantos resgates sobraram no mês e quais dias dá para salvar agora."""
+    hoje = date.today()
+    janela = consistency_window(db, user.id, hoje - timedelta(days=RESCUE_WINDOW_DAYS), hoje)
+    salvaveis = [
+        {"date": d.isoformat(), "pending": info["planned"] - info["done"]}
+        for d, info in sorted(janela.items())
+        if d < hoje and not info["rest"] and info["planned"] > 0 and not info["full"]
+    ]
+    return {
+        "left": _rescues_left(db, user.id, hoje),
+        "per_month": RESCUES_PER_MONTH,
+        "days": salvaveis,
+    }
+
+
+@app.post("/api/rest-days/rescue")
+def rescue_day(payload: s.RestDayCreate, user: User = Depends(get_current_user),
+               db: Session = Depends(get_db)):
+    """Salva um dia que já passou, para a sequência não morrer num tropeço.
+
+    O descanso planejado só protege quem marcou antes — e ninguém planeja ficar
+    doente. Sem uma saída depois do fato, o primeiro tropeço zera a corrente e é
+    aí que a maioria abandona. O limite mensal é o que impede isto de virar um
+    botão de "nunca falhei".
+    """
+    hoje = date.today()
+    d = parse_date(payload.date, hoje)
+    if d >= hoje:
+        raise HTTPException(400, "Resgate é para um dia que já passou. Hoje ainda dá para fechar.")
+    if (hoje - d).days > RESCUE_WINDOW_DAYS:
+        raise HTTPException(400, f"Só dá para salvar os últimos {RESCUE_WINDOW_DAYS} dias.")
+
+    janela = consistency_window(db, user.id, d, d)
+    info = janela.get(d)
+    if info is None or info["planned"] == 0:
+        raise HTTPException(400, "Nesse dia não havia nada marcado — ele já não quebra a sequência.")
+    if info["full"]:
+        raise HTTPException(400, "Esse dia já está fechado.")
+    if info["rest"]:
+        raise HTTPException(400, "Esse dia já está como descanso.")
+    if _rescues_left(db, user.id, hoje) <= 0:
+        raise HTTPException(
+            400,
+            f"Seus {RESCUES_PER_MONTH} resgates deste mês acabaram. Eles voltam no dia 1º.",
+        )
+
+    db.add(m.RestDay(user_id=user.id, date=d, kind="rescue",
+                     reason=payload.reason or "Dia salvo"))
+    db.flush()
+    sync_constancy(db, user)
+    db.commit()
+    return {
+        "date": d.isoformat(),
+        "left": _rescues_left(db, user.id, hoje),
+        **_constancia_publica(db, user),
+    }
 
 
 @app.delete("/api/rest-days/{day}")
 def remove_rest_day(day: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     d = parse_date(day, date.today())
     db.query(m.RestDay).filter(m.RestDay.user_id == user.id, m.RestDay.date == d).delete()
+    db.flush()
+    sync_constancy(db, user)
     db.commit()
-    return {"ok": True}
+    return {"ok": True, **_constancia_publica(db, user)}
 
 
 def _treino_de_hoje(db: Session, user: User, d: date, records: list) -> dict | None:
@@ -2906,6 +3504,8 @@ def my_day(day: str | None = None, group: int | None = None, user: User = Depend
     ).all()
 
     progress = db.query(m.UserProgress).filter(m.UserProgress.user_id == user.id).first()
+    inicio_mes, fim_mes = month_bounds(d)
+    constancia = consistency_summary(db, user.id, inicio_mes, fim_mes, d)
 
     # O "feito de hoje" ignora o que já está fechado; num dia de descanso
     # planejado nada fica pendente, por isso ele não conta como falha.
@@ -2928,6 +3528,10 @@ def my_day(day: str | None = None, group: int | None = None, user: User = Depend
             "params": r.params,
             "xp_earned": r.xp_earned,
             "score_earned": r.score_earned,
+            # O espaço onde o registro entrou: é por ele que a tela consegue
+            # apagá-lo, mesmo quando a pessoa está olhando outro espaço.
+            "group_id": r.group_id,
+            "proof_image": r.proof_image,
         } for r in records],
         # Treino e alimentação aparecem na Home porque são o que a pessoa
         # realmente faz no dia. O planejamento dos dois fica no Meu Plano.
@@ -2939,8 +3543,144 @@ def my_day(day: str | None = None, group: int | None = None, user: User = Depend
             "pending": 0 if resting else (open_habits + open_routines + open_events),
             "xp": progress.total_xp if progress else 0,
             "level": progress.level if progress else 1,
+            # A sequência é a única métrica que a pessoa tem medo de perder, e
+            # era a que não aparecia em lugar nenhum do dia a dia.
+            "streak": constancia["streak"],
+            "streak_bonus": constancia["streak_bonus"],
+            "next_milestone": constancia["next_milestone"],
+            # "sua melhor foi 12, você está em 9" puxa mais que um número solto,
+            # e mantém o recorde de pé quando a corrente atual cai.
+            "best_streak": best_personal_streak(db, user.id, d),
+            "points": constancia["points"],
+            "habit_points": scoring_v2.HABIT_POINTS,
+            "routine_points": scoring_v2.ROUTINE_POINTS,
         },
     }
+
+
+def _segunda(d: date) -> date:
+    return d - timedelta(days=d.weekday())
+
+
+def _resumo_da_semana(db: Session, user_id: int, segunda: date, hoje: date) -> dict:
+    """Números de uma semana: o que fechou, o que saiu, quanto andou."""
+    domingo = segunda + timedelta(days=6)
+    janela = consistency_window(db, user_id, segunda, min(domingo, hoje))
+
+    registros = db.query(m.ActivityRecord).filter(
+        m.ActivityRecord.user_id == user_id,
+        m.ActivityRecord.date >= segunda,
+        m.ActivityRecord.date <= domingo,
+    ).all()
+    distancia = sum(_param_num(r.params, "distance") for r in registros)
+    minutos = sum(_param_num(r.params, "duration") for r in registros)
+
+    dias_com_algo = [(d, v) for d, v in janela.items() if v["done"] > 0]
+    melhor = max(dias_com_algo, key=lambda x: x[1]["done"], default=None)
+
+    return {
+        "week_start": segunda.isoformat(),
+        "week_end": domingo.isoformat(),
+        "label": _week_label(segunda),
+        "days_closed": sum(1 for v in janela.values() if v["full"]),
+        "days_counted": sum(1 for v in janela.values() if v["planned"] > 0 and not v["rest"]),
+        "habits_done": sum(v["habits_done"] for v in janela.values()),
+        "routines_done": sum(v["routines_done"] for v in janela.values()),
+        "rest_days": sum(1 for v in janela.values() if v["rest"]),
+        "records": len(registros),
+        "modalities": sorted({r.modality for r in registros}),
+        "distance_km": round(distancia, 1),
+        "minutes": int(minutos),
+        "points": round(
+            scoring_v2.habit_points(
+                sum(v["habits_done"] for v in janela.values()),
+                sum(v["routines_done"] for v in janela.values()),
+                sum(1 for v in janela.values() if v["full"]),
+            )
+            + sum(r.score_earned for r in registros),
+            2,
+        ),
+        "best_day": None if melhor is None else {
+            "date": melhor[0].isoformat(),
+            "done": melhor[1]["done"],
+        },
+    }
+
+
+@app.get("/api/week/recap")
+def week_recap(week: str | None = None, user: User = Depends(get_current_user),
+               db: Session = Depends(get_db)):
+    """Retrospectiva da semana, com a anterior ao lado para comparar.
+
+    Sem um momento em que o app diz o que aconteceu, a semana boa passa igual à
+    ruim: o esforço fica todo em check diário e nunca vira história. Por padrão
+    mostra a última semana FECHADA, que é a que tem um resultado para contar.
+    """
+    hoje = date.today()
+    base = _segunda(parse_date(week, hoje)) if week else _segunda(hoje) - timedelta(days=7)
+    atual = _resumo_da_semana(db, user.id, base, hoje)
+    anterior = _resumo_da_semana(db, user.id, base - timedelta(days=7), hoje)
+
+    fechados = atual["days_closed"]
+    antes = anterior["days_closed"]
+    if atual["days_counted"] == 0 and atual["records"] == 0:
+        veredito = "Semana sem registro nenhum. Recomeçar custa um toque."
+    elif fechados > antes:
+        veredito = f"Melhor que a semana anterior: {fechados} dias fechados contra {antes}."
+    elif fechados == antes and fechados > 0:
+        veredito = f"Mesma constância da semana anterior: {fechados} dias fechados."
+    elif fechados == 0:
+        veredito = "Nenhum dia fechou inteiro — comece pela semana com um hábito só."
+    else:
+        veredito = f"{fechados} dias fechados, contra {antes} na semana anterior. Dá para retomar."
+
+    return {
+        "current": atual,
+        "previous": anterior,
+        "verdict": veredito,
+        "streak": personal_streak(db, user.id, hoje),
+        "best_streak": best_personal_streak(db, user.id, hoje),
+        # A semana em que a retrospectiva foi pedida: a tela usa para saber se
+        # está olhando a última fechada ou uma antiga.
+        "is_last_closed": base == _segunda(hoje) - timedelta(days=7),
+    }
+
+
+@app.get("/api/presets")
+def list_presets(user: User = Depends(get_current_user)):
+    """Hábitos, rotinas, compromissos e metas prontos para usar.
+
+    A tela em branco é o que mais afasta quem abre o app pela primeira vez.
+    Digitar continua valendo em todas as telas — isto é só o atalho.
+    """
+    return presets.catalog()
+
+
+@app.post("/api/habits/bulk")
+def create_habits_bulk(payload: s.HabitBulkCreate, user: User = Depends(get_current_user),
+                       db: Session = Depends(get_db)):
+    """Cria vários hábitos de uma vez (o caminho de quem escolheu prontos).
+
+    Hábito com o mesmo nome que já existe é ignorado em vez de duplicar: voltar
+    à lista de prontos e tocar de novo é fácil demais para virar bagunça.
+    """
+    existentes = {
+        (h.name or "").strip().lower()
+        for h in db.query(m.Habit).filter(m.Habit.user_id == user.id).all()
+    }
+    criados = []
+    for item in payload.habits:
+        if item.name.strip().lower() in existentes:
+            continue
+        habit = m.Habit(user_id=user.id, **item.model_dump(exclude_unset=True))
+        db.add(habit)
+        criados.append(habit)
+        existentes.add(item.name.strip().lower())
+    db.commit()
+    for h in criados:
+        db.refresh(h)
+    return {"created": len(criados), "skipped": len(payload.habits) - len(criados),
+            "habits": criados}
 
 
 @app.get("/api/modalities")
@@ -3172,14 +3912,26 @@ def update_training_session(session_id: int, payload: s.TrainingSessionUpdate,
     if payload.status is not None:
         sessao.status = payload.status
         sessao.completed_at = datetime.utcnow() if payload.status == "done" else None
-        if payload.status == "done":
-            sessao.items = [{**x, "done": True} for x in (sessao.items or [])]
+        # Fechar a sessão marca tudo; reabrir desmarca tudo. Guardar quais itens
+        # estavam marcados antes do "concluí" exigiria uma segunda coluna só
+        # para isso — e reabrir com metade marcada por engano é pior que
+        # recomeçar a sessão limpa.
+        marcado = payload.status == "done"
+        if payload.status in ("done", "pending"):
+            sessao.items = [{**x, "done": marcado} for x in (sessao.items or [])]
     if payload.scheduled_date is not None:
         sessao.scheduled_date = parse_date(payload.scheduled_date, date.today())
     db.commit()
     db.refresh(sessao)
-    return {"id": sessao.id, "status": sessao.status,
-            "scheduled_date": sessao.scheduled_date.isoformat() if sessao.scheduled_date else None}
+    # Devolve a sessão inteira e o progresso do plano: a tela precisa dos dois
+    # para se redesenhar sem recarregar o plano todo.
+    return {
+        "id": sessao.id,
+        "items": sessao.items,
+        "status": sessao.status,
+        "scheduled_date": sessao.scheduled_date.isoformat() if sessao.scheduled_date else None,
+        "plan": serialize_plan(db, _own_plan(db, user, sessao.plan_id), com_sessoes=False),
+    }
 
 
 @app.delete("/api/training/plans/{plan_id}")

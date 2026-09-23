@@ -5,6 +5,7 @@ import { useApp } from '../store.jsx'
 import { Button, Card, Icon, IconButton, Input, SearchField, SegmentedControl, Select } from '../design-system/components/index.js'
 import Sheet from '../components/Sheet.jsx'
 import TelaDeLista from '../components/TelaDeLista.jsx'
+import { useToast } from '../components/Toast.jsx'
 import { pickImage, fileToCompressedDataURL } from '../utils/image.js'
 
 const COPO_ML = 250
@@ -12,6 +13,7 @@ const COPO_ML = 250
 export default function Nutricao() {
   const navigate = useNavigate()
   const { group } = useApp()
+  const aviso = useToast()
   const [dados, setDados] = useState(null)
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState(null)
@@ -41,15 +43,38 @@ export default function Nutricao() {
     try {
       await api.addWater(group.id, { date: dados.date, delta_ml: delta })
       carregar()
+      aviso({
+        text: delta > 0 ? `+${delta / 1000} L de água` : `${delta / 1000} L de água`,
+        icon: 'droplet',
+        onUndo: () => beber(-delta),
+      })
     } catch (e) {
       setErro(e.message)
     }
   }
 
-  const apagar = async (id) => {
+  // Refeição apagada volta com um toque: os macros já estão na tela, recriá-la
+  // é exatamente o que o "+" faria.
+  const apagar = async (refeicao) => {
     try {
-      await api.deleteMeal(group.id, id)
+      await api.deleteMeal(group.id, refeicao.id)
       carregar()
+      aviso({
+        text: `"${refeicao.label}" removida`,
+        icon: 'trash',
+        onUndo: async () => {
+          await api.addMealManual(group.id, {
+            date: dados.date,
+            label: refeicao.label,
+            calories: refeicao.calories,
+            protein_g: refeicao.protein_g,
+            carbs_g: refeicao.carbs_g,
+            fat_g: refeicao.fat_g,
+            image: refeicao.image,
+          })
+          carregar()
+        },
+      })
     } catch (e) {
       setErro(e.message)
     }
@@ -139,7 +164,7 @@ export default function Nutricao() {
                   {r.calories} kcal · P {r.protein_g}g · C {r.carbs_g}g · G {r.fat_g}g
                 </div>
               </div>
-              <IconButton icon="trash" tone="bare" label="Remover" size={32} onClick={() => apagar(r.id)} />
+              <IconButton icon="trash" tone="bare" label="Remover" size={32} onClick={() => apagar(r)} />
             </div>
           </Card>
         ))

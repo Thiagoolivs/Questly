@@ -4,6 +4,7 @@ import { api } from '../api.js'
 import { useApp } from '../store.jsx'
 import { Button, Card, Chip, Icon, IconButton, Input, Select } from '../design-system/components/index.js'
 import { pickImage, fileToCompressedDataURL } from '../utils/image.js'
+import { useToast } from '../components/Toast.jsx'
 
 const ROTULO_INTENSIDADE = {
   leve: 'Leve',
@@ -15,6 +16,7 @@ const ROTULO_INTENSIDADE = {
 export default function Registrar() {
   const navigate = useNavigate()
   const { group } = useApp()
+  const aviso = useToast()
 
   const [modalidades, setModalidades] = useState([])
   const [escolhida, setEscolhida] = useState(null)
@@ -71,6 +73,20 @@ export default function Registrar() {
       setErro(e.message)
     } finally {
       setOcupado(false)
+    }
+  }
+
+  // Registro com número trocado é o erro mais comum aqui, e antes não tinha
+  // volta: desfazer na própria tela de sucesso devolve o XP e os pontos.
+  const desfazer = async () => {
+    try {
+      await api.deleteActivityRecord(group.id, resultado.id)
+      setResultado(null)
+      setValores({})
+      setFoto(null)
+      aviso({ text: 'Registro desfeito — XP e pontos devolvidos', icon: 'undo-2' })
+    } catch (e) {
+      setErro(e.message)
     }
   }
 
@@ -147,6 +163,20 @@ export default function Registrar() {
           </Card>
         )}
 
+        {resultado.streak > 0 && (
+          <Card>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}>
+              <Icon name="flame" size={16} color="var(--warning)" />
+              <p style={{ margin: 0, fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-body-sm)', color: 'var(--text-secondary)' }}>
+                {resultado.streak} {resultado.streak === 1 ? 'dia seguido' : 'dias seguidos'}
+                {resultado.next_milestone
+                  ? ` · faltam ${resultado.next_milestone.missing} para +${resultado.next_milestone.points} pts`
+                  : ''}
+              </p>
+            </div>
+          </Card>
+        )}
+
         <div style={{ display: 'flex', gap: 'var(--space-5)' }}>
           <Button variant="ghost" fullWidth onClick={() => { setResultado(null); setValores({}); setFoto(null) }}>
             Registrar outra
@@ -155,6 +185,10 @@ export default function Registrar() {
             Voltar
           </Button>
         </div>
+
+        <Button variant="ghost" fullWidth iconLeft="undo-2" onClick={desfazer}>
+          Desfazer este registro
+        </Button>
       </Tela>
     )
   }

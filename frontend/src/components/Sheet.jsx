@@ -31,7 +31,11 @@ export default function Sheet({ title, onClose, children, footer }) {
         display: 'flex',
         alignItems: 'flex-end',
         justifyContent: 'center',
-        zIndex: 200,
+        // Acima do aviso do rodapé (300): a folha é modal e o texto dela diz o
+        // que se perde — um aviso da ação anterior não pode cobri-lo. Os avisos
+        // disparados de dentro de uma folha só aparecem depois que ela fecha,
+        // que é o que o app faz em todos os casos.
+        zIndex: 400,
       }}
     >
       <div

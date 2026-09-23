@@ -164,6 +164,22 @@ class ReactRequest(BaseModel):
     reaction: Optional[str] = Field(None, max_length=16)  # None/"" remove a reação
 
 
+class MealManualCreate(BaseModel):
+    """Refeição digitada à mão, com os valores já sabidos.
+
+    É o caminho de quem tem o rótulo na mão (ou está desfazendo uma exclusão) e
+    não precisa de estimativa nenhuma — e o único que funciona sem IA no servidor.
+    """
+
+    date: str
+    label: str = Field(..., min_length=1, max_length=120)
+    calories: int = Field(0, ge=0, le=6000)
+    protein_g: int = Field(0, ge=0, le=600)
+    carbs_g: int = Field(0, ge=0, le=600)
+    fat_g: int = Field(0, ge=0, le=600)
+    image: Optional[str] = None
+
+
 class MealUpdate(BaseModel):
     label: Optional[str] = Field(None, min_length=1, max_length=120)
     calories: Optional[int] = Field(None, ge=0, le=6000)
@@ -290,6 +306,12 @@ class HabitUpdate(BaseModel):
     goal_unit: Optional[str] = None
     reminder_minutes: Optional[int] = None
     active: Optional[bool] = None
+
+
+class HabitBulkCreate(BaseModel):
+    """Vários hábitos numa chamada — o caminho de quem escolheu os prontos."""
+
+    habits: list[HabitCreate] = Field(..., min_length=1, max_length=40)
 
 
 class HabitLogUpdate(BaseModel):

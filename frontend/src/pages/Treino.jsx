@@ -4,6 +4,8 @@ import { api } from '../api.js'
 import { Button, Card, Chip, Icon, IconButton, Input, Select } from '../design-system/components/index.js'
 import CheckControl from '../components/CheckControl.jsx'
 import Sheet from '../components/Sheet.jsx'
+import Confirmar from '../components/Confirmar.jsx'
+import { useToast } from '../components/Toast.jsx'
 
 const MODALIDADES = [
   { value: 'jiu-jitsu', label: 'Jiu-Jitsu' },
@@ -24,12 +26,14 @@ const NIVEIS = [
 
 export default function Treino() {
   const navigate = useNavigate()
+  const aviso = useToast()
   const [planos, setPlanos] = useState([])
   const [iaLigada, setIaLigada] = useState(false)
   const [aberto, setAberto] = useState(null)
   const [criando, setCriando] = useState(false)
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState(null)
+  const [apagando, setApagando] = useState(null)
 
   const carregar = useCallback(async () => {
     setErro(null)
@@ -56,15 +60,35 @@ export default function Treino() {
     }
   }
 
+  // Plano abandonado sem como sumir vira lixo permanente na tela do Meu Plano.
+  const apagarPlano = async (plano) => {
+    await api.deleteTrainingPlan(plano.id)
+    setAberto(null)
+    await carregar()
+    aviso({ text: 'Plano apagado', icon: 'trash' })
+  }
+
   if (aberto) {
     return (
-      <DetalheDoPlano
-        plano={aberto}
-        onVoltar={() => { setAberto(null); carregar() }}
-        onAtualizar={setAberto}
-        onErro={setErro}
-        iaLigada={iaLigada}
-      />
+      <>
+        <DetalheDoPlano
+          plano={aberto}
+          onVoltar={() => { setAberto(null); carregar() }}
+          onAtualizar={setAberto}
+          onErro={setErro}
+          onApagar={() => setApagando(aberto)}
+          aviso={aviso}
+          iaLigada={iaLigada}
+        />
+        {apagando && (
+          <Confirmar
+            titulo="Apagar este plano?"
+            descricao="As sessões e o que já foi marcado nelas vão junto. As atividades que você registrou continuam no seu histórico."
+            onConfirmar={() => apagarPlano(apagando)}
+            onFechar={() => setApagando(null)}
+          />
+        )}
+      </>
     )
   }
 
@@ -186,8 +210,31 @@ function Barra({ percent }) {
   )
 }
 
-function DetalheDoPlano({ plano, onVoltar, onAtualizar, onErro, iaLigada }) {
+function DetalheDoPlano({ plano, onVoltar, onAtualizar, onErro, onApagar, aviso, iaLigada }) {
   const [adaptando, setAdaptando] = useState(false)
+
+  // Fechar a sessão inteira (e reabrir) num toque: marcar item por item para
+  // depois descobrir que marcou a sessão errada não tinha volta nenhuma.
+  const mudarStatus = async (sessao, status) => {
+    try {
+      const r = await api.updateTrainingSession(sessao.id, { status })
+      onAtualizar({
+        ...plano,
+        progress: r.plan?.progress ?? plano.progress,
+        sessions: plano.sessions.map((x) =>
+          x.id === sessao.id ? { ...x, items: r.items, status: r.status } : x,
+        ),
+      })
+      aviso?.({
+        text: status === 'done' ? `${sessao.title} concluída` : `${sessao.title} reaberta`,
+        icon: status === 'done' ? 'check-circle' : 'undo-2',
+        tone: status === 'done' ? 'success' : undefined,
+        onUndo: () => mudarStatus(sessao, status === 'done' ? 'pending' : 'done'),
+      })
+    } catch (e) {
+      onErro(e.message)
+    }
+  }
 
   const marcar = async (sessao, indice, valor) => {
     try {
@@ -267,7 +314,13 @@ function DetalheDoPlano({ plano, onVoltar, onAtualizar, onErro, iaLigada }) {
                         </div>
                       )}
                     </div>
-                    {sessao.status === 'done' && <Icon name="check-circle" size={20} color="var(--success)" />}
+                    <IconButton
+                      icon={sessao.status === 'done' ? 'undo-2' : 'check-circle'}
+                      tone="bare"
+                      size={32}
+                      label={sessao.status === 'done' ? 'Reabrir sessão' : 'Concluir sessão'}
+                      onClick={() => mudarStatus(sessao, sessao.status === 'done' ? 'pending' : 'done')}
+                    />
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
@@ -309,6 +362,10 @@ function DetalheDoPlano({ plano, onVoltar, onAtualizar, onErro, iaLigada }) {
       {/* Plano que não se ajusta é abandonado; ajustar é mais barato que recomeçar. */}
       <Button variant="secondary" fullWidth iconLeft="wand" disabled={!iaLigada} onClick={() => setAdaptando(true)}>
         Pedir ajuste à IA
+      </Button>
+
+      <Button variant="ghost" fullWidth iconLeft="trash" onClick={onApagar}>
+        Apagar plano
       </Button>
 
       {adaptando && (
