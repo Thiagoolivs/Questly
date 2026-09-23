@@ -2942,6 +2942,19 @@ def best_personal_streak(db: Session, user_id: int, today: date) -> int:
     return melhor
 
 
+def _param_num(params: dict, chave: str) -> float:
+    """Lê um parâmetro numérico de um registro sem confiar no que está gravado.
+
+    `params` é JSON livre — veio do cliente e pode ter texto onde devia ter
+    número. Somar direto derrubaria a tela inteira por causa de um registro
+    torto.
+    """
+    try:
+        return float((params or {}).get(chave) or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def personal_metrics(db: Session, user_id: int, today: date) -> dict:
     """Tudo que as conquistas pessoais medem, numa passada só.
 
@@ -2951,12 +2964,7 @@ def personal_metrics(db: Session, user_id: int, today: date) -> dict:
     janela = consistency_window(db, user_id, today - timedelta(days=STREAK_WINDOW_DAYS), today)
 
     registros = db.query(m.ActivityRecord).filter(m.ActivityRecord.user_id == user_id).all()
-    distancia = 0.0
-    for r in registros:
-        try:
-            distancia += float((r.params or {}).get("distance") or 0)
-        except (TypeError, ValueError):
-            pass
+    distancia = sum(_param_num(r.params, "distance") for r in registros)
 
     progresso = db.query(m.UserProgress).filter(m.UserProgress.user_id == user_id).first()
 
@@ -3564,18 +3572,8 @@ def _resumo_da_semana(db: Session, user_id: int, segunda: date, hoje: date) -> d
         m.ActivityRecord.date >= segunda,
         m.ActivityRecord.date <= domingo,
     ).all()
-    distancia = 0.0
-    minutos = 0.0
-    for r in registros:
-        for chave, acc in (("distance", "d"), ("duration", "m")):
-            try:
-                valor = float((r.params or {}).get(chave) or 0)
-            except (TypeError, ValueError):
-                valor = 0.0
-            if acc == "d":
-                distancia += valor
-            else:
-                minutos += valor
+    distancia = sum(_param_num(r.params, "distance") for r in registros)
+    minutos = sum(_param_num(r.params, "duration") for r in registros)
 
     dias_com_algo = [(d, v) for d, v in janela.items() if v["done"] > 0]
     melhor = max(dias_com_algo, key=lambda x: x[1]["done"], default=None)
