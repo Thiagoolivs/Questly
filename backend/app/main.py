@@ -40,12 +40,10 @@ from .data import (
     CATEGORY_ICON,
     PERSONAL_ACHIEVEMENTS,
     CATEGORY_ORDER,
-    DEFAULT_HABITS,
     DIFFICULTIES,
     DIFFICULTY_LABEL,
     DIFFICULTY_POINTS,
     FEED_REACTIONS,
-    HABITS_MENU,
     JOINT_SUGGESTIONS,
     MOODS,
 )
@@ -77,7 +75,6 @@ from .schemas import (
     GroupCreate,
     GroupJoin,
     ResetPasswordRequest,
-    HabitPhotoRequest,
     JointActivityCreate,
     MealCreate,
     MealFoodsCreate,
@@ -94,7 +91,6 @@ from .schemas import (
     RegisterRequest,
     RerollRequest,
     SettingsUpdate,
-    ToggleRequest,
     UserUpdate,
 )
 from . import schemas as s, models as m
@@ -764,8 +760,6 @@ def settings_public(s: Settings) -> dict:
         "rest_days": s.rest_days,
         "spiritual_enabled": s.spiritual_enabled,
         "surprise_frequency": s.surprise_frequency,
-        "fixed_habits": s.fixed_habits,
-        "habits_menu": HABITS_MENU,
         "custom_challenges": getattr(s, "custom_challenges", None) or {},
         "disabled_areas": getattr(s, "disabled_areas", None) or [],
         "areas": CATEGORY_ORDER,
@@ -1005,7 +999,6 @@ def create_group(payload: GroupCreate, user: User = Depends(get_current_user), d
         challenge_end=fim,
         start_date=inicio.date(),
         duration_days=30,
-        fixed_habits=DEFAULT_HABITS,
     ))
     db.add(Membership(user_id=user.id, group_id=group.id, role="owner"))
     db.commit()
@@ -1059,8 +1052,6 @@ def update_settings(gid: int, payload: SettingsUpdate, user: User = Depends(get_
             ZoneInfo(data["timezone"])
         except (ZoneInfoNotFoundError, ValueError, KeyError):
             raise HTTPException(400, f"Fuso horário inválido: {data['timezone']!r}.")
-    if "fixed_habits" in data and data["fixed_habits"] is not None:
-        data["fixed_habits"] = [h.model_dump() if hasattr(h, "model_dump") else h for h in payload.fixed_habits]
     if data.get("custom_challenges") is not None:
         data["custom_challenges"] = _clean_custom_challenges(data["custom_challenges"])
     if data.get("disabled_areas") is not None:
@@ -1189,76 +1180,6 @@ def _day_result(db: Session, settings: Settings, membership: Membership, entry: 
         day_cd["points"] += day_cd["joint_pts"]
         day_cd["max_points"] += day_cd["joint_pts"]
     return {"day": day_cd, "stats": scoring.player_stats(settings, days, today)}
-
-
-def _habit_info(settings: Settings, key: str) -> dict:
-    for h in (settings.fixed_habits or DEFAULT_HABITS):
-        if h.get("key") == key:
-            return h
-    return {"key": key, "label": key, "icon": "check-circle"}
-
-
-@app.post("/api/groups/{gid}/day/toggle")
-def toggle(gid: int, req: ToggleRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    membership = get_membership(db, user, gid)
-    s = get_group_settings(db, gid)
-    today = today_of(s)
-    d = parse_date(req.date, today)
-    ensure_today(d, today)
-    if not req.habit_key:
-        raise HTTPException(400, "habit_key é obrigatório.")
-    entry = get_or_create_entry(db, membership, d)
-    current = list(entry.habits_done or [])
-    h = _habit_info(s, req.habit_key)
-    ref = f"habit:{req.habit_key}"
-    if req.habit_key in current:
-        current.remove(req.habit_key)
-        # Ao desmarcar, remove a foto-prova associada e o item do feed.
-        proofs = dict(entry.habit_proofs or {})
-        if proofs.pop(req.habit_key, None) is not None:
-            entry.habit_proofs = proofs
-        entry.habits_done = current
-        result = _day_result(db, s, membership, entry, d)
-        remove_activity(db, gid, membership, ref, day=d)
-        return result
-    current.append(req.habit_key)
-    entry.habits_done = current
-    result = _day_result(db, s, membership, entry, d)
-    # Hábito concluído → vai pro feed (com foto, se houver).
-    img = (entry.habit_proofs or {}).get(req.habit_key)
-    upsert_activity(db, gid, membership, "habit", h.get("icon", "check-circle"),
-                    f"cumpriu: {h.get('label', req.habit_key)}",
-                    ref=ref, image=img, day=d)
-    return result
-
-
-@app.post("/api/groups/{gid}/day/habit-photo")
-def set_habit_photo(gid: int, req: HabitPhotoRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """Anexa (ou remove) a foto-prova de um hábito. Com foto, o hábito vale +2."""
-    validate_image(req.image)
-    membership = get_membership(db, user, gid)
-    s = get_group_settings(db, gid)
-    today = today_of(s)
-    d = parse_date(req.date, today)
-    ensure_today(d, today)
-    entry = get_or_create_entry(db, membership, d)
-    proofs = dict(entry.habit_proofs or {})
-    if req.image:
-        proofs[req.habit_key] = req.image
-        # Anexar foto marca o hábito como feito.
-        if req.habit_key not in (entry.habits_done or []):
-            entry.habits_done = list(entry.habits_done or []) + [req.habit_key]
-    else:
-        proofs.pop(req.habit_key, None)
-    entry.habit_proofs = proofs
-    result = _day_result(db, s, membership, entry, d)
-    # Mantém o item do feed em sincronia com a foto (se o hábito está feito).
-    if req.habit_key in (entry.habits_done or []):
-        h = _habit_info(s, req.habit_key)
-        upsert_activity(db, gid, membership, "habit", h.get("icon", "check-circle"),
-                        f"cumpriu: {h.get('label', req.habit_key)}",
-                        ref=f"habit:{req.habit_key}", image=req.image, day=d)
-    return result
 
 
 @app.post("/api/groups/{gid}/day/mood")
@@ -2191,7 +2112,12 @@ def get_ranking(gid: int, user: User = Depends(get_current_user), db: Session = 
                 "photo": m_obj.user.photo,
                 "level": (up.level if up else 1) or 1,
                 "xp": (up.total_xp if up else 0) or 0,
-                "streak": stats["streak"],
+                # A sequência que o grupo vê é a do Meu Dia, não a do desafio
+                # por área: é ela que a pessoa constrói todo dia e vê na Home.
+                # Mostrar duas sequências diferentes com o mesmo nome em telas
+                # diferentes é pior que não mostrar nenhuma.
+                "streak": personal_streak(db, m_obj.user_id, today),
+                "challenge_streak": stats["streak"],
                 "effort_score": round(cs.effort_score if cs else 0.0),
                 "consistency_score": round(cs.consistency_score if cs else 0.0),
                 "habit_score": round((cs.habit_score or 0.0) if cs else 0.0),
@@ -2224,6 +2150,214 @@ def get_ranking(gid: int, user: User = Depends(get_current_user), db: Session = 
         # ranking de uma pessoa só.
         "competitive": bool(group_rules(group)["ranking"]) and len(ranking) > 1,
     }
+
+
+# --- divulgar conquista no grupo -------------------------------------------
+# A regra: o cliente diz O QUÊ aconteceu, o servidor confere e escreve a frase.
+# Deixar o texto vir pronto transformaria "compartilhar conquista" num post de
+# texto livre com cara de medalha — e medalha que qualquer um escreve não vale
+# nada para quem lê.
+def _frase_do_compartilhamento(db: Session, user: User, membership: Membership,
+                               pedido: "s.ShareRequest", hoje: date) -> tuple[str, str, str]:
+    """Devolve (texto, ícone, ref) do item de feed, ou levanta 400/404."""
+    kind = pedido.kind
+
+    if kind == "achievement":
+        metricas = personal_metrics(db, user.id, hoje)
+        conquista = next(
+            (a for a in personal_achievements(metricas) if a["key"] == pedido.ref), None
+        )
+        if conquista is None:
+            raise HTTPException(404, "Conquista não encontrada.")
+        if not conquista["unlocked"]:
+            raise HTTPException(400, "Essa conquista ainda não saiu.")
+        return (
+            f"desbloqueou: {conquista['name']}",
+            conquista["icon"] or "award",
+            f"share:achievement:{conquista['key']}",
+        )
+
+    if kind == "streak":
+        dias = personal_streak(db, user.id, hoje)
+        if dias < 2:
+            raise HTTPException(400, "Ainda não há sequência para contar.")
+        return (
+            f"está em {dias} dias seguidos cumprindo o que planejou",
+            "flame",
+            f"share:streak:{dias}",
+        )
+
+    if kind == "level":
+        progresso = db.query(m.UserProgress).filter(m.UserProgress.user_id == user.id).first()
+        nivel = (progresso.level if progresso else 1) or 1
+        if nivel < 2:
+            raise HTTPException(400, "Ainda no nível 1 — comece registrando o que fez.")
+        return f"chegou ao nível {nivel}", "star", f"share:level:{nivel}"
+
+    if kind == "session":
+        sessao = db.query(m.TrainingSession).filter(
+            m.TrainingSession.id == _int_ref(pedido.ref),
+            m.TrainingSession.user_id == user.id,
+        ).first()
+        if sessao is None:
+            raise HTTPException(404, "Sessão não encontrada.")
+        if sessao.status != "done":
+            raise HTTPException(400, "Essa sessão ainda não foi concluída.")
+        plano = db.get(m.TrainingPlan, sessao.plan_id)
+        modalidade = plano.modality if plano else "treino"
+        return (
+            f"concluiu {sessao.title} do plano de {modalidade}",
+            "dumbbell",
+            f"share:session:{sessao.id}",
+        )
+
+    if kind == "plan":
+        plano = db.query(m.TrainingPlan).filter(
+            m.TrainingPlan.id == _int_ref(pedido.ref), m.TrainingPlan.user_id == user.id
+        ).first()
+        if plano is None:
+            raise HTTPException(404, "Plano não encontrado.")
+        progresso = serialize_plan(db, plano, com_sessoes=False)["progress"]
+        if progresso["total"] == 0 or progresso["done"] < progresso["total"]:
+            raise HTTPException(400, "O plano ainda não terminou.")
+        return (
+            f"terminou o plano de {plano.modality}: {progresso['total']} sessões",
+            "trophy",
+            f"share:plan:{plano.id}",
+        )
+
+    if kind == "week":
+        semana = _resumo_da_semana(db, user.id, _segunda(hoje) - timedelta(days=7), hoje)
+        if semana["days_closed"] == 0:
+            raise HTTPException(400, "A semana passada não teve dia fechado.")
+        return (
+            f"fechou {semana['days_closed']} "
+            f"{'dia' if semana['days_closed'] == 1 else 'dias'} na semana de {semana['label']}",
+            "calendar-days",
+            f"share:week:{semana['week_start']}",
+        )
+
+    # kind == "day"
+    texto = _texto_do_dia(db, user.id, hoje)
+    if texto is None:
+        raise HTTPException(400, "Ainda não há nada fechado hoje.")
+    return texto, "check-circle", f"share:day:{hoje.isoformat()}"
+
+
+def _int_ref(ref: str | None) -> int:
+    try:
+        return int(ref or "")
+    except ValueError:
+        raise HTTPException(400, "Referência inválida.")
+
+
+def _texto_do_dia(db: Session, user_id: int, d: date) -> str | None:
+    """O que a pessoa fechou hoje, em uma frase — ou None se não houver nada."""
+    info = consistency_window(db, user_id, d, d).get(d)
+    if not info or info["done"] == 0:
+        return None
+    partes = []
+    if info["habits_done"]:
+        partes.append(f"{info['habits_done']} {'hábito' if info['habits_done'] == 1 else 'hábitos'}")
+    if info["routines_done"]:
+        partes.append(f"{info['routines_done']} {'rotina' if info['routines_done'] == 1 else 'rotinas'}")
+    if not partes:
+        return None
+    sequencia = personal_streak(db, user_id, d)
+    fim = f" · {sequencia} dias seguidos" if sequencia >= 2 else ""
+    cabeca = "fechou o dia" if info["full"] else "cumpriu hoje"
+    return f"{cabeca}: {' e '.join(partes)}{fim}"
+
+
+@app.post("/api/groups/{gid}/share")
+def share_to_group(gid: int, pedido: s.ShareRequest, user: User = Depends(get_current_user),
+                   db: Session = Depends(get_db)):
+    """Publica no feed do grupo algo que a pessoa conquistou.
+
+    O progresso pessoal é o que sustenta o app, mas ele acontecia todo em
+    silêncio: o feed só sabia de treino registrado e desafio cumprido. Aqui a
+    pessoa decide o que o grupo vê — nada sai daqui sem ela pedir.
+    """
+    membership = get_membership(db, user, gid)
+    s_obj = get_group_settings(db, gid)
+    hoje = today_of(s_obj)
+
+    texto, icone, ref = _frase_do_compartilhamento(db, user, membership, pedido, hoje)
+    if pedido.message:
+        texto = f"{texto} — {pedido.message.strip()}"
+
+    # `ref` por conteúdo: compartilhar a mesma conquista duas vezes atualiza o
+    # item em vez de encher o feed com o mesmo aviso.
+    upsert_activity(db, gid, membership, "share", icone, texto, ref=ref, day=hoje)
+    notify_group_others(db, gid, membership.user_id, membership.group.name,
+                        f"{membership.user.name} {texto}", "/feed")
+    return {"ok": True, "text": texto}
+
+
+@app.get("/api/groups/{gid}/share/options")
+def share_options(gid: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """O que a pessoa tem para compartilhar agora, já verificado.
+
+    A tela não adivinha: pergunta. Assim o botão de compartilhar só aparece
+    quando existe algo de verdade para mostrar.
+    """
+    membership = get_membership(db, user, gid)
+    hoje = today_of(get_group_settings(db, gid))
+
+    opcoes = []
+    for kind, ref in (("day", None), ("streak", None), ("week", None), ("level", None)):
+        try:
+            texto, icone, _ = _frase_do_compartilhamento(
+                db, user, membership, s.ShareRequest(kind=kind, ref=ref), hoje
+            )
+            opcoes.append({"kind": kind, "ref": ref, "text": texto, "icon": icone})
+        except HTTPException:
+            continue  # nada a dizer sobre este; simplesmente não vira opção
+
+    metricas = personal_metrics(db, user.id, hoje)
+    for a in personal_achievements(metricas):
+        if a["unlocked"]:
+            opcoes.append({
+                "kind": "achievement", "ref": a["key"],
+                "text": f"desbloqueou: {a['name']}", "icon": a["icon"],
+            })
+
+    return {"options": opcoes, "auto_share": bool(membership.auto_share)}
+
+
+@app.put("/api/groups/{gid}/auto-share")
+def set_auto_share(gid: int, payload: s.AutoShareUpdate, user: User = Depends(get_current_user),
+                   db: Session = Depends(get_db)):
+    """Liga/desliga a postagem automática do fecho do dia neste espaço."""
+    membership = get_membership(db, user, gid)
+    membership.auto_share = payload.auto_share
+    db.commit()
+    return {"auto_share": membership.auto_share}
+
+
+def auto_share_day(db: Session, user: User, d: date) -> None:
+    """Publica o fecho do dia nos espaços em que a pessoa ligou isso.
+
+    Chamado depois de marcar hábito ou rotina. Usa `ref` por dia, então o item
+    é atualizado conforme o dia avança em vez de virar uma fila de avisos.
+    """
+    memberships = [
+        x for x in db.query(Membership).filter(Membership.user_id == user.id).all()
+        if x.auto_share
+    ]
+    if not memberships:
+        return
+    texto = _texto_do_dia(db, user.id, d)
+    if texto is None:
+        return
+    for membership in memberships:
+        try:
+            upsert_activity(db, membership.group_id, membership, "share", "check-circle",
+                            texto, ref=f"share:day:{d.isoformat()}", day=d)
+        except Exception:  # noqa: BLE001 — divulgação nunca derruba a marcação
+            # A marcação já está gravada; o rollback aqui só descarta o item de
+            # feed que falhou, para o próximo espaço da lista ainda ter chance.
+            db.rollback()
 
 
 @app.get("/api/groups/{gid}/activities")
@@ -2407,18 +2541,6 @@ def gallery(gid: int, weeks_limit: int = 8, user: User = Depends(get_current_use
                     "kind": "challenge",
                     "icon": CATEGORY_ICON.get(cat, "target"),
                     "label": cat,
-                    "image": img,
-                })
-            for key, img in (e.habit_proofs or {}).items():
-                if not img:
-                    continue
-                h = _habit_info(get_group_settings(db, gid), key)
-                weeks.setdefault(monday_of(e.date), []).append({
-                    "date": e.date.isoformat(),
-                    "author": m.user.name,
-                    "kind": "habit",
-                    "emoji": h.get("icon", "check-circle"),
-                    "label": h.get("label", key),
                     "image": img,
                 })
     for a in db.query(JointActivity).filter(JointActivity.group_id == gid).all():
@@ -3165,6 +3287,9 @@ def log_habit(habit_id: int, payload: s.HabitLogToggle,
     sync_constancy(db, user)
     db.commit()
     db.refresh(log)
+    # Depois do commit: a divulgação é um extra, e um erro nela não pode
+    # desfazer a marcação que a pessoa acabou de fazer.
+    auto_share_day(db, user, d)
     return {"habit_id": habit.id, "date": log.date.isoformat(),
             "completed": log.completed, "value": log.value,
             # Marcar e não ganhar nada é o caminho mais curto para parar de
@@ -3201,6 +3326,7 @@ def log_routine_step(routine_id: int, payload: s.RoutineStepToggle,
     sync_constancy(db, user)
     db.commit()
     db.refresh(log)
+    auto_share_day(db, user, d)
     return {"routine_id": routine.id, "date": log.date.isoformat(),
             "steps_done": log.steps_done, "completed": log.completed,
             "points": scoring_v2.ROUTINE_POINTS if (log.completed and not antes) else 0,

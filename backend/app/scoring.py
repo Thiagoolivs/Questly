@@ -18,15 +18,12 @@ from .data import (
     CATEGORY_ICON,
     CATEGORY_ORDER,
     CHALLENGE_POOLS,
-    DEFAULT_HABITS,
     DIFFICULTIES,
     DIFFICULTY_LABEL,
     DIFFICULTY_POINTS,
     MOTD_POOL,
 )
 
-HABIT_POINTS = 10
-HABIT_PROOF_POINTS = 12  # hábito marcado + foto-prova
 BALANCE_BONUS = 20
 PERFECT_BONUS = 10
 TOGETHER_BONUS = 10  # bônus por concluir um desafio em dupla ("juntos")
@@ -142,10 +139,6 @@ def motd(d: date) -> str:
     return MOTD_POOL[_seed(d, "motd") % len(MOTD_POOL)]
 
 
-def _fixed_habits(settings) -> list:
-    return settings.fixed_habits or DEFAULT_HABITS
-
-
 def _is_rest_day(settings, d: date) -> bool:
     """Dia de descanso do grupo (convenção JS: 0=Dom..6=Sáb)."""
     return ((d.weekday() + 1) % 7) in set(settings.rest_days or [])
@@ -153,16 +146,6 @@ def _is_rest_day(settings, d: date) -> bool:
 
 def compute_day(settings, entry, d: date) -> dict:
     """Resumo pontuado de um dia (entry pode ser ``None``)."""
-    habits = _fixed_habits(settings)
-    keys = {h["key"] for h in habits}
-    total_habits = len(habits)
-    done_raw = entry.habits_done if entry else []
-    habits_done = [k for k in done_raw if k in keys]
-    n_done = len(habits_done)
-    habit_proofs = (entry.habit_proofs or {}) if entry else {}
-    # Hábito marcado vale 10; marcado + foto-prova vale 12.
-    habit_pts = sum(HABIT_PROOF_POINTS if habit_proofs.get(k) else HABIT_POINTS for k in habits_done)
-
     proofs = (entry.challenge_proofs or {}) if entry else {}
     rerolls = (entry.challenge_rerolls or {}) if entry else {}
     together = (entry.challenge_together or {}) if entry else {}
@@ -194,15 +177,17 @@ def compute_day(settings, entry, d: date) -> dict:
         challenges.append(ch)
 
     areas_total = len(challenges)
-    all_habits = total_habits > 0 and n_done >= total_habits
     all_areas = areas_total > 0 and areas_done >= areas_total
     balance_bonus = BALANCE_BONUS if all_areas else 0
-    perfect = all_areas and all_habits
+    # Dia perfeito = fechou todas as áreas do desafio. Antes exigia também os
+    # "hábitos fixos" do grupo, que nenhuma tela do app sabia marcar — então o
+    # dia perfeito era inalcançável, e com ele o bônus e a conquista do casal.
+    perfect = all_areas
     perfect_bonus = PERFECT_BONUS if perfect else 0
 
-    points = habit_pts + challenge_pts + together_pts + balance_bonus + perfect_bonus
+    points = challenge_pts + together_pts + balance_bonus + perfect_bonus
     max_challenge_pts = sum(c["points"] for c in challenges)
-    max_points = total_habits * HABIT_PROOF_POINTS + max_challenge_pts + BALANCE_BONUS + PERFECT_BONUS
+    max_points = max_challenge_pts + BALANCE_BONUS + PERFECT_BONUS
 
     rerolls_used = sum(1 for v in rerolls.values() if v)
 
@@ -213,16 +198,10 @@ def compute_day(settings, entry, d: date) -> dict:
         "points": points,
         "max_points": max_points,
         "completion_pct": min(100, round(points / max_points * 100)) if max_points else 0,
-        "habit_pts": habit_pts,
         "challenge_pts": challenge_pts,
         "together_pts": together_pts,
         "balance_bonus": balance_bonus,
         "perfect_bonus": perfect_bonus,
-        "habits": habits,
-        "habits_done": habits_done,
-        "habit_proofs": {k: habit_proofs[k] for k in habits_done if habit_proofs.get(k)},
-        "n_habits": total_habits,
-        "n_done": n_done,
         "challenges": challenges,
         "done_cats": done_cats,
         "hard_done": hard_done,
@@ -234,7 +213,7 @@ def compute_day(settings, entry, d: date) -> dict:
         "mood_note": (entry.mood_note if entry else None),
         "mood": (entry.moods[0] if entry and entry.moods else None),  # compat
         "completed": all_areas,   # conta para a sequência (fechou as áreas)
-        "perfect": perfect,        # áreas + hábitos (ganhou o bônus perfeito)
+        "perfect": perfect,       # ganhou o bônus do dia perfeito
     }
 
 
@@ -243,16 +222,10 @@ def nudge(today_cd: dict, my_total: int, partner_total=None, partner_name=None) 
     if today_cd["perfect"]:
         base = "Dia perfeito! Você fechou tudo hoje. Orgulho!"
     else:
-        parts = []
         pend_areas = today_cd["areas_total"] - today_cd["areas_done"]
-        pend_habits = today_cd["n_habits"] - today_cd["n_done"]
-        if pend_areas > 0:
-            parts.append(f"{pend_areas} área(s)")
-        if pend_habits > 0:
-            parts.append(f"{pend_habits} hábito(s)")
         base = (
-            "Faltam " + " e ".join(parts) + " pra fechar o dia. Bora!"
-            if parts else "Tudo em ordem por hoje."
+            f"Faltam {pend_areas} área(s) pra fechar o dia. Bora!"
+            if pend_areas > 0 else "Tudo em ordem por hoje."
         )
 
     if partner_total is not None:
@@ -352,9 +325,6 @@ def player_stats(settings, days: list[dict], today: date) -> dict:
 
 
 def _metric_value(metric: str, days: list[dict], stats: dict) -> int:
-    if metric.startswith("habit:"):
-        key = metric.split(":", 1)[1]
-        return sum(1 for cd in days if key in cd["habits_done"])
     if metric.startswith("cat:"):
         cat = metric.split(":", 1)[1]
         return sum(1 for cd in days if cat in cd["done_cats"])
@@ -362,8 +332,6 @@ def _metric_value(metric: str, days: list[dict], stats: dict) -> int:
         return sum(cd["hard_done"] for cd in days)
     if metric == "balance_days":
         return sum(1 for cd in days if cd["completed"])
-    if metric == "all_habits_days":
-        return sum(1 for cd in days if cd["n_habits"] > 0 and cd["n_done"] >= cd["n_habits"])
     return stats.get(metric, 0)
 
 
@@ -379,10 +347,6 @@ def achievement_applies(a: dict, settings=None, group_type: str | None = None) -
         return False
     if settings is None:
         return True
-
-    habito = a.get("needs_habit")
-    if habito and habito not in {h["key"] for h in _fixed_habits(settings)}:
-        return False
 
     areas = a.get("needs_areas")
     if areas and not set(areas).issubset(set(active_categories(settings))):

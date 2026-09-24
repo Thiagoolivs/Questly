@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react'
 import { useApp } from '../store.jsx'
 import { api } from '../api.js'
 import PlayerSwitch from '../components/PlayerSwitch.jsx'
-import { Card, Icon } from '../design-system/components/index.js'
+import { Button, Card, Icon } from '../design-system/components/index.js'
 import VoltarPara from '../components/VoltarPara.jsx'
+import Compartilhar from '../components/Compartilhar.jsx'
 
 /**
  * Conquistas — duas famílias, separadas na tela.
@@ -23,6 +24,7 @@ export default function Conquistas() {
   const { groupId, viewId } = useApp()
   const [list, setList] = useState(null)
   const [err, setErr] = useState(null)
+  const [compartilhando, setCompartilhando] = useState(null)
 
   useEffect(() => {
     if (!groupId || !viewId) return
@@ -101,17 +103,37 @@ export default function Conquistas() {
             </p>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 'var(--space-4)' }}>
               {itens.map((a) => (
-                <Medalha key={a.key} conquista={a} />
+                <Medalha
+                  key={a.key}
+                  conquista={a}
+                  // Só as pessoais: as do desafio do grupo já acontecem à vista
+                  // de todos no feed, e o servidor não as valida para partilha.
+                  onCompartilhar={
+                    a.unlocked && scope === 'pessoal' ? () => setCompartilhando(a) : null
+                  }
+                />
               ))}
             </div>
           </section>
         )
       })}
+
+      <Compartilhar
+        aberto={!!compartilhando}
+        titulo="Compartilhar conquista"
+        fixo={compartilhando && {
+          kind: 'achievement',
+          ref: compartilhando.key,
+          icon: compartilhando.icon,
+          text: `desbloqueou: ${compartilhando.name}`,
+        }}
+        onFechar={() => setCompartilhando(null)}
+      />
     </div>
   )
 }
 
-function Medalha({ conquista: a }) {
+function Medalha({ conquista: a, onCompartilhar }) {
   const pct = Math.min(100, (a.current / a.target) * 100)
   return (
     <Card
@@ -146,6 +168,14 @@ function Medalha({ conquista: a }) {
           {a.current}/{a.target}
         </div>
       </div>
+
+      {onCompartilhar && (
+        <div style={{ marginTop: 'var(--space-4)' }}>
+          <Button variant="ghost" size="sm" iconLeft="send" onClick={onCompartilhar}>
+            Contar
+          </Button>
+        </div>
+      )}
     </Card>
   )
 }

@@ -20,7 +20,8 @@ Interface **mobile-first**, instalável como app (PWA).
 
 **O dia**
 - 🏠 **Meu Dia**: agenda, rotinas e hábitos de hoje numa tela só, com a sequência e o que falta para o próximo marco.
-- ✅ **Hábitos** próprios com frequência, horário, meta e lembrete.
+- ✅ **Hábitos** próprios com frequência, horário, meta e lembrete. Hábito é
+  sempre da pessoa, nunca do grupo: o que o grupo combina é o desafio por área.
 - 🔁 **Rotinas**: sequências de passos (manhã, pré-treino, antes de dormir) que fecham quando os obrigatórios saem.
 - 📅 **Agenda** pessoal com recorrência e lembretes.
 - 😴 **Descanso planejado**: dia marcado como folga não conta como falha nem quebra a sequência.
@@ -34,6 +35,8 @@ Interface **mobile-first**, instalável como app (PWA).
 - 👥 **Espaços**: individual, casal ou grupo — cada tipo liga o que faz sentido (ranking, atividade em dupla, convite).
 - 🏆 **Placar mensal** com esforço, constância e desafios, e aviso de quem passou você.
 - 📰 **Feed** com reações e comentários, **Mural** de fotos e **chat** do grupo.
+- 📣 **Divulgar conquista**: sequência, medalha, sessão do plano ou a semana vão
+  ao feed quando você quiser — e há a opção de publicar o fecho do dia sozinho.
 - 🎲 **Desafio do dia** por área (Física, Mental, Social, Relação, Espiritual), sorteado igual para todos.
 
 **O olhar para trás**
@@ -91,7 +94,7 @@ questly/
 │   ├── app/
 │   │   ├── main.py         # rotas
 │   │   ├── models.py       # ORM
-│   │   ├── scoring.py      # desafio do grupo (hábitos fixos, áreas, conquistas)
+│   │   ├── scoring.py      # desafio do grupo (áreas, conquistas)
 │   │   ├── scoring_v2.py   # esforço, XP, constância e marcos de sequência
 │   │   ├── presets.py      # hábitos, rotinas, compromissos e metas prontos
 │   │   ├── data.py         # desafios, conquistas, humores, reações
@@ -179,6 +182,8 @@ no CI a cada PR.
 | `POST` `DELETE` | `/api/groups/{g}/activity-record` | Registrar e desfazer atividade |
 | `GET` | `/api/groups/{g}/ranking` | Placar do mês |
 | `GET` | `/api/groups/{g}/achievements/{m}` | Conquistas (pessoais + do grupo) |
+| `GET` `POST` | `/api/groups/{g}/share` | O que dá para divulgar, e divulgar |
+| `PUT` | `/api/groups/{g}/auto-share` | Publicar o fecho do dia sozinho |
 | `POST` | `/api/training/plans` | Plano de treino por IA |
 
 A lista completa e interativa fica em `/docs`.

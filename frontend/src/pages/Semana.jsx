@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api.js'
 import { Button, Card, Chip, Icon, IconButton } from '../design-system/components/index.js'
+import Compartilhar from '../components/Compartilhar.jsx'
 
 /**
  * Retrospectiva da semana.
@@ -35,6 +36,7 @@ export default function Semana() {
   const [semana, setSemana] = useState(null)   // null = a última fechada
   const [dados, setDados] = useState(null)
   const [erro, setErro] = useState(null)
+  const [compartilhando, setCompartilhando] = useState(false)
 
   const carregar = useCallback(async (alvo) => {
     setErro(null)
@@ -151,9 +153,27 @@ export default function Semana() {
         </Card>
       )}
 
-      <Button variant="secondary" fullWidth iconLeft="award" onClick={() => navigate('/conquistas')}>
+      {dados.is_last_closed && a.days_closed > 0 && (
+        <Button variant="secondary" fullWidth iconLeft="send" onClick={() => setCompartilhando(true)}>
+          Compartilhar a semana
+        </Button>
+      )}
+
+      <Button variant="ghost" fullWidth iconLeft="award" onClick={() => navigate('/conquistas')}>
         Ver conquistas
       </Button>
+
+      <Compartilhar
+        aberto={compartilhando}
+        titulo="Compartilhar a semana"
+        fixo={{
+          kind: 'week',
+          ref: null,
+          icon: 'calendar-days',
+          text: `fechou ${a.days_closed} ${a.days_closed === 1 ? 'dia' : 'dias'} na semana de ${a.label}`,
+        }}
+        onFechar={() => setCompartilhando(false)}
+      />
     </Tela>
   )
 }

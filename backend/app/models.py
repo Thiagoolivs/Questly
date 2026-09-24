@@ -89,6 +89,11 @@ class Membership(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     group_id: Mapped[int] = mapped_column(ForeignKey("groups.id"), index=True)
     role: Mapped[str] = mapped_column(String(16), default="member")  # owner|member
+    # Postar o fecho do dia no feed sozinho. Desligado por padrão: publicar no
+    # espaço dos outros sem pedir é o caminho mais curto para o feed virar ruído
+    # que ninguém lê. É por membership porque quem está em três grupos
+    # dificilmente quer o mesmo aviso nos três.
+    auto_share: Mapped[bool] = mapped_column(Boolean, default=False)
     joined_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     user: Mapped["User"] = relationship(back_populates="memberships")

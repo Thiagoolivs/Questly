@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useApp } from '../store.jsx'
 import { api } from '../api.js'
-import { Button, Card, Chip, Icon, IconButton, Input, ListRow, Select } from '../design-system/components/index.js'
-import IconPicker from '../components/IconPicker.jsx'
+import { Button, Card, Chip, Icon, IconButton, Input, Select } from '../design-system/components/index.js'
 import Switch from '../components/Switch.jsx'
 import VoltarPara from '../components/VoltarPara.jsx'
 
@@ -23,20 +22,9 @@ const TIMEZONES = [
   ['UTC', 'UTC'],
 ]
 
-const slug = (s) =>
-  s
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_|_$/g, '')
-
 export default function Config() {
   const { groupId, refresh } = useApp()
   const [s, setS] = useState(null)
-  const [menu, setMenu] = useState([])
-  const [selected, setSelected] = useState(new Set())
-  const [newHabit, setNewHabit] = useState({ icon: 'check', label: '' })
   const [saved, setSaved] = useState(false)
   const [err, setErr] = useState(null)
   const [genBusy, setGenBusy] = useState(false)
@@ -45,13 +33,7 @@ export default function Config() {
   useEffect(() => {
     if (!groupId) return
     api.settings(groupId)
-      .then((d) => {
-        const menuKeys = new Set((d.habits_menu || []).map((h) => h.key))
-        const customs = (d.fixed_habits || []).filter((h) => !menuKeys.has(h.key))
-        setMenu([...(d.habits_menu || []), ...customs])
-        setS(d)
-        setSelected(new Set((d.fixed_habits || []).map((h) => h.key)))
-      })
+      .then(setS)
       .catch((e) => setErr(e.message))
   }, [groupId])
 
@@ -59,33 +41,14 @@ export default function Config() {
   if (!s) return <div className="screen center muted" style={{ padding: 'var(--space-6)', color: 'var(--text-tertiary)' }}>Carregando…</div>
 
   const set = (patch) => setS({ ...s, ...patch })
-  
-  const toggleHabit = (key) => {
-    const next = new Set(selected)
-    next.has(key) ? next.delete(key) : next.add(key)
-    setSelected(next)
-  }
-  
+
   const toggleRest = (i) => {
     const days = new Set(s.rest_days || [])
     days.has(i) ? days.delete(i) : days.add(i)
     set({ rest_days: [...days].sort() })
   }
 
-  function addHabit() {
-    const label = newHabit.label.trim()
-    if (!label) return
-    let key = slug(label) || 'habito'
-    const keys = new Set(menu.map((h) => h.key))
-    while (keys.has(key)) key += '_' + Math.floor(Math.random() * 1000)
-    const h = { key, label, icon: newHabit.icon || 'check', category: 'Personalizado' }
-    setMenu([...menu, h])
-    setSelected(new Set([...selected, key]))
-    setNewHabit({ icon: 'check', label: '' })
-  }
-
   async function save() {
-    const fixed_habits = menu.filter((h) => selected.has(h.key))
     await api.updateSettings(groupId, {
       timezone: s.timezone || 'America/Sao_Paulo',
       challenge_start: s.challenge_start,
@@ -99,7 +62,6 @@ export default function Config() {
       spiritual_enabled: s.spiritual_enabled,
       disabled_areas: s.disabled_areas || [],
       custom_challenges: s.custom_challenges || {},
-      fixed_habits: fixed_habits.length ? fixed_habits : undefined,
     })
     await refresh()
     setSaved(true)
@@ -253,79 +215,18 @@ export default function Config() {
           </div>
         </Card>
 
-        <Card pad="0 var(--pad-card)">
-          <div style={{ padding: 'var(--pad-card)', paddingBottom: 'var(--space-2)' }}>
-            <div style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-title-3)', color: 'var(--text-primary)', marginBottom: 'var(--space-1)' }}>
-              Hábitos
-            </div>
-            <p style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-caption)', color: 'var(--text-secondary)' }}>
-              10 pts cada · selecione quais estarão disponíveis
+        {/* Hábitos saíram daqui: eram configuráveis e nenhuma tela do app
+            sabia marcá-los, então duplicavam o conceito com os hábitos
+            pessoais do Meu Plano — que são os que valem pontos. */}
+        <Card>
+          <div style={{ display: 'flex', gap: 'var(--space-4)' }}>
+            <Icon name="info" size={16} color="var(--text-tertiary)" />
+            <p style={{ margin: 0, fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-body-sm)', color: 'var(--text-secondary)' }}>
+              Hábitos agora são seus, não do grupo: cada pessoa monta os dela em
+              Meu Plano · Hábitos. O que se combina aqui é o desafio por área.
             </p>
           </div>
-
-          <div style={{ borderTop: '1px solid var(--line-hairline)' }}>
-            {menu.map((h, i) => (
-              <ListRow
-                key={h.key}
-                title={h.label}
-                divider={i < menu.length - 1}
-                chevron={false}
-                leading={
-                  <div
-                    style={{
-                      width: 32,
-                      height: 32,
-                      flex: 'none',
-                      borderRadius: 'var(--radius-md)',
-                      background: selected.has(h.key) ? 'var(--surface-accent-soft)' : 'var(--surface-input)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <Icon
-                      name={h.icon || 'check-circle'}
-                      size={16}
-                      color={selected.has(h.key) ? 'var(--blue-glow)' : 'var(--text-tertiary)'}
-                    />
-                  </div>
-                }
-                trailing={
-                  <Switch checked={selected.has(h.key)} onChange={() => toggleHabit(h.key)} label={h.label} />
-                }
-              />
-            ))}
-          </div>
-
-          <div style={{ padding: 'var(--pad-card) 0', borderTop: '1px solid var(--line-hairline)' }}>
-            <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center' }}>
-              <div style={{ flex: 'none', background: 'var(--surface-input)', border: 'var(--border-input)', borderRadius: 'var(--radius-md)' }}>
-                <IconPicker icon={newHabit.icon} onPick={({ icon }) => setNewHabit({ ...newHabit, icon })} />
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <Input
-                  placeholder="Criar um hábito novo"
-                  value={newHabit.label}
-                  onChange={(e) => setNewHabit({ ...newHabit, label: e.target.value })}
-                  onKeyDown={(e) => e.key === 'Enter' && addHabit()}
-                />
-              </div>
-              <IconButton
-                icon="plus"
-                tone="accent"
-                label="Adicionar hábito"
-                onClick={addHabit}
-                disabled={!newHabit.label.trim()}
-              />
-            </div>
-            {selected.size === 0 && (
-              <p style={{ margin: 'var(--space-4) 0 0', fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-caption)', color: 'var(--warning)' }}>
-                Selecione ao menos 1 — sem nenhum, o app mantém a lista padrão.
-              </p>
-            )}
-          </div>
         </Card>
-
 
         {/* `sticky`, não `fixed`: o botão acompanha a rolagem mas continua no
             fluxo, então a página reserva o espaço dele. Fixo e semitransparente
