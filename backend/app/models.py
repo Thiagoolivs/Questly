@@ -201,6 +201,10 @@ class Activity(Base):
     image: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # foto opcional
     ref: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)  # p/ upsert/dedupe
     day: Mapped[Optional[date]] = mapped_column(Date, nullable=True, index=True)
+    # Post escrito pelo próprio app (retrospectiva da semana do grupo). Continua
+    # preso a um membership porque a coluna é obrigatória, mas o feed mostra o
+    # autor como o app — senão pareceria que alguém do grupo escreveu aquilo.
+    system: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
 
 
@@ -325,6 +329,51 @@ class ActivityReaction(Base):
     activity_id: Mapped[int] = mapped_column(ForeignKey("activities.id"), index=True)
     membership_id: Mapped[int] = mapped_column(ForeignKey("memberships.id"), index=True)
     reaction: Mapped[str] = mapped_column(String(16))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class Nudge(Base):
+    """Empurrão de uma pessoa para outra do grupo (força ou aplauso).
+
+    Guardado só para limitar: um por alvo por dia, por quem manda. Sem isso,
+    "mandar força" vira ferramenta de encher o outro de notificação.
+    """
+
+    __tablename__ = "nudges"
+    __table_args__ = (
+        UniqueConstraint("from_membership_id", "to_membership_id", "date", name="uq_nudge_dia"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    group_id: Mapped[int] = mapped_column(ForeignKey("groups.id"), index=True)
+    from_membership_id: Mapped[int] = mapped_column(ForeignKey("memberships.id"), index=True)
+    to_membership_id: Mapped[int] = mapped_column(ForeignKey("memberships.id"), index=True)
+    date: Mapped[date] = mapped_column(Date, index=True)
+    kind: Mapped[str] = mapped_column(String(12))  # forca | aplauso
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class GroupTarget(Base):
+    """Meta que o grupo soma junto ('100 km até o fim do mês').
+
+    É o contrapeso do ranking: com placar, quem está em último tem cada vez
+    menos motivo para continuar. Aqui o que a pessoa faz conta para todo mundo,
+    então o último ainda é útil ao time — e o primeiro tem motivo para puxá-lo.
+    """
+
+    __tablename__ = "group_targets"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    group_id: Mapped[int] = mapped_column(ForeignKey("groups.id"), index=True)
+    title: Mapped[str] = mapped_column(String(120))
+    icon: Mapped[Optional[str]] = mapped_column(String(24), nullable=True)
+    # km | treinos | dias | pontos — o que se soma dos membros no período.
+    metric: Mapped[str] = mapped_column(String(12))
+    target: Mapped[float] = mapped_column(Float)
+    start_date: Mapped[date] = mapped_column(Date, default=date.today)
+    end_date: Mapped[date] = mapped_column(Date)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_by: Mapped[int] = mapped_column(ForeignKey("memberships.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 

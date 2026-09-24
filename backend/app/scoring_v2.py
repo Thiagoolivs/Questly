@@ -339,6 +339,19 @@ def streak_bonus(streak: int) -> int:
     return sum(pontos for dias, pontos in STREAK_MILESTONES if streak >= dias)
 
 
+def milestone_at(streak: int) -> dict | None:
+    """O marco exatamente alcançado por esta sequência, se houver.
+
+    Serve para o app oferecer o compartilhamento no instante em que a corrente
+    bate o marco — esperar a pessoa ir até as Conquistas é perder o momento em
+    que ela quer contar.
+    """
+    for dias, pontos in STREAK_MILESTONES:
+        if streak == dias:
+            return {"days": dias, "points": pontos}
+    return None
+
+
 def next_streak_milestone(streak: int) -> dict | None:
     """Próximo marco a alcançar — o número que a tela mostra como alvo."""
     for dias, pontos in STREAK_MILESTONES:

@@ -37,6 +37,11 @@ Interface **mobile-first**, instalável como app (PWA).
 - 📰 **Feed** com reações e comentários, **Mural** de fotos e **chat** do grupo.
 - 📣 **Divulgar conquista**: sequência, medalha, sessão do plano ou a semana vão
   ao feed quando você quiser — e há a opção de publicar o fecho do dia sozinho.
+- 👏 **Empurrão**: mandar força a quem está parado ou aplaudir quem mandou bem,
+  um por pessoa por dia.
+- 🎯 **Meta do grupo**: um número que todos somam junto (km, treinos, dias, pontos).
+- ⚔️ **Duelo da semana**: você contra outra pessoa do grupo, sorteado toda segunda.
+- 🗞️ **Retrospectiva do grupo**: o app posta o pódio da semana no feed.
 - 🎲 **Desafio do dia** por área (Física, Mental, Social, Relação, Espiritual), sorteado igual para todos.
 
 **O olhar para trás**
@@ -184,6 +189,9 @@ no CI a cada PR.
 | `GET` | `/api/groups/{g}/achievements/{m}` | Conquistas (pessoais + do grupo) |
 | `GET` `POST` | `/api/groups/{g}/share` | O que dá para divulgar, e divulgar |
 | `PUT` | `/api/groups/{g}/auto-share` | Publicar o fecho do dia sozinho |
+| `POST` | `/api/groups/{g}/nudge` | Mandar força ou aplauso a alguém |
+| `GET` `POST` | `/api/groups/{g}/targets` | Metas somadas pelo grupo |
+| `GET` | `/api/groups/{g}/duel` | O duelo desta semana |
 | `POST` | `/api/training/plans` | Plano de treino por IA |
 
 A lista completa e interativa fica em `/docs`.

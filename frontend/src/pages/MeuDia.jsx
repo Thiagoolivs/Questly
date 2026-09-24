@@ -76,6 +76,7 @@ export default function MeuDia() {
   const [apagandoRegistro, setApagandoRegistro] = useState(null)
   const [resgates, setResgates] = useState(null)
   const [compartilhando, setCompartilhando] = useState(false)
+  const [marco, setMarco] = useState(null)
 
   const carregar = useCallback(async () => {
     setLoading(true)
@@ -150,10 +151,21 @@ export default function MeuDia() {
   // Marcar e não ver nada acontecer é o que faz parar de marcar: o ponto ganho
   // e o marco de sequência à vista são a resposta imediata do app.
   const anunciarGanho = (r, nome) => {
-    const marco = r.next_milestone
+    // Marco batido agora: a hora de querer contar é esta, não quando a pessoa
+    // por acaso abrir as Conquistas dias depois.
+    if (r.milestone_reached) {
+      setMarco(r.milestone_reached)
+      aviso({
+        text: `${r.milestone_reached.days} dias seguidos · +${r.milestone_reached.points} pts de bônus`,
+        icon: 'flame',
+        tone: 'success',
+      })
+      return
+    }
+    const proximo = r.next_milestone
     const partes = [r.points ? `+${r.points} pts` : null]
     if (r.streak > 0) partes.push(`${r.streak} ${r.streak === 1 ? 'dia' : 'dias'} seguidos`)
-    else if (marco) partes.push(`faltam ${marco.missing} para +${marco.points}`)
+    else if (proximo) partes.push(`faltam ${proximo.missing} para +${proximo.points}`)
     aviso({
       text: `${nome} — ${partes.filter(Boolean).join(' · ')}`,
       icon: r.streak >= 3 ? 'flame' : 'check-circle',
@@ -641,6 +653,18 @@ export default function MeuDia() {
       ) : null}
 
       <Compartilhar aberto={compartilhando} onFechar={() => setCompartilhando(false)} />
+
+      <Compartilhar
+        aberto={!!marco}
+        titulo={marco ? `${marco.days} dias seguidos!` : ''}
+        fixo={marco && {
+          kind: 'streak',
+          ref: null,
+          icon: 'flame',
+          text: `está em ${marco.days} dias seguidos cumprindo o que planejou`,
+        }}
+        onFechar={() => setMarco(null)}
+      />
 
       {apagandoRegistro && (
         <Confirmar
