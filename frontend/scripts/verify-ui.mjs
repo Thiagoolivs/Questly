@@ -14,7 +14,7 @@
  *
  * QUESTLY_BASE muda o endereço (o CI sobe o backend noutra porta).
  */
-import { existsSync } from 'node:fs'
+import { existsSync, mkdirSync } from 'node:fs'
 import { chromium } from '@playwright/test'
 
 const BASE = process.env.QUESTLY_BASE || 'http://127.0.0.1:8099'
@@ -22,6 +22,10 @@ const BASE = process.env.QUESTLY_BASE || 'http://127.0.0.1:8099'
 // quem desenvolve, quem acha o navegador é o próprio Playwright.
 const CHROMIUM = '/opt/pw-browsers/chromium'
 const lancar = () => chromium.launch(existsSync(CHROMIUM) ? { executablePath: CHROMIUM } : {})
+// Onde as capturas da varredura saem. Sobrescreva com QUESTLY_UI_OUT.
+const SAIDA = process.env.QUESTLY_UI_OUT || '/tmp/questly-ui'
+mkdirSync(SAIDA, { recursive: true })
+
 const ROTAS = ['/', '/agenda', '/registrar', '/desafio', '/plano', '/treino', '/nutricao',
                '/rotinas', '/habitos', '/grupo', '/grupo/config', '/feed', '/mural',
                '/perfil', '/config', '/tarefas', '/conquistas', '/semana', '/chat']
@@ -103,7 +107,48 @@ for (const rota of ROTAS) {
 }
 for (const [r, n] of [['/perfil', 'perfil'], ['/config', 'config'], ['/plano', 'meu-plano']]) {
   await page.goto(BASE + r, { waitUntil: 'networkidle' }); await page.waitForTimeout(500)
-  await page.screenshot({ path: `/tmp/claude-0/-home-user-Questly/1fa31891-db2c-555d-8239-b17bca6822e9/scratchpad/${n}.png` })
+  await page.screenshot({ path: `${SAIDA}/${n}.png` })
 }
-console.log(falhas ? `\n${falhas} rotas com problema` : '\ntodas as rotas ok')
+
+// --- 3) Escolher prontos: a seleção atravessa o filtro de categoria ---------
+// Um `useEffect` que limpava o que não estava à vista fazia a seleção sumir a
+// cada troca de categoria — bug invisível para o build e para a varredura de
+// rotas, porque só aparece depois de dois toques dentro de uma folha.
+erros.length = 0
+await page.goto(BASE + '/habitos', { waitUntil: 'networkidle' })
+await page.waitForTimeout(500)
+await page.getByRole('button', { name: /Escolher prontos/i }).first().click()
+await page.waitForTimeout(500)
+
+const marcados = async () =>
+  Number((await page.getByRole('button', { name: /^Adicionar/ }).innerText()).match(/\((\d+)\)/)?.[1] ?? 0)
+const marcar = async (nome) => {
+  await page.locator('button').filter({ hasText: nome }).first().click()
+  await page.waitForTimeout(250)
+}
+const filtrar = async (nome) => {
+  await page.getByText(nome, { exact: true }).first().click()
+  await page.waitForTimeout(350)
+}
+
+await filtrar('Corpo')
+await marcar('Caminhar 8 mil passos')
+const antes = await marcados()
+await filtrar('Sono')
+const depois = await marcados()
+await marcar('Dormir antes das 23h')
+const somados = await marcados()
+
+const selecaoOk = antes === 1 && depois === 1 && somados === 2 && erros.length === 0
+if (!selecaoOk) falhas++
+console.log(
+  `${selecaoOk ? 'ok   ' : 'FALHA'} prontos        seleção sobrevive à troca de categoria ` +
+  `(${antes} → ${depois} → ${somados}, esperado 1 → 1 → 2)`,
+)
+for (const e of erros.slice(0, 2)) console.log(`        ${e.slice(0, 110)}`)
+
+console.log(falhas ? `\n${falhas} verificações com problema` : '\ntudo ok')
+// Sem isto a varredura sempre saía 0: o job do CI ficava verde imprimindo
+// "N rotas com problema" logo acima. O verify:props já reprovava; este não.
+if (falhas) process.exitCode = 1
 await browser.close()
