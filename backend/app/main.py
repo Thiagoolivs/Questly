@@ -265,6 +265,71 @@ def _run_weekly_challenge_batch() -> None:
         db.close()
 
 
+def _run_weekly_group_recap() -> None:
+    """Posta no feed de cada grupo a retrospectiva da semana que fechou.
+
+    A retrospectiva individual é privada e ninguém a vê. Esta é a única hora em
+    que o grupo olha para trás junto — e é o que faz a semana boa de alguém
+    existir para os outros, em vez de passar igual à ruim.
+    """
+    db = SessionLocal()
+    try:
+        for grupo in db.query(Group).all():
+            try:
+                membros = group_members(db, grupo.id)
+                if len(membros) < 2:
+                    continue  # sozinho não há retrospectiva de grupo a fazer
+                hoje = today_of(get_group_settings(db, grupo.id))
+                segunda = _segunda(hoje) - timedelta(days=7)
+
+                linhas = []
+                for membro in membros:
+                    resumo = _resumo_da_semana(db, membro.user_id, segunda, hoje)
+                    linhas.append((membro, resumo))
+                linhas.sort(key=lambda x: (-x[1]["days_closed"], -x[1]["records"]))
+                if not any(r["days_closed"] or r["records"] for _, r in linhas):
+                    continue  # semana vazia: um post dizendo isso não ajuda ninguém
+
+                podio = " · ".join(
+                    f"{membro.user.name.split(' ')[0]} {r['days_closed']}d"
+                    for membro, r in linhas[:3]
+                )
+                treinos = sum(r["records"] for _, r in linhas)
+                km = round(sum(r["distance_km"] for _, r in linhas), 1)
+                extras = [f"{treinos} treinos"] if treinos else []
+                if km:
+                    extras.append(f"{km} km")
+                texto = f"semana de {_week_label(segunda)}: {podio}"
+                if extras:
+                    texto += f" · o grupo somou {' e '.join(extras)}"
+
+                upsert_activity(db, grupo.id, linhas[0][0], "recap", "calendar-days", texto,
+                                ref=f"recap:{segunda.isoformat()}", day=hoje, system=True)
+            except Exception:  # noqa: BLE001 — um grupo que falha não derruba os outros
+                db.rollback()
+    finally:
+        db.close()
+
+
+async def _weekly_group_recap_loop() -> None:
+    """Segunda-feira ~11h UTC (≈8h de Brasília): a semana fechou no domingo."""
+    fired: set[str] = set()
+    while True:
+        try:
+            now = datetime.utcnow()
+            if now.weekday() == 0 and now.hour == 11 and now.minute < 10:
+                key = now.date().isoformat()
+                if key not in fired:
+                    fired.add(key)
+                    if len(fired) > 10:
+                        fired.clear()
+                        fired.add(key)
+                    await asyncio.to_thread(_run_weekly_group_recap)
+        except Exception:
+            pass
+        await asyncio.sleep(300)
+
+
 async def _weekly_challenge_loop() -> None:
     """Segunda-feira ~06h UTC (≈3h Brasília): renova o lote de desafios por IA."""
     fired: set[str] = set()
@@ -290,6 +355,8 @@ async def _start_reminders() -> None:
         asyncio.create_task(_reminder_loop())
     if ai.ai_enabled():
         asyncio.create_task(_weekly_challenge_loop())
+    # Não depende de push nem de IA: é um post no feed, e vale para todo grupo.
+    asyncio.create_task(_weekly_group_recap_loop())
 
 
 # --- helpers genéricos -----------------------------------------------------
@@ -540,7 +607,8 @@ def notify_group_others(db: Session, group_id: int, actor_user_id: int, title: s
 
 
 def upsert_activity(db: Session, gid: int, membership: Membership, kind: str, icon: str, text: str,
-                    ref: str | None = None, image: str | None = None, day: date | None = None) -> None:
+                    ref: str | None = None, image: str | None = None, day: date | None = None,
+                    system: bool = False) -> None:
     """Registra/atualiza um evento no feed. Com `ref`, faz upsert por dia
     (evita duplicar ao remarcar o mesmo item) e sobe o evento pro topo."""
     day = day or date.today()
@@ -559,7 +627,7 @@ def upsert_activity(db: Session, gid: int, membership: Membership, kind: str, ic
         existing.created_at = datetime.utcnow()
     else:
         db.add(Activity(group_id=gid, membership_id=membership.id, kind=kind, icon=icon,
-                        text=text, image=image, ref=ref, day=day))
+                        text=text, image=image, ref=ref, day=day, system=system))
     db.commit()
 
 
@@ -646,6 +714,24 @@ def serialize_activity(a: Activity, members_by_id: dict, reactions: dict | None 
                        comments: dict | None = None) -> dict:
     mem = members_by_id.get(a.membership_id)
     u = mem.user if mem else None
+    # A retrospectiva do grupo é escrita pelo app. Mostrá-la com o nome de um
+    # membro faria parecer que ele escreveu aquilo sobre os outros.
+    if getattr(a, "system", False):
+        return {
+            "id": a.id,
+            "kind": a.kind,
+            "icon": a.icon,
+            "text": a.text,
+            "image": a.image,
+            "membership_id": None,
+            "system": True,
+            "author": "Questly",
+            "photo": None,
+            "day": a.day.isoformat() if a.day else None,
+            "created_at": a.created_at.isoformat() + "Z",
+            "reactions": (reactions or {}).get(a.id) or {"counts": {}, "mine": None, "total": 0},
+            "comments": (comments or {}).get(a.id) or [],
+        }
     return {
         "id": a.id,
         "kind": a.kind,
@@ -653,6 +739,7 @@ def serialize_activity(a: Activity, members_by_id: dict, reactions: dict | None 
         "text": a.text,
         "image": a.image,
         "membership_id": a.membership_id,
+        "system": False,
         "author": u.name if u else "?",
         "photo": u.photo if u else None,
         "day": a.day.isoformat() if a.day else None,
@@ -2360,6 +2447,264 @@ def auto_share_day(db: Session, user: User, d: date) -> None:
             db.rollback()
 
 
+# --- empurrão de um para outro -------------------------------------------
+# Kind → (rótulo do push, corpo, ícone). "Força" é para quem está atrás ou
+# parado; "aplauso" é para quem mandou bem. Os dois existem porque só um deles
+# viraria ou cobrança disfarçada ou elogio vazio.
+NUDGE_TEXTS = {
+    "forca": ("{quem} mandou força", "{quem} está torcendo por você hoje em {grupo}."),
+    "aplauso": ("{quem} te aplaudiu", "{quem} viu o que você fez em {grupo}. Mandou bem."),
+}
+
+
+@app.post("/api/groups/{gid}/nudge")
+def nudge_member(gid: int, pedido: s.NudgeRequest, user: User = Depends(get_current_user),
+                 db: Session = Depends(get_db)):
+    """Manda um empurrão para alguém do grupo.
+
+    O feed já deixa reagir ao que o outro postou, mas não havia gesto para quem
+    *não* postou nada — que é justamente quem está precisando. Um por pessoa por
+    dia: sem limite, "mandar força" vira ferramenta de encher o outro de aviso.
+    """
+    eu = get_membership(db, user, gid)
+    alvo = get_group_member(db, gid, pedido.membership_id)
+    if alvo.id == eu.id:
+        raise HTTPException(400, "O empurrão é para outra pessoa.")
+
+    hoje = today_of(get_group_settings(db, gid))
+    ja = db.query(m.Nudge).filter(
+        m.Nudge.from_membership_id == eu.id,
+        m.Nudge.to_membership_id == alvo.id,
+        m.Nudge.date == hoje,
+    ).first()
+    if ja:
+        raise HTTPException(400, f"Você já mandou um empurrão para {alvo.user.name.split(' ')[0]} hoje.")
+
+    db.add(m.Nudge(group_id=gid, from_membership_id=eu.id, to_membership_id=alvo.id,
+                   date=hoje, kind=pedido.kind))
+    db.commit()
+
+    titulo, corpo = NUDGE_TEXTS[pedido.kind]
+    quem = eu.user.name.split(" ")[0]
+    try:
+        pushmod.send_to_user(
+            db, alvo.user_id,
+            titulo.format(quem=quem),
+            corpo.format(quem=quem, grupo=eu.group.name),
+            "/grupo",
+        )
+    except Exception:  # noqa: BLE001 — o empurrão vale mesmo sem push configurado
+        pass
+    return {"ok": True, "to": alvo.user.name}
+
+
+def nudges_sent_today(db: Session, eu: Membership, hoje: date) -> set[int]:
+    """Para quem já mandei hoje — a tela apaga o botão em vez de deixar errar."""
+    return {
+        n.to_membership_id
+        for n in db.query(m.Nudge).filter(
+            m.Nudge.from_membership_id == eu.id, m.Nudge.date == hoje
+        ).all()
+    }
+
+
+# --- meta coletiva --------------------------------------------------------
+METRIC_LABEL = {
+    "km": "km", "treinos": "treinos", "dias": "dias fechados", "pontos": "pontos",
+}
+
+
+def _soma_do_grupo(db: Session, gid: int, metric: str, inicio: date, fim: date,
+                   hoje: date) -> tuple[float, list[dict]]:
+    """Quanto o grupo somou na métrica, e quanto cada um pôs ali.
+
+    A divisão por pessoa não é ranking: é para o grupo ver que falta pouco e
+    saber de quem pedir — o oposto de expor quem está atrás.
+    """
+    membros = group_members(db, gid)
+    por_pessoa = []
+    total = 0.0
+    for membro in membros:
+        if metric in ("km", "treinos"):
+            registros = db.query(m.ActivityRecord).filter(
+                m.ActivityRecord.user_id == membro.user_id,
+                m.ActivityRecord.group_id == gid,
+                m.ActivityRecord.date >= inicio,
+                m.ActivityRecord.date <= fim,
+            ).all()
+            valor = (
+                sum(_param_num(r.params, "distance") for r in registros)
+                if metric == "km" else float(len(registros))
+            )
+        else:
+            janela = consistency_window(db, membro.user_id, inicio, min(fim, hoje))
+            if metric == "dias":
+                valor = float(sum(1 for v in janela.values() if v["full"]))
+            else:
+                valor = scoring_v2.habit_points(
+                    sum(v["habits_done"] for v in janela.values()),
+                    sum(v["routines_done"] for v in janela.values()),
+                    sum(1 for v in janela.values() if v["full"]),
+                )
+        total += valor
+        por_pessoa.append({
+            "membership_id": membro.id,
+            "name": membro.user.name,
+            "photo": membro.user.photo,
+            "value": round(valor, 1),
+        })
+    por_pessoa.sort(key=lambda x: -x["value"])
+    return round(total, 1), por_pessoa
+
+
+def serialize_target(db: Session, alvo: m.GroupTarget, hoje: date) -> dict:
+    total, por_pessoa = _soma_do_grupo(db, alvo.group_id, alvo.metric,
+                                       alvo.start_date, alvo.end_date, hoje)
+    restam = (alvo.end_date - hoje).days
+    return {
+        "id": alvo.id,
+        "title": alvo.title,
+        "icon": alvo.icon,
+        "metric": alvo.metric,
+        "metric_label": METRIC_LABEL.get(alvo.metric, alvo.metric),
+        "target": alvo.target,
+        "total": total,
+        "percent": min(100, round(total / alvo.target * 100)) if alvo.target else 0,
+        "done": total >= alvo.target,
+        "start_date": alvo.start_date.isoformat(),
+        "end_date": alvo.end_date.isoformat(),
+        "days_left": max(0, restam),
+        "ended": restam < 0,
+        "members": por_pessoa,
+    }
+
+
+@app.get("/api/groups/{gid}/targets")
+def list_targets(gid: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    get_membership(db, user, gid)
+    hoje = today_of(get_group_settings(db, gid))
+    alvos = db.query(m.GroupTarget).filter(
+        m.GroupTarget.group_id == gid, m.GroupTarget.active.is_(True)
+    ).order_by(m.GroupTarget.id).all()
+    return {
+        "targets": [serialize_target(db, a, hoje) for a in alvos],
+        "metrics": [{"value": k, "label": v} for k, v in METRIC_LABEL.items()],
+    }
+
+
+@app.post("/api/groups/{gid}/targets")
+def create_target(gid: int, payload: s.GroupTargetCreate, user: User = Depends(get_current_user),
+                  db: Session = Depends(get_db)):
+    eu = get_membership(db, user, gid)
+    hoje = today_of(get_group_settings(db, gid))
+    alvo = m.GroupTarget(
+        group_id=gid,
+        title=payload.title.strip(),
+        icon=(payload.icon or "target").strip() or "target",
+        metric=payload.metric,
+        target=payload.target,
+        start_date=hoje,
+        end_date=hoje + timedelta(days=payload.days),
+        created_by=eu.id,
+    )
+    db.add(alvo)
+    db.commit()
+    db.refresh(alvo)
+    notify_group_others(db, gid, eu.user_id, eu.group.name,
+                        f"{eu.user.name.split(' ')[0]} criou a meta do grupo: {alvo.title}", "/grupo")
+    return serialize_target(db, alvo, hoje)
+
+
+@app.delete("/api/groups/{gid}/targets/{tid}")
+def end_target(gid: int, tid: int, user: User = Depends(get_current_user),
+               db: Session = Depends(get_db)):
+    get_membership(db, user, gid)
+    alvo = db.get(m.GroupTarget, tid)
+    if alvo is None or alvo.group_id != gid:
+        raise HTTPException(404, "Meta não encontrada.")
+    alvo.active = False
+    db.commit()
+    return {"ok": True}
+
+
+# --- duelo da semana ------------------------------------------------------
+def _pares_da_semana(ids: list[int], segunda: date) -> tuple[list[tuple[int, int]], int | None]:
+    """Sorteia os pares da semana. Determinístico: não precisa guardar nada.
+
+    A rotação vem do número da semana, então os pares mudam toda segunda sem
+    ninguém ter que sortear — e todo mundo vê o mesmo resultado.
+    """
+    ordem = sorted(ids)
+    if len(ordem) < 2:
+        return [], ordem[0] if ordem else None
+
+    semana = segunda.toordinal() // 7
+    # Rotaciona todos menos o primeiro (round-robin clássico): cada semana os
+    # encontros mudam, e num grupo de N todos acabam se enfrentando.
+    giro = ordem[1:]
+    if giro:
+        deslocamento = semana % len(giro)
+        giro = giro[deslocamento:] + giro[:deslocamento]
+    fila = [ordem[0]] + giro
+
+    de_fora = None
+    if len(fila) % 2:
+        # Ímpar: alguém folga, e a folga também gira para não sobrar sempre o mesmo.
+        de_fora = fila.pop(semana % len(fila))
+
+    metade = len(fila) // 2
+    return list(zip(fila[:metade], reversed(fila[metade:]))), de_fora
+
+
+@app.get("/api/groups/{gid}/duel")
+def week_duel(gid: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """O duelo desta semana: você contra mais alguém do grupo.
+
+    O placar mensal desanima quem ficou para trás logo no começo — em duas
+    semanas o líder disparou e o resto já sabe o resultado. O duelo recomeça
+    toda segunda, contra outra pessoa, e cabe numa semana.
+    """
+    eu = get_membership(db, user, gid)
+    hoje = today_of(get_group_settings(db, gid))
+    segunda = _segunda(hoje)
+    membros = {x.id: x for x in group_members(db, gid)}
+    if len(membros) < 2:
+        return {"active": False, "reason": "individual"}
+
+    pares, de_fora = _pares_da_semana(list(membros), segunda)
+    if de_fora == eu.id:
+        return {"active": False, "reason": "folga", "week_start": segunda.isoformat()}
+
+    par = next((p for p in pares if eu.id in p), None)
+    if par is None:
+        return {"active": False, "reason": "folga", "week_start": segunda.isoformat()}
+
+    outro_id = par[0] if par[1] == eu.id else par[1]
+    def _placar(membership: Membership) -> dict:
+        resumo = _resumo_da_semana(db, membership.user_id, segunda, hoje)
+        return {
+            "membership_id": membership.id,
+            "name": membership.user.name,
+            "photo": membership.user.photo,
+            "days_closed": resumo["days_closed"],
+            "records": resumo["records"],
+        }
+
+    meu = _placar(eu)
+    dele = _placar(membros[outro_id])
+    return {
+        "active": True,
+        "week_start": segunda.isoformat(),
+        "days_left": max(0, (segunda + timedelta(days=6) - hoje).days),
+        "me": meu,
+        "rival": dele,
+        "leading": (
+            "me" if meu["days_closed"] > dele["days_closed"]
+            else "rival" if dele["days_closed"] > meu["days_closed"] else "tie"
+        ),
+    }
+
+
 @app.get("/api/groups/{gid}/activities")
 def list_activities(gid: int, limit: int = 40, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     me = get_membership(db, user, gid)
@@ -3250,6 +3595,9 @@ def _constancia_publica(db: Session, user: User, hoje: date | None = None) -> di
     return {
         "streak": resumo["streak"],
         "next_milestone": resumo["next_milestone"],
+        # O marco batido agora: a tela oferece contar ao grupo no instante em
+        # que acontece, em vez de esperar a pessoa ir até as Conquistas.
+        "milestone_reached": scoring_v2.milestone_at(resumo["streak"]),
         "best_streak": best_personal_streak(db, user.id, hoje),
         "xp": (up.total_xp if up else 0) or 0,
         "level": (up.level if up else 1) or 1,

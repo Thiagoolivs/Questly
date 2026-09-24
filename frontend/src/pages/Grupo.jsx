@@ -2,8 +2,10 @@ import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { useApp } from '../store.jsx'
 import { api } from '../api.js'
-import { Avatar, Button, Card, Chip, Icon, IconButton, ListRow } from '../design-system/components/index.js'
+import { Avatar, Button, Card, Chip, Icon, IconButton, Input, ListRow } from '../design-system/components/index.js'
 import { shareInvite } from '../utils/invite.js'
+import Sheet from '../components/Sheet.jsx'
+import { useToast } from '../components/Toast.jsx'
 import Grupos from './Grupos.jsx'
 
 const MEDALHA = ['var(--warning)', 'var(--text-secondary)', '#b08d57']
@@ -16,7 +18,12 @@ const ALTURA_PODIO = 76 // a faixa dos degraus: todos terminam na mesma linha
  */
 export default function Grupo() {
   const { group } = useApp()
+  const aviso = useToast()
   const [dados, setDados] = useState(null)
+  const [metas, setMetas] = useState(null)
+  const [duelo, setDuelo] = useState(null)
+  const [cutucados, setCutucados] = useState([])
+  const [criandoMeta, setCriandoMeta] = useState(false)
   const [erro, setErro] = useState(null)
 
   const carregar = useCallback(async () => {
@@ -28,9 +35,36 @@ export default function Grupo() {
     }
   }, [group?.id])
 
+  // Metas e duelo vêm à parte: se qualquer um falhar, o placar já está na tela.
+  const carregarExtras = useCallback(async () => {
+    if (!group?.id) return
+    const [t, d] = await Promise.allSettled([api.targets(group.id), api.duel(group.id)])
+    if (t.status === 'fulfilled') setMetas(t.value)
+    if (d.status === 'fulfilled') setDuelo(d.value)
+  }, [group?.id])
+
   useEffect(() => {
     carregar()
-  }, [carregar])
+    carregarExtras()
+  }, [carregar, carregarExtras])
+
+  // Um empurrão por pessoa por dia: o botão some depois de usado, em vez de
+  // deixar a pessoa tocar de novo e receber um erro.
+  const cutucar = async (membro, kind) => {
+    try {
+      await api.nudge(group.id, { membership_id: membro.membership_id, kind })
+      setCutucados((atual) => [...atual, membro.membership_id])
+      aviso({
+        text: kind === 'aplauso'
+          ? `Aplauso enviado para ${membro.name.split(' ')[0]}`
+          : `Força enviada para ${membro.name.split(' ')[0]}`,
+        icon: kind === 'aplauso' ? 'star' : 'flame',
+        tone: 'success',
+      })
+    } catch (e) {
+      setErro(e.message)
+    }
+  }
 
   if (!group?.id) return <Grupos />
 
@@ -101,7 +135,21 @@ export default function Grupo() {
           em cima depois. */}
       {dados ? <Placar eu={eu} dados={dados} competitivo={competitivo} /> : <PlacarEsqueleto />}
 
-      {competitivo && podio.length === 3 ? <Podio podio={podio} /> : null}
+      {competitivo && podio.length === 3 ? (
+        <Podio podio={podio} cutucados={cutucados} onCutucar={cutucar} />
+      ) : null}
+
+      {duelo?.active ? <Duelo duelo={duelo} /> : null}
+
+      <MetasDoGrupo
+        metas={metas}
+        onCriar={() => setCriandoMeta(true)}
+        onEncerrar={async (id) => {
+          await api.endTarget(group.id, id)
+          carregarExtras()
+          aviso({ text: 'Meta encerrada', icon: 'trash' })
+        }}
+      />
 
       {competitivo && restantes.length > 0 ? (
         <section>
@@ -148,16 +196,31 @@ export default function Grupo() {
                   </span>
                 }
                 trailing={
-                  <span
-                    style={{
-                      fontFamily: 'var(--font-ui)',
-                      fontVariantNumeric: 'tabular-nums',
-                      fontSize: 'var(--fs-body)',
-                      fontWeight: 'var(--fw-semibold)',
-                      color: r.is_me ? 'var(--blue-glow)' : 'var(--text-primary)',
-                    }}
-                  >
-                    {r.total_score}
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+                    {/* O feed deixa reagir a quem postou; faltava gesto para
+                        quem não postou nada — que é quem mais precisa. */}
+                    {!r.is_me && !cutucados.includes(r.membership_id) && (
+                      <IconButton
+                        icon={r.position < (eu?.position ?? 99) ? 'star' : 'flame'}
+                        tone="bare"
+                        size={30}
+                        label={r.position < (eu?.position ?? 99)
+                          ? `Aplaudir ${r.name}`
+                          : `Mandar força para ${r.name}`}
+                        onClick={() => cutucar(r, r.position < (eu?.position ?? 99) ? 'aplauso' : 'forca')}
+                      />
+                    )}
+                    <span
+                      style={{
+                        fontFamily: 'var(--font-ui)',
+                        fontVariantNumeric: 'tabular-nums',
+                        fontSize: 'var(--fs-body)',
+                        fontWeight: 'var(--fw-semibold)',
+                        color: r.is_me ? 'var(--blue-glow)' : 'var(--text-primary)',
+                      }}
+                    >
+                      {r.total_score}
+                    </span>
                   </span>
                 }
               />
@@ -165,6 +228,19 @@ export default function Grupo() {
           </Card>
         </section>
       ) : null}
+
+      {criandoMeta && (
+        <NovaMeta
+          metricas={metas?.metrics ?? []}
+          onFechar={() => setCriandoMeta(false)}
+          onCriar={async (corpo) => {
+            await api.createTarget(group.id, corpo)
+            setCriandoMeta(false)
+            carregarExtras()
+            aviso({ text: 'Meta do grupo criada', icon: 'target', tone: 'success' })
+          }}
+        />
+      )}
 
       {group.rules?.invite && group.invite_code ? (
         <Card>
@@ -351,7 +427,7 @@ function PlacarEsqueleto() {
   )
 }
 
-function Podio({ podio }) {
+function Podio({ podio, cutucados, onCutucar }) {
   // Ordem visual clássica: 2º, 1º, 3º — o campeão fica no meio e mais alto.
   const ordem = [podio[1], podio[0], podio[2]].filter(Boolean)
   const alturas = { 1: 76, 2: 56, 3: 44 }
@@ -380,6 +456,19 @@ function Podio({ podio }) {
               }}
             >
               {p.name.split(' ')[0]}
+            </div>
+            {/* Sem isto, aplaudir era impossível justamente para quem está indo
+                melhor: o pódio tira os três primeiros da lista de baixo. */}
+            <div style={{ height: 30, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+              {!p.is_me && !cutucados.includes(p.membership_id) && (
+                <IconButton
+                  icon="star"
+                  tone="bare"
+                  size={28}
+                  label={`Aplaudir ${p.name}`}
+                  onClick={() => onCutucar(p, 'aplauso')}
+                />
+              )}
             </div>
             <div
               style={{
@@ -418,6 +507,254 @@ function Podio({ podio }) {
         ))}
       </div>
     </Card>
+  )
+}
+
+/**
+ * Duelo da semana.
+ *
+ * O placar mensal desanima quem ficou para trás na primeira semana: em pouco
+ * tempo o líder disparou e o resto já sabe o resultado. O duelo recomeça toda
+ * segunda, contra outra pessoa, e cabe numa semana — dá para virar.
+ */
+function Duelo({ duelo }) {
+  const cor = { me: 'var(--success)', rival: 'var(--warning)', tie: 'var(--text-tertiary)' }[duelo.leading]
+  const frase = {
+    me: 'Você está na frente',
+    rival: `${duelo.rival.name.split(' ')[0]} está na frente`,
+    tie: 'Empatados',
+  }[duelo.leading]
+
+  return (
+    <section>
+      <TituloSecao>Duelo da semana</TituloSecao>
+      <Card pad="var(--pad-card-lg)">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-5)' }}>
+          <Lado pessoa={duelo.me} rotulo="Você" destaque={duelo.leading === 'me'} />
+          <span
+            style={{
+              flex: 'none',
+              fontFamily: 'var(--font-ui)',
+              fontSize: 'var(--fs-body-sm)',
+              color: 'var(--text-tertiary)',
+            }}
+          >
+            ×
+          </span>
+          <Lado pessoa={duelo.rival} rotulo={duelo.rival.name.split(' ')[0]} destaque={duelo.leading === 'rival'} />
+        </div>
+        <p
+          style={{
+            margin: 'var(--space-5) 0 0',
+            fontFamily: 'var(--font-ui)',
+            fontSize: 'var(--fs-body-sm)',
+            color: 'var(--text-secondary)',
+          }}
+        >
+          <span style={{ color: cor, fontWeight: 'var(--fw-semibold)' }}>{frase}</span>
+          {' em dias fechados · '}
+          {duelo.days_left === 0 ? 'último dia' : `${duelo.days_left} dias para virar`}
+        </p>
+      </Card>
+    </section>
+  )
+}
+
+function Lado({ pessoa, rotulo, destaque }) {
+  return (
+    <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}>
+      <Avatar src={pessoa.photo} name={pessoa.name} size={36} />
+      <div style={{ minWidth: 0 }}>
+        <div
+          style={{
+            fontFamily: 'var(--font-ui)',
+            fontVariantNumeric: 'tabular-nums',
+            fontSize: 'var(--fs-title-3)',
+            fontWeight: 'var(--fw-bold)',
+            color: destaque ? 'var(--text-primary)' : 'var(--text-secondary)',
+          }}
+        >
+          {pessoa.days_closed}
+        </div>
+        <div
+          style={{
+            fontFamily: 'var(--font-ui)',
+            fontSize: 'var(--fs-micro)',
+            color: 'var(--text-tertiary)',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {rotulo}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Meta que o grupo soma junto.
+ *
+ * É o contrapeso do ranking: com placar, quem está em último tem cada vez menos
+ * motivo para continuar. Aqui o que cada um faz conta para todos, então o
+ * último ainda é útil ao time — e o primeiro tem motivo para puxá-lo.
+ */
+function MetasDoGrupo({ metas, onCriar, onEncerrar }) {
+  if (!metas) return null
+  const lista = metas.targets ?? []
+
+  return (
+    <section>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 'var(--space-5)' }}>
+        <TituloSecao>Meta do grupo</TituloSecao>
+        <Button variant="ghost" size="sm" iconLeft="plus" onClick={onCriar}>
+          Nova
+        </Button>
+      </div>
+
+      {lista.length === 0 ? (
+        <Card>
+          <p style={{ margin: 0, fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-body-sm)', color: 'var(--text-tertiary)' }}>
+            Uma meta somada por todos — 100 km, 40 treinos, 60 dias fechados. No
+            placar só um ganha; aqui o grupo ganha junto.
+          </p>
+        </Card>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--gap-card)' }}>
+          {lista.map((meta) => (
+            <Card key={meta.id} pad="var(--pad-card-lg)">
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-5)' }}>
+                <Icon name={meta.icon || 'target'} size={18} color="var(--blue-glow)" />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-body)', fontWeight: 'var(--fw-semibold)', color: 'var(--text-primary)' }}>
+                    {meta.title}
+                  </div>
+                  <div style={{ marginTop: 2, fontFamily: 'var(--font-ui)', fontVariantNumeric: 'tabular-nums', fontSize: 'var(--fs-body-sm)', color: 'var(--text-tertiary)' }}>
+                    {meta.total} de {meta.target} {meta.metric_label}
+                    {meta.done ? ' · alcançada' : meta.ended ? ' · encerrada' : ` · ${meta.days_left} dias`}
+                  </div>
+                </div>
+                <IconButton icon="trash" tone="bare" size={30} label={`Encerrar ${meta.title}`} onClick={() => onEncerrar(meta.id)} />
+              </div>
+
+              <div style={{ marginTop: 'var(--space-5)', height: 6, borderRadius: 999, background: 'var(--surface-input)', overflow: 'hidden' }}>
+                <div style={{ width: `${meta.percent}%`, height: '100%', background: meta.done ? 'var(--success)' : 'var(--blue-glow)' }} />
+              </div>
+
+              {/* Quem pôs quanto — não é ranking: é para saber de quem pedir. */}
+              <div style={{ marginTop: 'var(--space-5)', display: 'flex', flexWrap: 'wrap', gap: 'var(--space-3)' }}>
+                {meta.members.filter((x) => x.value > 0).map((x) => (
+                  <Chip key={x.membership_id}>
+                    {x.name.split(' ')[0]} {x.value}
+                  </Chip>
+                ))}
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
+    </section>
+  )
+}
+
+function NovaMeta({ metricas, onFechar, onCriar }) {
+  const [titulo, setTitulo] = useState('')
+  const [metrica, setMetrica] = useState('km')
+  const [alvo, setAlvo] = useState('100')
+  const [dias, setDias] = useState('30')
+  const [ocupado, setOcupado] = useState(false)
+  const [erro, setErro] = useState('')
+
+  const salvar = async () => {
+    if (ocupado || !titulo.trim() || !Number(alvo)) return
+    setOcupado(true)
+    setErro('')
+    try {
+      await onCriar({
+        title: titulo.trim(),
+        metric: metrica,
+        target: Number(alvo),
+        days: Number(dias) || 30,
+      })
+    } catch (e) {
+      setErro(e.message)
+      setOcupado(false)
+    }
+  }
+
+  return (
+    <Sheet
+      title="Meta do grupo"
+      onClose={onFechar}
+      footer={
+        <>
+          <Button variant="ghost" fullWidth onClick={onFechar} disabled={ocupado}>
+            Cancelar
+          </Button>
+          <Button variant="accent" fullWidth onClick={salvar} disabled={ocupado || !titulo.trim() || !Number(alvo)}>
+            {ocupado ? 'Criando…' : 'Criar'}
+          </Button>
+        </>
+      }
+    >
+      <p style={{ margin: 0, fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-body-sm)', color: 'var(--text-tertiary)' }}>
+        Vale para todo mundo do grupo: o que cada um fizer soma no mesmo número.
+      </p>
+
+      <Input
+        label="Meta"
+        placeholder="100 km juntos, 40 treinos no mês…"
+        value={titulo}
+        onChange={(e) => setTitulo(e.target.value)}
+        autoFocus
+      />
+
+      <div>
+        <span
+          style={{
+            display: 'block',
+            marginBottom: 'var(--space-3)',
+            fontFamily: 'var(--font-ui)',
+            fontSize: 'var(--fs-label)',
+            fontWeight: 'var(--fw-medium)',
+            color: 'var(--text-primary)',
+          }}
+        >
+          O que somar
+        </span>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-3)' }}>
+          {metricas.map((x) => (
+            <Chip key={x.value} selected={metrica === x.value} onClick={() => setMetrica(x.value)}>
+              {x.label}
+            </Chip>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 'var(--space-5)' }}>
+        <div style={{ flex: 1 }}>
+          <Input
+            label="Alvo"
+            type="number"
+            inputMode="decimal"
+            value={alvo}
+            onChange={(e) => setAlvo(e.target.value)}
+          />
+        </div>
+        <div style={{ flex: 1 }}>
+          <Input
+            label="Em quantos dias"
+            type="number"
+            inputMode="numeric"
+            value={dias}
+            onChange={(e) => setDias(e.target.value)}
+          />
+        </div>
+      </div>
+
+      {erro && <p style={{ margin: 0, color: 'var(--danger)', fontSize: 'var(--fs-body-sm)' }}>{erro}</p>}
+    </Sheet>
   )
 }
 

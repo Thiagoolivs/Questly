@@ -428,6 +428,23 @@ class AutoShareUpdate(BaseModel):
     auto_share: bool
 
 
+class NudgeRequest(BaseModel):
+    """Empurrão para alguém do grupo. Um por pessoa por dia."""
+
+    membership_id: int
+    kind: Literal["forca", "aplauso"] = "forca"
+
+
+class GroupTargetCreate(BaseModel):
+    """Meta que o grupo soma junto até uma data."""
+
+    title: str = Field(..., min_length=1, max_length=120)
+    metric: Literal["km", "treinos", "dias", "pontos"]
+    target: float = Field(..., gt=0, le=1_000_000)
+    days: int = Field(30, ge=1, le=365)
+    icon: Optional[str] = Field(None, max_length=24)
+
+
 class CommentCreate(BaseModel):
     text: str = Field(..., min_length=1, max_length=500)
 

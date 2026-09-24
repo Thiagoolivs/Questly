@@ -99,6 +99,12 @@ export const api = {
   comments: (g, aid) => req(`/api/groups/${g}/activities/${aid}/comments`),
   addComment: (g, aid, b) => req(`/api/groups/${g}/activities/${aid}/comments`, { method: 'POST', body: b }),
   deleteComment: (g, aid, cid) => req(`/api/groups/${g}/activities/${aid}/comments/${cid}`, { method: 'DELETE' }),
+  // --- motivação dentro do grupo ---
+  nudge: (g, b) => req(`/api/groups/${g}/nudge`, { method: 'POST', body: b }),
+  targets: (g) => req(`/api/groups/${g}/targets`),
+  createTarget: (g, b) => req(`/api/groups/${g}/targets`, { method: 'POST', body: b }),
+  endTarget: (g, id) => req(`/api/groups/${g}/targets/${id}`, { method: 'DELETE' }),
+  duel: (g) => req(`/api/groups/${g}/duel`),
   radar: (g) => req(`/api/groups/${g}/radar`),
   gallery: (g) => req(`/api/groups/${g}/gallery`),
   goals: (g) => req(`/api/groups/${g}/goals`),
