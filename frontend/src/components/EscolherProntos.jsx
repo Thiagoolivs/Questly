@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Button, Card, Chip, Icon } from '../design-system/components/index.js'
 import Sheet from './Sheet.jsx'
 
@@ -10,6 +10,10 @@ import Sheet from './Sheet.jsx'
  * leva cinco minutos. Nada aqui substitui o campo livre — as telas continuam
  * com "criar do zero" ao lado, e o que entra por aqui é editável depois.
  */
+// Pseudo-categoria do filtro "Selecionados": nenhum item usa este valor em
+// `category`, então ele não colide com uma categoria de verdade.
+const SELECIONADOS = '__selecionados'
+
 export default function EscolherProntos({
   titulo,
   explicacao,
@@ -26,6 +30,10 @@ export default function EscolherProntos({
 }) {
   const [marcados, setMarcados] = useState([])
   const [categoria, setCategoria] = useState('')
+  // O que estava marcado ao entrar na revisão. Congelar a lista é o que deixa
+  // desmarcar por engano ter volta: a linha fica na tela, desmarcada, em vez de
+  // sumir no toque.
+  const [revisando, setRevisando] = useState([])
   const [ocupado, setOcupado] = useState(false)
   const [erro, setErro] = useState('')
 
@@ -34,16 +42,22 @@ export default function EscolherProntos({
     [jaExistem],
   )
 
-  const visiveis = useMemo(
-    () => (categoria ? itens.filter((i) => i.category === categoria) : itens),
-    [itens, categoria],
-  )
+  // A seleção atravessa a troca de categoria: escolher dois em Corpo, dois em
+  // Sono e adicionar os quatro é exatamente o caminho que a lista existe para
+  // encurtar. O filtro só muda o que está à vista, nunca o que foi marcado.
+  const visiveis = useMemo(() => {
+    if (categoria === SELECIONADOS) return itens.filter((i) => revisando.includes(i.key))
+    return categoria ? itens.filter((i) => i.category === categoria) : itens
+  }, [itens, categoria, revisando])
 
-  // Trocar de categoria não pode carregar seleção que sumiu da tela: a pessoa
-  // confirmaria coisas que não vê.
-  useEffect(() => {
-    setMarcados((atual) => atual.filter((k) => visiveis.some((i) => i.key === k)))
-  }, [visiveis])
+  const revisar = () => {
+    setRevisando(marcados)
+    setCategoria(SELECIONADOS)
+  }
+
+  // Quantos ficaram fora do filtro atual: é o que impede confirmar às cegas
+  // sem precisar descartar o que a pessoa já escolheu.
+  const foraDaVista = marcados.filter((k) => !visiveis.some((i) => i.key === k)).length
 
   const alternar = (chave) =>
     setMarcados((atual) =>
@@ -86,15 +100,37 @@ export default function EscolherProntos({
       ) : null}
 
       {categorias?.length ? (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-3)' }}>
-          <Chip selected={categoria === ''} onClick={() => setCategoria('')}>
-            Tudo
-          </Chip>
-          {categorias.map((c) => (
-            <Chip key={c.value} selected={categoria === c.value} onClick={() => setCategoria(c.value)}>
-              {c.label}
+        <div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-3)' }}>
+            <Chip selected={categoria === ''} onClick={() => setCategoria('')}>
+              Tudo
             </Chip>
-          ))}
+            {categorias.map((c) => (
+              <Chip key={c.value} selected={categoria === c.value} onClick={() => setCategoria(c.value)}>
+                {c.label}
+              </Chip>
+            ))}
+            {/* Revisar tudo o que foi marcado, de todas as categorias, antes de
+                confirmar — sem isso a seleção que atravessa o filtro ficaria
+                invisível. */}
+            {(marcados.length > 0 || categoria === SELECIONADOS) && (
+              <Chip selected={categoria === SELECIONADOS} onClick={revisar}>
+                Selecionados {marcados.length}
+              </Chip>
+            )}
+          </div>
+          {foraDaVista > 0 && (
+            <p
+              style={{
+                margin: 'var(--space-4) 0 0',
+                fontFamily: 'var(--font-ui)',
+                fontSize: 'var(--fs-micro)',
+                color: 'var(--text-tertiary)',
+              }}
+            >
+              Mais {foraDaVista} {foraDaVista === 1 ? 'marcado' : 'marcados'} fora deste filtro — {foraDaVista === 1 ? 'ele entra' : 'eles entram'} ao adicionar.
+            </p>
+          )}
         </div>
       ) : null}
 
@@ -166,7 +202,7 @@ export default function EscolherProntos({
         })}
         {visiveis.length === 0 ? (
           <p style={{ margin: 0, fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-body-sm)', color: 'var(--text-tertiary)' }}>
-            Nada nesta categoria.
+            {categoria === SELECIONADOS ? 'Nada marcado ainda.' : 'Nada nesta categoria.'}
           </p>
         ) : null}
       </div>
