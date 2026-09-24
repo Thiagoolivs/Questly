@@ -232,7 +232,7 @@ class TestDesfazerRegistro:
         codigo = c.get("/api/groups", headers=dono).json()["groups"][0]["invite_code"]
 
         outro = _auth(c, "outro@questly.app")
-        c.post("/api/groups/join", json={"code": codigo}, headers=outro)
+        c.post("/api/groups/join", json={"invite_code": codigo}, headers=outro)
 
         rid = c.post(f"/api/groups/{gid}/activity-record", headers=dono, json={
             "modality": "yoga", "params": {"duration": 40, "intensity": "leve"},
@@ -265,7 +265,7 @@ class TestDesfazerPublicacao:
         gid = _espaco(c, dono, "Dois")
         codigo = c.get("/api/groups", headers=dono).json()["groups"][0]["invite_code"]
         outro = _auth(c, "outropost@questly.app")
-        c.post("/api/groups/join", json={"code": codigo}, headers=outro)
+        c.post("/api/groups/join", json={"invite_code": codigo}, headers=outro)
 
         c.post(f"/api/groups/{gid}/activity-record", headers=dono, json={
             "modality": "yoga", "params": {"duration": 20, "intensity": "leve"},

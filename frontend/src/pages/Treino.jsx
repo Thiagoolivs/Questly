@@ -5,6 +5,7 @@ import { Button, Card, Chip, Icon, IconButton, Input, Select } from '../design-s
 import CheckControl from '../components/CheckControl.jsx'
 import Sheet from '../components/Sheet.jsx'
 import Confirmar from '../components/Confirmar.jsx'
+import Compartilhar from '../components/Compartilhar.jsx'
 import { useToast } from '../components/Toast.jsx'
 
 const MODALIDADES = [
@@ -212,6 +213,7 @@ function Barra({ percent }) {
 
 function DetalheDoPlano({ plano, onVoltar, onAtualizar, onErro, onApagar, aviso, iaLigada }) {
   const [adaptando, setAdaptando] = useState(false)
+  const [compartilhando, setCompartilhando] = useState(null)
 
   // Fechar a sessão inteira (e reabrir) num toque: marcar item por item para
   // depois descobrir que marcou a sessão errada não tinha volta nenhuma.
@@ -314,13 +316,26 @@ function DetalheDoPlano({ plano, onVoltar, onAtualizar, onErro, onApagar, aviso,
                         </div>
                       )}
                     </div>
-                    <IconButton
-                      icon={sessao.status === 'done' ? 'undo-2' : 'check-circle'}
-                      tone="bare"
-                      size={32}
-                      label={sessao.status === 'done' ? 'Reabrir sessão' : 'Concluir sessão'}
-                      onClick={() => mudarStatus(sessao, sessao.status === 'done' ? 'pending' : 'done')}
-                    />
+                    <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                      {/* Concluir uma sessão é o que mais dá vontade de contar,
+                          e era o que menos aparecia para quem está junto. */}
+                      {sessao.status === 'done' && (
+                        <IconButton
+                          icon="send"
+                          tone="bare"
+                          size={32}
+                          label={`Compartilhar ${sessao.title}`}
+                          onClick={() => setCompartilhando(sessao)}
+                        />
+                      )}
+                      <IconButton
+                        icon={sessao.status === 'done' ? 'undo-2' : 'check-circle'}
+                        tone="bare"
+                        size={32}
+                        label={sessao.status === 'done' ? 'Reabrir sessão' : 'Concluir sessão'}
+                        onClick={() => mudarStatus(sessao, sessao.status === 'done' ? 'pending' : 'done')}
+                      />
+                    </div>
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
@@ -367,6 +382,18 @@ function DetalheDoPlano({ plano, onVoltar, onAtualizar, onErro, onApagar, aviso,
       <Button variant="ghost" fullWidth iconLeft="trash" onClick={onApagar}>
         Apagar plano
       </Button>
+
+      <Compartilhar
+        aberto={!!compartilhando}
+        titulo="Compartilhar sessão"
+        fixo={compartilhando && {
+          kind: 'session',
+          ref: String(compartilhando.id),
+          icon: 'dumbbell',
+          text: `concluiu ${compartilhando.title} do plano de ${plano.modality}`,
+        }}
+        onFechar={() => setCompartilhando(null)}
+      />
 
       {adaptando && (
         <Adaptar

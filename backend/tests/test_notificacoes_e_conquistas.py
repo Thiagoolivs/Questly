@@ -170,8 +170,7 @@ def test_dia_de_descanso_nao_recebe_lembrete_de_agua(avisos):
 class _Config:
     """Configurações de grupo o suficiente para decidir o que se aplica."""
 
-    def __init__(self, fixed_habits=None, disabled_areas=None, spiritual=True):
-        self.fixed_habits = fixed_habits
+    def __init__(self, disabled_areas=None, spiritual=True):
         self.disabled_areas = disabled_areas or []
         self.spiritual_enabled = spiritual
 
@@ -187,10 +186,13 @@ def test_casal_inabalavel_so_em_casal():
     assert scoring.achievement_applies(casal, _Config(), "individual") is False
 
 
-def test_conquista_de_habito_some_se_o_habito_nao_esta_em_jogo():
-    agua = _por_chave("mestre_agua")
-    assert scoring.achievement_applies(agua, _Config([{"key": "agua"}]), "group") is True
-    assert scoring.achievement_applies(agua, _Config([{"key": "sono"}]), "group") is False
+def test_nenhuma_conquista_depende_dos_habitos_fixos_do_grupo():
+    """Hábito é pessoal — e as três conquistas que mediam os "hábitos fixos"
+    do grupo nunca poderiam sair, porque nenhuma tela sabia marcá-los."""
+    assert not [a for a in ACHIEVEMENTS if a.get("needs_habit")]
+    metricas = {a["metric"] for a in ACHIEVEMENTS}
+    assert not [m for m in metricas if m.startswith("habit:")]
+    assert "all_habits_days" not in metricas
 
 
 def test_conquista_de_area_some_se_a_area_esta_desligada():

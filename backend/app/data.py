@@ -6,25 +6,10 @@ cada área tem pools separados por dificuldade — Fácil / Médio / Difícil �
 pontuações crescentes. As 5 áreas: Física, Mental, Social, Relação, Espiritual.
 """
 
-# --- Hábitos ---------------------------------------------------------------
-# Conjunto padrão. O grupo pode adicionar QUANTOS hábitos quiser nas configs.
-DEFAULT_HABITS = [
-    {"key": "agua", "label": "Bater a meta de água diária", "icon": "droplet", "category": "Saúde"},
-    {"key": "sono", "label": "Dormir no mínimo 7h30", "icon": "moon", "category": "Saúde"},
-    {"key": "refeicoes", "label": "Não pular refeições", "icon": "utensils", "category": "Saúde"},
-    {"key": "leitura", "label": "Ler 10 páginas (ou 15 min)", "icon": "book-open", "category": "Mental"},
-    {"key": "devocional", "label": "Fazer o devocional", "icon": "heart-handshake", "category": "Espiritual"},
-]
-
-# Sugestões prontas (o grupo pode ativar estas além de criar as suas).
-HABITS_MENU = DEFAULT_HABITS + [
-    {"key": "proteina", "label": "Bater a meta de proteína", "icon": "beef", "category": "Saúde"},
-    {"key": "passos", "label": "Caminhar 8.000 passos", "icon": "footprints", "category": "Corpo"},
-    {"key": "alongar", "label": "Alongar por 10 minutos", "icon": "activity", "category": "Corpo"},
-    {"key": "orar", "label": "Orar", "icon": "feather", "category": "Espiritual"},
-    {"key": "cama", "label": "Arrumar a cama", "icon": "bed", "category": "Organização"},
-    {"key": "tarefas", "label": "Não deixar tarefas acumuladas", "icon": "check-circle", "category": "Organização"},
-]
+# Hábitos são pessoais (models.Habit / presets.HABIT_PRESETS). Os "hábitos
+# fixos do grupo" que moravam aqui saíram: eram configuráveis nas opções do
+# grupo e nenhuma tela do app sabia marcá-los, então só duplicavam o conceito
+# e travavam o dia perfeito, que exigia todos eles cumpridos.
 
 # --- Desafios por categoria e dificuldade ----------------------------------
 # Cada dia sorteia (determinístico por data) uma dificuldade + um item por área.
@@ -164,10 +149,14 @@ DIFFICULTY_LABEL = {"facil": "Fácil", "medio": "Médio", "dificil": "Difícil"}
 # --- Conquistas ------------------------------------------------------------
 # Cada conquista define uma métrica e um alvo; a checagem fica em scoring.py.
 #
-# `group_types`, `needs_habit` e `needs_areas` dizem quando a conquista faz
-# sentido. Sem isso, um grupo de cinco pessoas via "Casal Inabalável" — que
-# ninguém ali pode desbloquear — e quem desligou a área Mental via uma medalha
-# presa para sempre. Conquista impossível não motiva, atrapalha.
+# `group_types` e `needs_areas` dizem quando a conquista faz sentido. Sem isso,
+# um grupo de cinco pessoas via "Casal Inabalável" — que ninguém ali pode
+# desbloquear — e quem desligou a área Mental via uma medalha presa para
+# sempre. Conquista impossível não motiva, atrapalha.
+#
+# Pelo mesmo motivo saíram as três que mediam os "hábitos fixos" do grupo:
+# nenhuma tela do app sabia marcá-los, então elas nunca sairiam do zero. Hábito
+# agora é pessoal, e as conquistas dele estão em PERSONAL_ACHIEVEMENTS.
 ACHIEVEMENTS = [
     {"key": "primeiros_7", "name": "Primeiros 7 dias", "icon": "medal",
      "desc": "Conclua 7 dias do desafio.", "metric": "completed_days", "target": 7},
@@ -175,14 +164,6 @@ ACHIEVEMENTS = [
      "desc": "Alcance uma sequência de 10 dias.", "metric": "best_streak", "target": 10},
     {"key": "completos_30", "name": "30 dias completos", "icon": "trophy",
      "desc": "Conclua 30 dias do desafio.", "metric": "completed_days", "target": 30},
-    {"key": "mestre_agua", "name": "Mestre da Água", "icon": "droplet",
-     "desc": "Bata a meta de água em 15 dias.", "metric": "habit:agua", "target": 15,
-     "needs_habit": "agua"},
-    {"key": "rei_disciplina", "name": "Rei da Disciplina", "icon": "crown",
-     "desc": "Cumpra todos os hábitos em 20 dias.", "metric": "all_habits_days", "target": 20},
-    {"key": "leitor", "name": "Leitor Consistente", "icon": "library",
-     "desc": "Cumpra o hábito de leitura em 20 dias.", "metric": "habit:leitura", "target": 20,
-     "needs_habit": "leitura"},
     {"key": "mente_forte", "name": "Mente Forte", "icon": "brain",
      "desc": "Conclua 10 desafios da área Mental.", "metric": "cat:Mental", "target": 10,
      "needs_areas": ["Mental"]},

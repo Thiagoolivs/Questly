@@ -61,18 +61,6 @@ class GroupJoin(BaseModel):
 
 
 # --- desafios / dia --------------------------------------------------------
-class ToggleRequest(BaseModel):
-    date: str = Field(..., description="Data no formato ISO (YYYY-MM-DD).")
-    type: Literal["habit"] = "habit"
-    habit_key: Optional[str] = None
-
-
-class HabitPhotoRequest(BaseModel):
-    date: str
-    habit_key: str
-    image: Optional[str] = None  # data URL; None remove a foto (mantém marcado)
-
-
 class MoodRequest(BaseModel):
     date: str
     moods: list[str] = Field(default_factory=list)  # emoções selecionadas
@@ -203,13 +191,6 @@ class MessageCreate(BaseModel):
     image: Optional[str] = None  # data URL (base64), anexo opcional
 
 
-class HabitDef(BaseModel):
-    key: str
-    label: str
-    icon: str = "check-circle"
-    category: str = "Geral"
-
-
 class SettingsUpdate(BaseModel):
     timezone: Optional[str] = Field(None, max_length=40)
     # Janela do desafio do grupo, com hora (ISO 8601). Enviar as duas juntas;
@@ -225,7 +206,6 @@ class SettingsUpdate(BaseModel):
     rest_days: Optional[list[int]] = None
     spiritual_enabled: Optional[bool] = None
     surprise_frequency: Optional[float] = Field(None, ge=0.0, le=1.0)
-    fixed_habits: Optional[list[HabitDef]] = None
     # Desafios do próprio grupo: {categoria: {facil|medio|dificil: [textos], only: bool}}
     custom_challenges: Optional[dict] = None
     # Áreas desligadas (nomes de categoria)
@@ -426,6 +406,26 @@ class RoutineFromAI(BaseModel):
     name: str = Field(..., min_length=1, max_length=60)
     context: Optional[str] = Field(None, max_length=200)
     steps: int = Field(5, ge=2, le=12)
+
+
+class ShareRequest(BaseModel):
+    """Divulga no feed do grupo algo que a pessoa conquistou.
+
+    O cliente diz *o quê*, nunca o texto: o servidor confere que a conquista
+    existe mesmo e escreve a frase. Sem isso, "compartilhar conquista" seria só
+    um post de texto livre com cara de medalha.
+    """
+
+    kind: Literal["achievement", "streak", "session", "plan", "week", "level", "day"]
+    ref: Optional[str] = Field(None, max_length=80)
+    # Uma linha da própria pessoa, junto do que o servidor escreveu.
+    message: Optional[str] = Field(None, max_length=200)
+
+
+class AutoShareUpdate(BaseModel):
+    """Liga/desliga a postagem automática do fecho do dia neste espaço."""
+
+    auto_share: bool
 
 
 class CommentCreate(BaseModel):

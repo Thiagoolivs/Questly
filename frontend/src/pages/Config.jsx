@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../store.jsx'
+import { api } from '../api.js'
 import { Button, Card, Icon, IconButton, ListRow } from '../design-system/components/index.js'
 import { startTour } from '../components/Onboarding.jsx'
 import { disablePush, enablePush, getPushState, pushSupported } from '../utils/push.js'
@@ -15,14 +16,36 @@ import { forceUpdate } from '../utils/pwa.js'
  */
 export default function Config() {
   const navigate = useNavigate()
-  const { logout } = useApp()
+  const { logout, groupId, group } = useApp()
   const [push, setPush] = useState('unsupported')
+  const [autoShare, setAutoShare] = useState(null)
   const [ocupado, setOcupado] = useState(false)
   const [erro, setErro] = useState('')
 
   useEffect(() => {
     if (pushSupported()) getPushState().then(setPush)
   }, [])
+
+  useEffect(() => {
+    if (!groupId) return setAutoShare(null)
+    api.shareOptions(groupId).then((d) => setAutoShare(d.auto_share)).catch(() => {})
+  }, [groupId])
+
+  // Publicar no espaço dos outros sem pedir é o caminho mais curto para o feed
+  // virar ruído, então isto nasce desligado e mora aqui, não num canto escondido.
+  const alternarAutoShare = async () => {
+    if (ocupado || autoShare === null) return
+    setOcupado(true)
+    setErro('')
+    try {
+      const r = await api.setAutoShare(groupId, { auto_share: !autoShare })
+      setAutoShare(r.auto_share)
+    } catch (e) {
+      setErro(e.message)
+    } finally {
+      setOcupado(false)
+    }
+  }
 
   const alternarPush = async () => {
     if (ocupado) return
@@ -112,6 +135,48 @@ export default function Config() {
           </div>
         )}
       </Card>
+
+      {autoShare !== null && (
+        <Card>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-5)' }}>
+            <Icon name="send" size={18} color="var(--blue-glow)" />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div
+                style={{
+                  fontFamily: 'var(--font-ui)',
+                  fontSize: 'var(--fs-body)',
+                  fontWeight: 'var(--fw-medium)',
+                  color: 'var(--text-primary)',
+                }}
+              >
+                Publicar meu dia automaticamente
+              </div>
+              <p
+                style={{
+                  margin: '2px 0 0',
+                  fontFamily: 'var(--font-ui)',
+                  fontSize: 'var(--fs-body-sm)',
+                  color: 'var(--text-tertiary)',
+                }}
+              >
+                {autoShare
+                  ? `O que você cumprir hoje aparece sozinho no feed${group?.name ? ` de ${group.name}` : ''}, num item só por dia.`
+                  : 'Desligado. Suas conquistas só vão ao feed quando você tocar em compartilhar.'}
+              </p>
+            </div>
+          </div>
+          <div style={{ marginTop: 'var(--space-5)' }}>
+            <Button
+              variant={autoShare ? 'ghost' : 'accent'}
+              size="sm"
+              onClick={alternarAutoShare}
+              disabled={ocupado}
+            >
+              {autoShare ? 'Desativar' : 'Ativar'}
+            </Button>
+          </div>
+        </Card>
+      )}
 
       {erro && <p style={{ margin: 0, color: 'var(--danger)', fontSize: 'var(--fs-body-sm)' }}>{erro}</p>}
 

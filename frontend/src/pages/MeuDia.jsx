@@ -5,6 +5,7 @@ import { api } from '../api.js'
 import { Avatar, Button, Card, Chip, Icon, IconButton } from '../design-system/components/index.js'
 import CheckControl from '../components/CheckControl.jsx'
 import Confirmar from '../components/Confirmar.jsx'
+import Compartilhar from '../components/Compartilhar.jsx'
 import { useToast } from '../components/Toast.jsx'
 
 const LONG_DATE = { weekday: 'long', day: '2-digit', month: 'long' }
@@ -74,6 +75,7 @@ export default function MeuDia() {
   const [error, setError] = useState(null)
   const [apagandoRegistro, setApagandoRegistro] = useState(null)
   const [resgates, setResgates] = useState(null)
+  const [compartilhando, setCompartilhando] = useState(false)
 
   const carregar = useCallback(async () => {
     setLoading(true)
@@ -620,6 +622,13 @@ export default function MeuDia() {
             Cumprir um desafio hoje
           </Button>
         </Link>
+        {/* O que a pessoa fez hoje só chega ao grupo se ela quiser: o botão
+            existe, a publicação automática é outra coisa e vive nas opções. */}
+        {summary.done > 0 && (
+          <Button variant="ghost" iconLeft="send" onClick={() => setCompartilhando(true)} fullWidth>
+            Compartilhar com o grupo
+          </Button>
+        )}
         <Button variant="ghost" iconLeft={descanso ? 'sun' : 'moon'} onClick={alternarDescanso} fullWidth>
           {descanso ? 'Cancelar descanso de hoje' : 'Marcar hoje como descanso'}
         </Button>
@@ -630,6 +639,8 @@ export default function MeuDia() {
           {error}
         </p>
       ) : null}
+
+      <Compartilhar aberto={compartilhando} onFechar={() => setCompartilhando(false)} />
 
       {apagandoRegistro && (
         <Confirmar
